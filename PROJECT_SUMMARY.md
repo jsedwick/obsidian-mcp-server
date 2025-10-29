@@ -1,0 +1,319 @@
+# Obsidian MCP Server - Project Summary
+
+## What You've Got
+
+A complete, production-ready MCP (Model Context Protocol) server that enables Claude Code to automatically manage conversation context using an Obsidian vault.
+
+## Quick Start
+
+```bash
+cd obsidian-mcp-server
+npm install
+npm run build
+./setup.sh
+```
+
+Then restart Claude Code and start chatting!
+
+## Key Features
+
+### 🤖 Automatic Context Management
+- **Session Notes**: Every conversation is automatically saved
+- **Smart Search**: Find past discussions with natural language
+- **Topic Pages**: Build interconnected knowledge base
+- **Decision Records**: Track architectural decisions (ADR format)
+
+### 🔗 Obsidian Integration
+- Wiki-style links between notes
+- YAML frontmatter for metadata
+- Graph view of relationships
+- Full-text search in Obsidian
+
+### 💾 Efficient Storage
+- Text-based: Years of conversations < 50 MB
+- Markdown format: Human-readable, version-controllable
+- No databases: Simple file system
+
+## Project Structure
+
+```
+obsidian-mcp-server/
+├── src/
+│   ├── index.ts          # Main MCP server implementation
+│   └── test.ts           # Test utility
+├── package.json          # Dependencies and scripts
+├── tsconfig.json         # TypeScript configuration
+├── setup.sh              # Automated setup script
+├── README.md             # Complete documentation
+├── QUICKSTART.md         # 5-minute getting started guide
+├── INSTALL.md            # Detailed installation guide
+├── config.example.json   # Example configuration
+├── .gitignore           # Git ignore rules
+└── LICENSE              # MIT License
+
+After npm install & build:
+├── node_modules/        # Dependencies
+└── dist/                # Compiled JavaScript
+    ├── index.js         # Main server
+    └── test.js          # Test utility
+```
+
+## How It Works
+
+### 1. Installation
+The `setup.sh` script:
+- Detects your OS
+- Finds Claude Code config location
+- Creates vault structure
+- Generates configuration
+- Initializes vault with index
+
+### 2. Integration
+Claude Code connects to the MCP server via stdio:
+```json
+{
+  "mcpServers": {
+    "obsidian": {
+      "command": "node",
+      "args": ["/path/to/dist/index.js"],
+      "env": {
+        "OBSIDIAN_VAULT_PATH": "/path/to/vault"
+      }
+    }
+  }
+}
+```
+
+### 3. During Conversations
+Claude automatically:
+- **Starts sessions**: Creates timestamped session files
+- **Searches context**: Finds relevant past discussions
+- **Saves notes**: Records key points and decisions
+- **Creates topics**: Documents significant concepts
+- **Links content**: Builds relationships between notes
+
+### 4. In Your Vault
+```
+obsidian-vault/
+├── sessions/
+│   └── 2025-10-28_14-30-00_authentication.md
+├── topics/
+│   ├── jwt-tokens.md
+│   └── database-schema.md
+├── decisions/
+│   └── 001-use-postgresql.md
+└── index.md
+```
+
+## Available Tools (MCP Functions)
+
+The server provides 10 tools to Claude Code:
+
+1. **start_session** - Begin a new conversation
+2. **save_session_note** - Record information
+3. **search_vault** - Find past context
+4. **create_topic_page** - Document concepts
+5. **create_decision** - Record ADRs
+6. **update_topic_page** - Update existing topics
+7. **get_session_context** - Retrieve session details
+8. **link_to_topic** - Create wiki links
+9. **close_session** - Mark session complete
+
+## Example Workflow
+
+```
+You: "Start a session about building an auth system"
+Claude: [Creates session, searches for past auth discussions]
+
+You: "I think we should use JWT with refresh tokens"
+Claude: [Saves decision, may create topic page for JWT]
+
+You: "What did we discuss about database schemas?"
+Claude: [Searches vault, returns relevant sessions/topics]
+
+You: "Create a decision record for using PostgreSQL"
+Claude: [Creates decisions/001-use-postgresql.md]
+```
+
+## Testing
+
+Run the included test suite:
+```bash
+npm test
+```
+
+This verifies:
+- ✅ MCP server starts correctly
+- ✅ All 10 tools work
+- ✅ Files are created in vault
+- ✅ Search finds content
+- ✅ Session lifecycle works
+
+## Configuration Options
+
+### Single Vault
+```json
+{
+  "mcpServers": {
+    "obsidian": {
+      "command": "node",
+      "args": ["/path/to/dist/index.js"],
+      "env": {
+        "OBSIDIAN_VAULT_PATH": "/path/to/vault"
+      }
+    }
+  }
+}
+```
+
+### Multiple Vaults
+```json
+{
+  "mcpServers": {
+    "obsidian-work": {
+      "command": "node",
+      "args": ["/path/to/dist/index.js"],
+      "env": {
+        "OBSIDIAN_VAULT_PATH": "/path/to/work-vault"
+      }
+    },
+    "obsidian-personal": {
+      "command": "node",
+      "args": ["/path/to/dist/index.js"],
+      "env": {
+        "OBSIDIAN_VAULT_PATH": "/path/to/personal-vault"
+      }
+    }
+  }
+}
+```
+
+## Customization
+
+### Session Templates
+Edit the `startSession` method in `src/index.ts` to customize session file format.
+
+### Vault Structure
+Modify the `ensureVaultStructure` method to add custom directories.
+
+### Search Behavior
+Adjust search logic in the `searchVault` method.
+
+After changes:
+```bash
+npm run build
+```
+
+## Troubleshooting
+
+### Server not starting
+1. Check `npm run build` succeeded
+2. Verify paths are absolute in config
+3. Restart Claude Code
+
+### Search not working
+1. Ensure vault structure exists
+2. Check files are `.md` format
+3. Verify vault path is correct
+
+### Permission errors
+1. Check directory permissions
+2. Ensure you own the vault directory
+3. Try creating vault manually
+
+See `INSTALL.md` for detailed troubleshooting.
+
+## Storage Efficiency
+
+Your 256GB drive is more than sufficient:
+
+| Usage | Storage |
+|-------|---------|
+| 1,000 detailed sessions | ~5 MB |
+| 500 topic pages | ~2-3 MB |
+| Years of conversations | < 50 MB |
+| With code snippets | < 100 MB |
+
+Text is incredibly compact!
+
+## Benefits
+
+### For Development
+- **Never lose context**: All discussions are saved
+- **Fast retrieval**: Search finds relevant info instantly
+- **Knowledge building**: Topics evolve over time
+- **Decision tracking**: Know why choices were made
+
+### For Projects
+- **Documentation**: Auto-generated project history
+- **Onboarding**: New team members can read past sessions
+- **Architecture**: ADRs document design decisions
+- **Debugging**: Find past solutions to similar issues
+
+### For Learning
+- **Progress tracking**: See how understanding evolved
+- **Reference material**: Built-in knowledge base
+- **Pattern recognition**: Link similar concepts
+- **Review sessions**: Go back and review what you learned
+
+## Technical Details
+
+### Dependencies
+- `@modelcontextprotocol/sdk`: MCP protocol implementation
+- `@types/node`: TypeScript definitions for Node.js
+- `typescript`: TypeScript compiler
+
+### Architecture
+- **Protocol**: MCP over stdio
+- **Storage**: File system (Markdown files)
+- **Format**: YAML frontmatter + Markdown content
+- **Links**: Obsidian wiki-style `[[file|display]]`
+
+### Security
+- **Local only**: No network access
+- **File system**: Standard OS permissions
+- **No cloud**: Everything stays on your machine
+- **Open source**: Audit the code yourself
+
+## Next Steps
+
+1. **Install**: Run `./setup.sh`
+2. **Test**: Run `npm test`
+3. **Use**: Start a conversation with Claude Code
+4. **Explore**: Open vault in Obsidian
+5. **Customize**: Edit templates and structure as needed
+
+## Resources
+
+- **QUICKSTART.md**: Get started in 5 minutes
+- **INSTALL.md**: Detailed installation guide
+- **README.md**: Complete documentation
+- **config.example.json**: Example configuration
+
+## Support
+
+For issues or questions:
+1. Check INSTALL.md troubleshooting section
+2. Run `npm test` to diagnose issues
+3. Review Claude Code logs
+4. Open a GitHub issue with details
+
+## License
+
+MIT License - See LICENSE file
+
+## Contributing
+
+Contributions welcome! Ideas for improvements:
+- [ ] Automatic tagging
+- [ ] Session summarization
+- [ ] Template customization UI
+- [ ] Multi-vault support
+- [ ] Graph visualization
+- [ ] Export formats
+
+---
+
+**You're all set!** 🚀
+
+Run `./setup.sh` to get started, then open Claude Code and start a conversation. Claude will automatically manage your context in the Obsidian vault.
