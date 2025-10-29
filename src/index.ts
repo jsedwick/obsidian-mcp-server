@@ -24,10 +24,40 @@ interface SessionMetadata {
   status: 'ongoing' | 'completed';
 }
 
+interface TopicMetadata {
+  title: string;
+  created: string;
+  last_reviewed?: string;
+  review_count?: number;
+  tags: string[];
+  review_history?: Array<{
+    date: string;
+    action: 'created' | 'updated' | 'reviewed' | 'archived';
+    notes: string;
+  }>;
+}
+
+interface ReviewAnalysis {
+  is_outdated: boolean;
+  concerns: string[];
+  suggested_updates: string;
+  confidence: 'high' | 'medium' | 'low';
+}
+
+interface PendingReview {
+  review_id: string;
+  topic: string;
+  slug: string;
+  current_content: string;
+  analysis: ReviewAnalysis;
+  timestamp: number;
+}
+
 class ObsidianMCPServer {
   private server: Server;
   private currentSessionId: string | null = null;
   private currentSessionFile: string | null = null;
+  private pendingReviews: Map<string, PendingReview> = new Map();
 
   constructor() {
     this.server = new Server(
@@ -102,7 +132,19 @@ class ObsidianMCPServer {
           
           case 'close_session':
             return await this.closeSession();
-          
+
+          case 'find_stale_topics':
+            return await this.findStaleTopics(args as { age_threshold_days?: number; include_never_reviewed?: boolean });
+
+          case 'review_topic':
+            return await this.reviewTopic(args as { topic: string; analysis_prompt?: string });
+
+          case 'approve_topic_update':
+            return await this.approveTopicUpdate(args as { review_id: string; action: string; modified_content?: string });
+
+          case 'archive_topic':
+            return await this.archiveTopic(args as { topic: string; reason?: string });
+
           default:
             throw new Error(`Unknown tool: ${name}`);
         }
@@ -289,12 +331,90 @@ class ObsidianMCPServer {
           properties: {},
         },
       },
+      {
+        name: 'find_stale_topics',
+        description: 'Find topics that haven\'t been reviewed in a specified time period. Returns list of topics that may need review.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            age_threshold_days: {
+              type: 'number',
+              description: 'Number of days since creation or last review to consider a topic stale (default: 365)',
+              default: 365,
+            },
+            include_never_reviewed: {
+              type: 'boolean',
+              description: 'Include topics that have never been reviewed (default: true)',
+              default: true,
+            },
+          },
+        },
+      },
+      {
+        name: 'review_topic',
+        description: 'Analyze a topic for outdated content and suggest updates. Returns current content and AI analysis with suggested changes.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            topic: {
+              type: 'string',
+              description: 'Topic name or slug to review',
+            },
+            analysis_prompt: {
+              type: 'string',
+              description: 'Optional custom instructions for the review analysis',
+            },
+          },
+          required: ['topic'],
+        },
+      },
+      {
+        name: 'approve_topic_update',
+        description: 'Apply or dismiss a pending topic review. Updates the topic with new content and review history.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            review_id: {
+              type: 'string',
+              description: 'Review ID from review_topic call',
+            },
+            action: {
+              type: 'string',
+              enum: ['update', 'archive', 'keep', 'dismiss'],
+              description: 'Action to take: update (apply changes), archive (move to archive), keep (mark reviewed, no changes), dismiss (cancel review)',
+            },
+            modified_content: {
+              type: 'string',
+              description: 'Optional: edited content if you want to modify the AI suggestion before applying',
+            },
+          },
+          required: ['review_id', 'action'],
+        },
+      },
+      {
+        name: 'archive_topic',
+        description: 'Move a topic to the archive directory. Preserves all metadata and content.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            topic: {
+              type: 'string',
+              description: 'Topic name or slug to archive',
+            },
+            reason: {
+              type: 'string',
+              description: 'Optional reason for archiving',
+            },
+          },
+          required: ['topic'],
+        },
+      },
     ];
   }
 
   private async ensureVaultStructure(): Promise<void> {
-    const dirs = ['sessions', 'topics', 'decisions'];
-    
+    const dirs = ['sessions', 'topics', 'decisions', 'archive/topics'];
+
     for (const dir of dirs) {
       const dirPath = path.join(VAULT_PATH, dir);
       await fs.mkdir(dirPath, { recursive: true });
@@ -463,12 +583,42 @@ ${args.topic ? `Working on: ${args.topic}` : 'New conversation session started.'
               // Boost score if term is in filename or title
               if (file.toLowerCase().includes(term)) score += 5;
 
-              // Boost score for recent files
+              // Boost score for recent files (based on creation/modification date)
               if (fileDate) {
                 const age = this.getFileAgeDays(fileDate);
                 if (age < 7) score += 3;      // Within a week
                 else if (age < 30) score += 2; // Within a month
                 else if (age < 90) score += 1; // Within 3 months
+              }
+            }
+          }
+
+          // For topics: apply review-based scoring adjustments
+          if (dir === 'topics' && hasMatch) {
+            const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
+            if (frontmatterMatch) {
+              const frontmatter = frontmatterMatch[1];
+              const lastReviewedMatch = frontmatter.match(/last_reviewed:\s*(.+)/);
+              const createdMatch = frontmatter.match(/created:\s*(.+)/);
+
+              if (lastReviewedMatch) {
+                const lastReviewed = lastReviewedMatch[1].trim();
+                const created = createdMatch ? createdMatch[1].trim() : null;
+                const reviewAge = this.getFileAgeDays(lastReviewed);
+
+                // Bonus for recently reviewed topics (within 1 year)
+                if (reviewAge < 365) {
+                  score += 2; // Reviewed within a year = trusted content
+                }
+              } else if (createdMatch) {
+                // No review date, check creation date
+                const created = createdMatch[1].trim();
+                const creationAge = this.getFileAgeDays(created);
+
+                // Penalty for old topics that have never been reviewed
+                if (creationAge > 365) {
+                  score -= 2; // Old + never reviewed = potentially stale
+                }
               }
             }
           }
@@ -554,11 +704,18 @@ ${args.topic ? `Working on: ${args.topic}` : 'New conversation session started.'
 
     const slug = this.slugify(args.topic);
     const topicFile = path.join(VAULT_PATH, 'topics', `${slug}.md`);
+    const today = new Date().toISOString().split('T')[0];
 
     const content = `---
 title: ${args.topic}
-created: ${new Date().toISOString().split('T')[0]}
+created: ${today}
+last_reviewed: ${today}
+review_count: 0
 tags: [topic]
+review_history:
+  - date: ${today}
+    action: created
+    notes: "Topic created"
 ---
 
 # ${args.topic}
@@ -762,6 +919,381 @@ ${this.currentSessionId ? `- Session: [[sessions/${this.currentSessionId}]]` : '
     const now = new Date();
     const diffMs = now.getTime() - fileDate.getTime();
     return Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  }
+
+  private async findStaleTopics(args: { age_threshold_days?: number; include_never_reviewed?: boolean }) {
+    await this.ensureVaultStructure();
+
+    const thresholdDays = args.age_threshold_days || 365;
+    const includeNeverReviewed = args.include_never_reviewed !== false;
+    const topicsDir = path.join(VAULT_PATH, 'topics');
+    const staleTopics: Array<{
+      title: string;
+      slug: string;
+      created_date: string;
+      last_reviewed?: string;
+      age_days: number;
+      review_count: number;
+      file_path: string;
+    }> = [];
+
+    try {
+      const files = await fs.readdir(topicsDir);
+
+      for (const file of files) {
+        if (!file.endsWith('.md')) continue;
+
+        const filePath = path.join(topicsDir, file);
+        const content = await fs.readFile(filePath, 'utf-8');
+
+        // Parse frontmatter
+        const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
+        if (!frontmatterMatch) continue;
+
+        const frontmatter = frontmatterMatch[1];
+        const createdMatch = frontmatter.match(/created:\s*(.+)/);
+        const lastReviewedMatch = frontmatter.match(/last_reviewed:\s*(.+)/);
+        const reviewCountMatch = frontmatter.match(/review_count:\s*(\d+)/);
+        const titleMatch = frontmatter.match(/title:\s*(.+)/);
+
+        if (!createdMatch) continue;
+
+        const created = createdMatch[1].trim();
+        const lastReviewed = lastReviewedMatch ? lastReviewedMatch[1].trim() : undefined;
+        const reviewCount = reviewCountMatch ? parseInt(reviewCountMatch[1]) : 0;
+        const title = titleMatch ? titleMatch[1].trim() : file.replace('.md', '');
+
+        // Determine if stale
+        const referenceDate = lastReviewed || created;
+        const ageDays = this.getFileAgeDays(referenceDate);
+
+        const isStale = ageDays > thresholdDays;
+        const neverReviewed = !lastReviewed || lastReviewed === created;
+
+        if (isStale && (includeNeverReviewed || !neverReviewed)) {
+          staleTopics.push({
+            title,
+            slug: file.replace('.md', ''),
+            created_date: created,
+            last_reviewed: lastReviewed !== created ? lastReviewed : undefined,
+            age_days: ageDays,
+            review_count: reviewCount,
+            file_path: `topics/${file}`,
+          });
+        }
+      }
+    } catch (error) {
+      throw new Error(`Failed to scan topics: ${error}`);
+    }
+
+    // Sort by age (oldest first)
+    staleTopics.sort((a, b) => b.age_days - a.age_days);
+
+    if (staleTopics.length === 0) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `No stale topics found. All topics have been reviewed within the last ${thresholdDays} days.`,
+          },
+        ],
+      };
+    }
+
+    let resultText = `Found ${staleTopics.length} stale topic(s) older than ${thresholdDays} days:\n\n`;
+
+    staleTopics.forEach((topic, idx) => {
+      resultText += `${idx + 1}. **${topic.title}** (${topic.slug})\n`;
+      resultText += `   - Created: ${topic.created_date}\n`;
+      resultText += `   - Last reviewed: ${topic.last_reviewed || 'Never'}\n`;
+      resultText += `   - Age: ${topic.age_days} days\n`;
+      resultText += `   - Reviews: ${topic.review_count}\n\n`;
+    });
+
+    resultText += `\nUse review_topic to analyze any of these topics.`;
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: resultText,
+        },
+      ],
+    };
+  }
+
+  private async reviewTopic(args: { topic: string; analysis_prompt?: string }) {
+    const slug = this.slugify(args.topic);
+    const topicFile = path.join(VAULT_PATH, 'topics', `${slug}.md`);
+
+    try {
+      await fs.access(topicFile);
+    } catch {
+      throw new Error(`Topic not found: ${args.topic}`);
+    }
+
+    const content = await fs.readFile(topicFile, 'utf-8');
+
+    // Parse frontmatter
+    const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
+    if (!frontmatterMatch) {
+      throw new Error('Invalid topic file format (missing frontmatter)');
+    }
+
+    const frontmatter = frontmatterMatch[1];
+    const titleMatch = frontmatter.match(/title:\s*(.+)/);
+    const title = titleMatch ? titleMatch[1].trim() : args.topic;
+
+    // Extract main content (without frontmatter)
+    const mainContent = content.substring(frontmatterMatch[0].length).trim();
+
+    // Generate review analysis
+    const defaultPrompt = `Analyze this topic for outdated or inaccurate information. Consider:
+1. Are there any deprecated technologies or approaches mentioned?
+2. Is the information still current and accurate?
+3. Are there any missing important updates or developments?
+4. What specific changes would improve accuracy?
+
+Provide a structured analysis with:
+- is_outdated: true/false
+- concerns: list of specific issues
+- suggested_updates: concrete suggestions for improvements
+- confidence: high/medium/low`;
+
+    const analysisPrompt = args.analysis_prompt || defaultPrompt;
+
+    // For now, we'll create a placeholder analysis since we don't have AI integration
+    // In a real implementation, this would call an LLM API
+    const analysis: ReviewAnalysis = {
+      is_outdated: false,
+      concerns: [
+        'Manual review required - AI analysis not yet implemented',
+        'Please review the content below and provide your assessment',
+      ],
+      suggested_updates: 'Please review the topic content and suggest specific updates if needed.',
+      confidence: 'low',
+    };
+
+    // Generate review ID and store pending review
+    const reviewId = `review_${Date.now()}_${slug}`;
+    const pendingReview: PendingReview = {
+      review_id: reviewId,
+      topic: title,
+      slug,
+      current_content: content,
+      analysis,
+      timestamp: Date.now(),
+    };
+
+    this.pendingReviews.set(reviewId, pendingReview);
+
+    let resultText = `# Review Analysis: ${title}\n\n`;
+    resultText += `**Review ID:** ${reviewId}\n`;
+    resultText += `**Topic File:** topics/${slug}.md\n\n`;
+    resultText += `## Current Content\n\n${mainContent}\n\n`;
+    resultText += `## AI Analysis\n\n`;
+    resultText += `**Status:** ${analysis.is_outdated ? '⚠️ Potentially Outdated' : '✅ Appears Current'}\n`;
+    resultText += `**Confidence:** ${analysis.confidence}\n\n`;
+    resultText += `**Concerns:**\n`;
+    analysis.concerns.forEach(c => resultText += `- ${c}\n`);
+    resultText += `\n**Suggested Updates:**\n${analysis.suggested_updates}\n\n`;
+    resultText += `---\n\n`;
+    resultText += `**Next Steps:**\n`;
+    resultText += `Use approve_topic_update with one of these actions:\n`;
+    resultText += `- \`update\`: Apply suggested changes (you can provide modified_content)\n`;
+    resultText += `- \`keep\`: Mark as reviewed without changes\n`;
+    resultText += `- \`archive\`: Move to archive\n`;
+    resultText += `- \`dismiss\`: Cancel this review\n`;
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: resultText,
+        },
+      ],
+    };
+  }
+
+  private async approveTopicUpdate(args: { review_id: string; action: string; modified_content?: string }) {
+    const pendingReview = this.pendingReviews.get(args.review_id);
+
+    if (!pendingReview) {
+      throw new Error(`Review not found: ${args.review_id}. It may have expired or already been processed.`);
+    }
+
+    const { slug, topic, current_content } = pendingReview;
+    const topicFile = path.join(VAULT_PATH, 'topics', `${slug}.md`);
+    const today = new Date().toISOString().split('T')[0];
+
+    try {
+      switch (args.action) {
+        case 'update': {
+          // Update content
+          const contentToWrite = args.modified_content || pendingReview.analysis.suggested_updates;
+
+          // Parse existing frontmatter
+          const frontmatterMatch = current_content.match(/^---\n([\s\S]*?)\n---/);
+          if (!frontmatterMatch) throw new Error('Invalid frontmatter');
+
+          const frontmatter = frontmatterMatch[1];
+          const reviewCountMatch = frontmatter.match(/review_count:\s*(\d+)/);
+          const reviewCount = reviewCountMatch ? parseInt(reviewCountMatch[1]) : 0;
+
+          // Update frontmatter with new review info
+          let updatedFrontmatter = frontmatter
+            .replace(/last_reviewed:.*/, `last_reviewed: ${today}`)
+            .replace(/review_count:.*/, `review_count: ${reviewCount + 1}`);
+
+          // Add to review history
+          const reviewHistoryEntry = `  - date: ${today}\n    action: updated\n    notes: "Content updated via review process"`;
+          if (updatedFrontmatter.includes('review_history:')) {
+            updatedFrontmatter = updatedFrontmatter.replace(
+              /review_history:/,
+              `review_history:\n${reviewHistoryEntry}`
+            );
+          } else {
+            updatedFrontmatter += `\nreview_history:\n${reviewHistoryEntry}`;
+          }
+
+          const mainContent = current_content.substring(frontmatterMatch[0].length).trim();
+          const newContent = `---\n${updatedFrontmatter}\n---\n\n${args.modified_content || mainContent}`;
+
+          await fs.writeFile(topicFile, newContent);
+
+          this.pendingReviews.delete(args.review_id);
+
+          return {
+            content: [
+              {
+                type: 'text',
+                text: `Topic updated: ${topic}\nFile: topics/${slug}.md\nReview count: ${reviewCount + 1}`,
+              },
+            ],
+          };
+        }
+
+        case 'keep': {
+          // Mark as reviewed without content changes
+          const frontmatterMatch = current_content.match(/^---\n([\s\S]*?)\n---/);
+          if (!frontmatterMatch) throw new Error('Invalid frontmatter');
+
+          const frontmatter = frontmatterMatch[1];
+          const reviewCountMatch = frontmatter.match(/review_count:\s*(\d+)/);
+          const reviewCount = reviewCountMatch ? parseInt(reviewCountMatch[1]) : 0;
+
+          let updatedFrontmatter = frontmatter
+            .replace(/last_reviewed:.*/, `last_reviewed: ${today}`)
+            .replace(/review_count:.*/, `review_count: ${reviewCount + 1}`);
+
+          const reviewHistoryEntry = `  - date: ${today}\n    action: reviewed\n    notes: "Reviewed - no changes needed"`;
+          if (updatedFrontmatter.includes('review_history:')) {
+            updatedFrontmatter = updatedFrontmatter.replace(
+              /review_history:/,
+              `review_history:\n${reviewHistoryEntry}`
+            );
+          } else {
+            updatedFrontmatter += `\nreview_history:\n${reviewHistoryEntry}`;
+          }
+
+          const mainContent = current_content.substring(frontmatterMatch[0].length).trim();
+          const newContent = `---\n${updatedFrontmatter}\n---\n\n${mainContent}`;
+
+          await fs.writeFile(topicFile, newContent);
+
+          this.pendingReviews.delete(args.review_id);
+
+          return {
+            content: [
+              {
+                type: 'text',
+                text: `Topic marked as reviewed: ${topic}\nNo content changes made.\nReview count: ${reviewCount + 1}`,
+              },
+            ],
+          };
+        }
+
+        case 'archive': {
+          return await this.archiveTopic({ topic: slug, reason: 'Archived via review process' });
+        }
+
+        case 'dismiss': {
+          this.pendingReviews.delete(args.review_id);
+
+          return {
+            content: [
+              {
+                type: 'text',
+                text: `Review dismissed for: ${topic}`,
+              },
+            ],
+          };
+        }
+
+        default:
+          throw new Error(`Unknown action: ${args.action}. Use: update, keep, archive, or dismiss`);
+      }
+    } catch (error) {
+      throw new Error(`Failed to process review: ${error}`);
+    }
+  }
+
+  private async archiveTopic(args: { topic: string; reason?: string }) {
+    const slug = this.slugify(args.topic);
+    const topicFile = path.join(VAULT_PATH, 'topics', `${slug}.md`);
+    const archiveFile = path.join(VAULT_PATH, 'archive', 'topics', `${slug}.md`);
+
+    try {
+      await fs.access(topicFile);
+    } catch {
+      throw new Error(`Topic not found: ${args.topic}`);
+    }
+
+    await this.ensureVaultStructure();
+
+    // Read current content
+    const content = await fs.readFile(topicFile, 'utf-8');
+    const today = new Date().toISOString().split('T')[0];
+
+    // Update frontmatter to mark as archived
+    const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
+    if (!frontmatterMatch) throw new Error('Invalid frontmatter');
+
+    const frontmatter = frontmatterMatch[1];
+    let updatedFrontmatter = frontmatter;
+
+    // Add archived date and reason
+    updatedFrontmatter += `\narchived: ${today}`;
+    if (args.reason) {
+      updatedFrontmatter += `\narchive_reason: ${args.reason}`;
+    }
+
+    // Add to review history
+    const reviewHistoryEntry = `  - date: ${today}\n    action: archived\n    notes: "${args.reason || 'Topic archived'}"`;
+    if (updatedFrontmatter.includes('review_history:')) {
+      updatedFrontmatter = updatedFrontmatter.replace(
+        /review_history:/,
+        `review_history:\n${reviewHistoryEntry}`
+      );
+    } else {
+      updatedFrontmatter += `\nreview_history:\n${reviewHistoryEntry}`;
+    }
+
+    const mainContent = content.substring(frontmatterMatch[0].length).trim();
+    const newContent = `---\n${updatedFrontmatter}\n---\n\n${mainContent}`;
+
+    // Move to archive
+    await fs.writeFile(archiveFile, newContent);
+    await fs.unlink(topicFile);
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `Topic archived: ${args.topic}\nMoved from topics/${slug}.md to archive/topics/${slug}.md${args.reason ? `\nReason: ${args.reason}` : ''}`,
+        },
+      ],
+    };
   }
 
   async run(): Promise<void> {

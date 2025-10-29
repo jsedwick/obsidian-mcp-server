@@ -41,7 +41,7 @@ Use this checklist to track your progress implementing the Obsidian MCP Server.
 ### Integration Tests
 - [x] Restarted Claude Code
 - [x] Started conversation with Claude Code
-- [x] Asked Claude to "start a new session about testing"
+- [ ] Asked Claude to "start a new session about testing"
 - [ ] Session file created in sessions/ directory
 - [ ] Asked Claude to "search my vault for test"
 - [ ] Search returned results (or "no results" for new vault)
