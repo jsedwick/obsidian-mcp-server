@@ -77,7 +77,13 @@ class ObsidianMCPServer {
             return await this.saveSessionNote(args as { content: string; append?: boolean });
           
           case 'search_vault':
-            return await this.searchVault(args as { query: string; directories?: string[] });
+            return await this.searchVault(args as {
+              query: string;
+              directories?: string[];
+              max_results?: number;
+              date_range?: { start?: string; end?: string };
+              snippets_only?: boolean;
+            });
           
           case 'create_topic_page':
             return await this.createTopicPage(args as { topic: string; content: string });
@@ -150,7 +156,7 @@ class ObsidianMCPServer {
       },
       {
         name: 'search_vault',
-        description: 'Search the Obsidian vault for relevant notes and context. Use this to find past conversations, decisions, and topic information.',
+        description: 'Search the Obsidian vault for relevant notes and context. Returns ranked results with snippets. Use get_session_context to read full files.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -162,6 +168,24 @@ class ObsidianMCPServer {
               type: 'array',
               items: { type: 'string' },
               description: 'Optional: specific directories to search (sessions, topics, decisions)',
+            },
+            max_results: {
+              type: 'number',
+              description: 'Maximum number of results to return (default: 10)',
+              default: 10,
+            },
+            date_range: {
+              type: 'object',
+              properties: {
+                start: { type: 'string', description: 'Start date (YYYY-MM-DD)' },
+                end: { type: 'string', description: 'End date (YYYY-MM-DD)' },
+              },
+              description: 'Optional: filter by date range',
+            },
+            snippets_only: {
+              type: 'boolean',
+              description: 'If true, return condensed snippets instead of full matches (default: true)',
+              default: true,
             },
           },
           required: ['query'],
@@ -382,47 +406,138 @@ ${args.topic ? `Working on: ${args.topic}` : 'New conversation session started.'
     };
   }
 
-  private async searchVault(args: { query: string; directories?: string[] }) {
+  private async searchVault(args: {
+    query: string;
+    directories?: string[];
+    max_results?: number;
+    date_range?: { start?: string; end?: string };
+    snippets_only?: boolean;
+  }) {
     await this.ensureVaultStructure();
 
     const searchDirs = args.directories || ['sessions', 'topics', 'decisions'];
-    const results: { file: string; matches: string[] }[] = [];
+    const maxResults = args.max_results || 10;
+    const snippetsOnly = args.snippets_only !== false; // Default true
+    const results: {
+      file: string;
+      matches: string[];
+      date?: string;
+      score: number;
+    }[] = [];
     const queryLower = args.query.toLowerCase();
+    const queryTerms = queryLower.split(/\s+/).filter(t => t.length > 2);
 
     for (const dir of searchDirs) {
       const dirPath = path.join(VAULT_PATH, dir);
-      
+
       try {
         const files = await fs.readdir(dirPath);
-        
+
         for (const file of files) {
           if (!file.endsWith('.md')) continue;
-          
+
           const filePath = path.join(dirPath, file);
           const content = await fs.readFile(filePath, 'utf-8');
           const contentLower = content.toLowerCase();
-          
-          if (contentLower.includes(queryLower)) {
+
+          // Extract date from filename or frontmatter
+          const dateMatch = file.match(/^(\d{4}-\d{2}-\d{2})/);
+          const fileDate = dateMatch ? dateMatch[1] : undefined;
+
+          // Date filtering
+          if (args.date_range) {
+            if (args.date_range.start && fileDate && fileDate < args.date_range.start) continue;
+            if (args.date_range.end && fileDate && fileDate > args.date_range.end) continue;
+          }
+
+          // Calculate relevance score
+          let score = 0;
+          let hasMatch = false;
+
+          for (const term of queryTerms) {
+            const termCount = (contentLower.match(new RegExp(term, 'g')) || []).length;
+            if (termCount > 0) {
+              hasMatch = true;
+              score += termCount;
+
+              // Boost score if term is in filename or title
+              if (file.toLowerCase().includes(term)) score += 5;
+
+              // Boost score for recent files
+              if (fileDate) {
+                const age = this.getFileAgeDays(fileDate);
+                if (age < 7) score += 3;      // Within a week
+                else if (age < 30) score += 2; // Within a month
+                else if (age < 90) score += 1; // Within 3 months
+              }
+            }
+          }
+
+          if (hasMatch) {
             const lines = content.split('\n');
             const matchingLines = lines
-              .filter(line => line.toLowerCase().includes(queryLower))
+              .filter(line => {
+                const lineLower = line.toLowerCase();
+                return queryTerms.some(term => lineLower.includes(term));
+              })
               .slice(0, 3); // Limit to 3 matching lines per file
-            
+
             results.push({
               file: path.join(dir, file),
               matches: matchingLines,
+              date: fileDate,
+              score: score,
             });
           }
         }
       } catch (error) {
-        // Directory might not exist yet
         continue;
       }
     }
 
-    const resultText = results.length > 0
-      ? results.map(r => `**${r.file}**:\n${r.matches.map(m => `  - ${m.trim()}`).join('\n')}`).join('\n\n')
-      : 'No results found.';
+    // Sort by relevance score (descending) and limit results
+    results.sort((a, b) => b.score - a.score);
+    const topResults = results.slice(0, maxResults);
+
+    if (topResults.length === 0) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `No results found for "${args.query}".`,
+          },
+        ],
+      };
+    }
+
+    // Generate response based on snippets_only flag
+    let resultText: string;
+
+    if (snippetsOnly) {
+      // Return condensed results with option to read full files
+      resultText = `Found ${results.length} matches. Top ${topResults.length} results:\n\n`;
+
+      topResults.forEach((r, idx) => {
+        resultText += `${idx + 1}. **${r.file}** ${r.date ? `(${r.date})` : ''}\n`;
+        if (r.matches.length > 0) {
+          resultText += r.matches
+            .map(m => `   ${m.trim().substring(0, 100)}${m.length > 100 ? '...' : ''}`)
+            .join('\n') + '\n';
+        }
+        resultText += '\n';
+      });
+
+      if (results.length > maxResults) {
+        resultText += `\n_Showing top ${maxResults} of ${results.length} results. Refine your query or increase max_results for more._`;
+      }
+
+      resultText += `\n\n💡 Use get_session_context with a specific session_id to read full files.`;
+    } else {
+      // Return full matching content (old behavior, for backwards compatibility)
+      resultText = topResults
+        .map(r => `**${r.file}** ${r.date ? `(${r.date})` : ''}:\n${r.matches.map(m => `  - ${m.trim()}`).join('\n')}`)
+        .join('\n\n');
+    }
 
     return {
       content: [
@@ -640,6 +755,13 @@ ${this.currentSessionId ? `- Session: [[sessions/${this.currentSessionId}]]` : '
         },
       ],
     };
+  }
+
+  private getFileAgeDays(dateString: string): number {
+    const fileDate = new Date(dateString);
+    const now = new Date();
+    const diffMs = now.getTime() - fileDate.getTime();
+    return Math.floor(diffMs / (1000 * 60 * 60 * 24));
   }
 
   async run(): Promise<void> {
