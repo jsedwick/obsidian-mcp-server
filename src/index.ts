@@ -9,6 +9,10 @@ import {
 import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { exec } from 'child_process';
+import { promisify } from 'util';
+
+const execAsync = promisify(exec);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -22,6 +26,16 @@ interface SessionMetadata {
   topics: string[];
   decisions: string[];
   status: 'ongoing' | 'completed';
+  repository?: {
+    path: string;
+    name: string;
+    commits: string[];
+  };
+  files_accessed?: Array<{
+    path: string;
+    action: 'read' | 'edit' | 'create';
+    timestamp: string;
+  }>;
 }
 
 interface TopicMetadata {
@@ -53,11 +67,25 @@ interface PendingReview {
   timestamp: number;
 }
 
+interface RepoCandidate {
+  path: string;
+  name: string;
+  score: number;
+  reasons: string[];
+  branch?: string;
+  remote?: string;
+}
+
 class ObsidianMCPServer {
   private server: Server;
   private currentSessionId: string | null = null;
   private currentSessionFile: string | null = null;
   private pendingReviews: Map<string, PendingReview> = new Map();
+  private filesAccessed: Array<{
+    path: string;
+    action: 'read' | 'edit' | 'create';
+    timestamp: string;
+  }> = [];
 
   constructor() {
     this.server = new Server(
@@ -147,6 +175,21 @@ class ObsidianMCPServer {
 
           case 'list_recent_sessions':
             return await this.listRecentSessions(args as { limit?: number });
+
+          case 'track_file_access':
+            return await this.trackFileAccess(args as { path: string; action: 'read' | 'edit' | 'create' });
+
+          case 'detect_session_repositories':
+            return await this.detectSessionRepositories();
+
+          case 'link_session_to_repository':
+            return await this.linkSessionToRepository(args as { repo_path: string });
+
+          case 'create_project_page':
+            return await this.createProjectPage(args as { repo_path: string });
+
+          case 'record_commit':
+            return await this.recordCommit(args as { repo_path: string; commit_hash: string });
 
           default:
             throw new Error(`Unknown tool: ${name}`);
@@ -426,11 +469,84 @@ class ObsidianMCPServer {
           },
         },
       },
+      {
+        name: 'track_file_access',
+        description: 'Track a file that was accessed during the session. Used to help detect relevant Git repositories.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            path: {
+              type: 'string',
+              description: 'Absolute path to the file',
+            },
+            action: {
+              type: 'string',
+              enum: ['read', 'edit', 'create'],
+              description: 'Type of access: read, edit, or create',
+            },
+          },
+          required: ['path', 'action'],
+        },
+      },
+      {
+        name: 'detect_session_repositories',
+        description: 'Analyze the current session to detect relevant Git repositories based on files accessed and session context.',
+        inputSchema: {
+          type: 'object',
+          properties: {},
+        },
+      },
+      {
+        name: 'link_session_to_repository',
+        description: 'Link the current session to a specific Git repository.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            repo_path: {
+              type: 'string',
+              description: 'Absolute path to the Git repository',
+            },
+          },
+          required: ['repo_path'],
+        },
+      },
+      {
+        name: 'create_project_page',
+        description: 'Create or update a project page in the Obsidian vault for tracking a Git repository.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            repo_path: {
+              type: 'string',
+              description: 'Absolute path to the Git repository',
+            },
+          },
+          required: ['repo_path'],
+        },
+      },
+      {
+        name: 'record_commit',
+        description: 'Record a Git commit in the Obsidian vault, creating a commit page with diff and session links.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            repo_path: {
+              type: 'string',
+              description: 'Absolute path to the Git repository',
+            },
+            commit_hash: {
+              type: 'string',
+              description: 'Git commit hash',
+            },
+          },
+          required: ['repo_path', 'commit_hash'],
+        },
+      },
     ];
   }
 
   private async ensureVaultStructure(): Promise<void> {
-    const dirs = ['sessions', 'topics', 'decisions', 'archive/topics'];
+    const dirs = ['sessions', 'topics', 'decisions', 'archive/topics', 'projects'];
 
     for (const dir of dirs) {
       const dirPath = path.join(VAULT_PATH, dir);
@@ -469,11 +585,14 @@ Check the sessions/ directory for recent conversations.
   private async startSession(args: { topic?: string }) {
     await this.ensureVaultStructure();
 
+    // Clear file access tracking from previous session
+    this.filesAccessed = [];
+
     const now = new Date();
     const dateStr = now.toISOString().split('T')[0];
     const timeStr = now.toTimeString().split(' ')[0].replace(/:/g, '-');
     const topicSlug = args.topic ? `_${this.slugify(args.topic)}` : '';
-    
+
     this.currentSessionId = `${dateStr}_${timeStr}${topicSlug}`;
     this.currentSessionFile = path.join(VAULT_PATH, 'sessions', `${this.currentSessionId}.md`);
 
@@ -918,6 +1037,99 @@ ${this.currentSessionId ? `- Session: [[sessions/${this.currentSessionId}]]` : '
     await fs.writeFile(this.currentSessionFile, updatedContent);
 
     const sessionId = this.currentSessionId;
+
+    // Auto-detect Git repositories before closing
+    let repoDetectionMessage = '';
+    if (this.filesAccessed.length > 0) {
+      try {
+        const cwd = process.env.PWD || process.cwd();
+        const repoPaths = await this.findGitRepos(cwd);
+
+        if (repoPaths.length > 0) {
+          // Score each repository
+          const candidates: RepoCandidate[] = [];
+
+          for (const repoPath of repoPaths) {
+            let score = 0;
+            const reasons: string[] = [];
+
+            // Score based on files accessed
+            const filesInRepo = this.filesAccessed.filter(f => f.path.startsWith(repoPath));
+            const editedFiles = filesInRepo.filter(f => f.action === 'edit' || f.action === 'create');
+            const readFiles = filesInRepo.filter(f => f.action === 'read');
+
+            if (editedFiles.length > 0) {
+              score += editedFiles.length * 10;
+              reasons.push(`${editedFiles.length} file(s) modified`);
+            }
+
+            if (readFiles.length > 0) {
+              score += readFiles.length * 5;
+              reasons.push(`${readFiles.length} file(s) read`);
+            }
+
+            // Score based on session topic
+            if (sessionId) {
+              const repoName = path.basename(repoPath);
+              if (sessionId.toLowerCase().includes(repoName.toLowerCase())) {
+                score += 20;
+                reasons.push('Session topic matches repo name');
+              }
+            }
+
+            // Score based on proximity to CWD
+            if (repoPath === cwd) {
+              score += 15;
+              reasons.push('Repo is current working directory');
+            } else if (cwd.startsWith(repoPath)) {
+              score += 8;
+              reasons.push('CWD is within this repo');
+            } else if (repoPath.startsWith(cwd)) {
+              score += 5;
+              reasons.push('Repo is subdirectory of CWD');
+            }
+
+            if (score > 0 || repoPaths.length === 1) {
+              const info = await this.getRepoInfo(repoPath);
+              candidates.push({
+                path: repoPath,
+                name: info.name,
+                score,
+                reasons,
+                branch: info.branch,
+                remote: info.remote,
+              });
+            }
+          }
+
+          // Sort by score
+          candidates.sort((a, b) => b.score - a.score);
+
+          if (candidates.length > 0) {
+            const topCandidate = candidates[0];
+            repoDetectionMessage = `\n\n📦 Git Repository Detected:\n`;
+            repoDetectionMessage += `   ${topCandidate.name} (score: ${topCandidate.score})\n`;
+            repoDetectionMessage += `   Path: ${topCandidate.path}\n`;
+            if (topCandidate.branch) repoDetectionMessage += `   Branch: ${topCandidate.branch}\n`;
+            repoDetectionMessage += `   Reasons: ${topCandidate.reasons.join(', ')}\n\n`;
+
+            if (candidates.length === 1 || topCandidate.score > (candidates[1]?.score || 0) * 2) {
+              repoDetectionMessage += `💡 Recommendation: Create a commit for this work\n`;
+              repoDetectionMessage += `   To link and commit:\n`;
+              repoDetectionMessage += `   1. link_session_to_repository (path: ${topCandidate.path})\n`;
+              repoDetectionMessage += `   2. Create your git commit\n`;
+              repoDetectionMessage += `   3. record_commit (with the commit hash)`;
+            } else {
+              repoDetectionMessage += `💡 Multiple repositories detected (${candidates.length})\n`;
+              repoDetectionMessage += `   Run detect_session_repositories to see all options`;
+            }
+          }
+        }
+      } catch (error) {
+        // Silently fail - repo detection is optional
+      }
+    }
+
     this.currentSessionId = null;
     this.currentSessionFile = null;
 
@@ -925,7 +1137,7 @@ ${this.currentSessionId ? `- Session: [[sessions/${this.currentSessionId}]]` : '
       content: [
         {
           type: 'text',
-          text: `Session closed: ${sessionId}`,
+          text: `Session closed: ${sessionId}${repoDetectionMessage}`,
         },
       ],
     };
@@ -1433,6 +1645,467 @@ Provide a structured analysis with:
     } catch (error) {
       throw new Error(`Failed to list sessions: ${error}`);
     }
+  }
+
+  private async trackFileAccess(args: { path: string; action: 'read' | 'edit' | 'create' }) {
+    if (!this.currentSessionId) {
+      throw new Error('No active session. Call start_session first.');
+    }
+
+    const timestamp = new Date().toISOString();
+    this.filesAccessed.push({
+      path: args.path,
+      action: args.action,
+      timestamp,
+    });
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `File access tracked: ${args.action} ${args.path}`,
+        },
+      ],
+    };
+  }
+
+  private async findGitRepos(startPath: string, maxDepth: number = 2): Promise<string[]> {
+    const repos: string[] = [];
+
+    const searchDir = async (dirPath: string, depth: number) => {
+      if (depth > maxDepth) return;
+
+      try {
+        // Check if this directory is a git repo
+        const gitDir = path.join(dirPath, '.git');
+        try {
+          await fs.access(gitDir);
+          repos.push(dirPath);
+        } catch {
+          // Not a git repo, continue searching
+        }
+
+        // Search subdirectories
+        const entries = await fs.readdir(dirPath, { withFileTypes: true });
+        for (const entry of entries) {
+          if (entry.isDirectory() && entry.name !== 'node_modules' && entry.name !== '.git') {
+            await searchDir(path.join(dirPath, entry.name), depth + 1);
+          }
+        }
+      } catch (error) {
+        // Skip directories we can't access
+      }
+    };
+
+    await searchDir(startPath, 0);
+
+    // Also check parent directories
+    let currentPath = startPath;
+    for (let i = 0; i < 3; i++) {
+      const parentPath = path.dirname(currentPath);
+      if (parentPath === currentPath) break; // Reached root
+
+      try {
+        const gitDir = path.join(parentPath, '.git');
+        await fs.access(gitDir);
+        if (!repos.includes(parentPath)) {
+          repos.push(parentPath);
+        }
+      } catch {
+        // No git repo here
+      }
+
+      currentPath = parentPath;
+    }
+
+    return repos;
+  }
+
+  private async getRepoInfo(repoPath: string): Promise<{ name: string; branch?: string; remote?: string }> {
+    const name = path.basename(repoPath);
+
+    try {
+      const { stdout: branchOutput } = await execAsync('git rev-parse --abbrev-ref HEAD', { cwd: repoPath });
+      const branch = branchOutput.trim();
+
+      let remote: string | undefined;
+      try {
+        const { stdout: remoteOutput } = await execAsync('git config --get remote.origin.url', { cwd: repoPath });
+        remote = remoteOutput.trim();
+      } catch {
+        // No remote configured
+      }
+
+      return { name, branch, remote };
+    } catch (error) {
+      return { name };
+    }
+  }
+
+  private async detectSessionRepositories() {
+    if (!this.currentSessionId || !this.currentSessionFile) {
+      throw new Error('No active session.');
+    }
+
+    // Get current working directory from environment or use vault path
+    const cwd = process.env.PWD || process.cwd();
+
+    // Find all git repositories
+    const repoPaths = await this.findGitRepos(cwd);
+
+    if (repoPaths.length === 0) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: 'No Git repositories found in the current working directory or subdirectories.',
+          },
+        ],
+      };
+    }
+
+    // Score each repository
+    const candidates: RepoCandidate[] = [];
+
+    for (const repoPath of repoPaths) {
+      let score = 0;
+      const reasons: string[] = [];
+
+      // Score based on files accessed
+      const filesInRepo = this.filesAccessed.filter(f => f.path.startsWith(repoPath));
+      const editedFiles = filesInRepo.filter(f => f.action === 'edit' || f.action === 'create');
+      const readFiles = filesInRepo.filter(f => f.action === 'read');
+
+      if (editedFiles.length > 0) {
+        score += editedFiles.length * 10;
+        reasons.push(`${editedFiles.length} file(s) modified`);
+      }
+
+      if (readFiles.length > 0) {
+        score += readFiles.length * 5;
+        reasons.push(`${readFiles.length} file(s) read`);
+      }
+
+      // Score based on session topic
+      if (this.currentSessionId) {
+        const repoName = path.basename(repoPath);
+        if (this.currentSessionId.toLowerCase().includes(repoName.toLowerCase())) {
+          score += 20;
+          reasons.push('Session topic matches repo name');
+        }
+      }
+
+      // Score based on proximity to CWD
+      if (repoPath === cwd) {
+        score += 15;
+        reasons.push('Repo is current working directory');
+      } else if (cwd.startsWith(repoPath)) {
+        score += 8;
+        reasons.push('CWD is within this repo');
+      } else if (repoPath.startsWith(cwd)) {
+        score += 5;
+        reasons.push('Repo is subdirectory of CWD');
+      }
+
+      if (score > 0 || repoPaths.length === 1) {
+        const info = await this.getRepoInfo(repoPath);
+        candidates.push({
+          path: repoPath,
+          name: info.name,
+          score,
+          reasons,
+          branch: info.branch,
+          remote: info.remote,
+        });
+      }
+    }
+
+    // Sort by score
+    candidates.sort((a, b) => b.score - a.score);
+
+    if (candidates.length === 0) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: 'No relevant repositories detected for this session. This may be a research/exploratory session.',
+          },
+        ],
+      };
+    }
+
+    // Format results
+    let resultText = `Detected ${candidates.length} repository candidate(s):\n\n`;
+
+    candidates.forEach((candidate, idx) => {
+      resultText += `${idx + 1}. **${candidate.name}** (score: ${candidate.score})\n`;
+      resultText += `   Path: ${candidate.path}\n`;
+      if (candidate.branch) resultText += `   Branch: ${candidate.branch}\n`;
+      if (candidate.remote) resultText += `   Remote: ${candidate.remote}\n`;
+      resultText += `   Reasons: ${candidate.reasons.join(', ')}\n\n`;
+    });
+
+    if (candidates.length === 1 || candidates[0].score > candidates[1]?.score * 2) {
+      resultText += `\nRecommendation: Auto-select **${candidates[0].name}**\n`;
+      resultText += `Use link_session_to_repository with path: ${candidates[0].path}`;
+    } else {
+      resultText += `\nMultiple candidates detected. Please select the appropriate repository using link_session_to_repository.`;
+    }
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: resultText,
+        },
+      ],
+    };
+  }
+
+  private async linkSessionToRepository(args: { repo_path: string }) {
+    if (!this.currentSessionFile) {
+      throw new Error('No active session.');
+    }
+
+    // Verify repo exists and is a git repo
+    try {
+      await fs.access(path.join(args.repo_path, '.git'));
+    } catch {
+      throw new Error(`Not a valid Git repository: ${args.repo_path}`);
+    }
+
+    const info = await this.getRepoInfo(args.repo_path);
+
+    // Update session file with repository info
+    const content = await fs.readFile(this.currentSessionFile, 'utf-8');
+    const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
+
+    if (!frontmatterMatch) {
+      throw new Error('Invalid session file format');
+    }
+
+    let frontmatter = frontmatterMatch[1];
+
+    // Add or update repository field
+    if (frontmatter.includes('repository:')) {
+      // Update existing
+      frontmatter = frontmatter.replace(
+        /repository:[\s\S]*?(?=\n[a-z_]+:|$)/,
+        `repository:\n  path: ${args.repo_path}\n  name: ${info.name}\n  commits: []`
+      );
+    } else {
+      // Add new
+      frontmatter += `\nrepository:\n  path: ${args.repo_path}\n  name: ${info.name}\n  commits: []`;
+    }
+
+    // Add files accessed
+    if (this.filesAccessed.length > 0) {
+      const filesYaml = this.filesAccessed.map(f =>
+        `  - path: ${f.path}\n    action: ${f.action}\n    timestamp: ${f.timestamp}`
+      ).join('\n');
+      frontmatter += `\nfiles_accessed:\n${filesYaml}`;
+    }
+
+    const mainContent = content.substring(frontmatterMatch[0].length);
+    const newContent = `---\n${frontmatter}\n---${mainContent}`;
+
+    await fs.writeFile(this.currentSessionFile, newContent);
+
+    // Create or update project page
+    await this.createProjectPage({ repo_path: args.repo_path });
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `Session linked to repository: ${info.name}\nPath: ${args.repo_path}\nProject page created/updated in vault.`,
+        },
+      ],
+    };
+  }
+
+  private async createProjectPage(args: { repo_path: string }) {
+    await this.ensureVaultStructure();
+
+    const info = await this.getRepoInfo(args.repo_path);
+    const slug = this.slugify(info.name);
+    const projectDir = path.join(VAULT_PATH, 'projects', slug);
+    const projectFile = path.join(projectDir, 'project.md');
+
+    // Create project directory structure
+    await fs.mkdir(projectDir, { recursive: true });
+    await fs.mkdir(path.join(projectDir, 'commits'), { recursive: true });
+
+    const today = new Date().toISOString().split('T')[0];
+
+    // Check if project page already exists
+    let content: string;
+    try {
+      content = await fs.readFile(projectFile, 'utf-8');
+
+      // Update existing project page
+      const sessionLink = `- [[sessions/${this.currentSessionId}|${this.currentSessionId}]]`;
+      if (!content.includes(sessionLink)) {
+        content = content.replace(
+          /## Related Sessions\n/,
+          `## Related Sessions\n${sessionLink}\n`
+        );
+      }
+
+      await fs.writeFile(projectFile, content);
+    } catch {
+      // Create new project page
+      content = `---
+project_name: ${info.name}
+repo_path: ${args.repo_path}
+repo_url: ${info.remote || 'N/A'}
+created: ${today}
+last_commit_tracked: ${today}
+total_sessions: 1
+total_commits_tracked: 0
+tags: [project]
+---
+
+# Project: ${info.name}
+
+## Overview
+Git repository tracked via Claude Code sessions.
+
+## Repository Info
+- **Path:** \`${args.repo_path}\`
+- **Current Branch:** ${info.branch || 'unknown'}
+- **Remote:** ${info.remote || 'N/A'}
+
+## Recent Activity
+
+## Related Sessions
+- [[sessions/${this.currentSessionId}|${this.currentSessionId}]]
+
+## Topics
+
+`;
+      await fs.writeFile(projectFile, content);
+    }
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `Project page created/updated: projects/${slug}/project.md`,
+        },
+      ],
+    };
+  }
+
+  private async recordCommit(args: { repo_path: string; commit_hash: string }) {
+    if (!this.currentSessionId) {
+      throw new Error('No active session.');
+    }
+
+    await this.ensureVaultStructure();
+
+    const info = await this.getRepoInfo(args.repo_path);
+    const slug = this.slugify(info.name);
+    const projectDir = path.join(VAULT_PATH, 'projects', slug);
+    const commitsDir = path.join(projectDir, 'commits');
+
+    await fs.mkdir(commitsDir, { recursive: true });
+
+    // Get commit information
+    const { stdout: commitInfo } = await execAsync(
+      `git show --format="%H%n%h%n%an%n%ae%n%aI%n%s%n%b" --stat ${args.commit_hash}`,
+      { cwd: args.repo_path }
+    );
+
+    const lines = commitInfo.split('\n');
+    const fullHash = lines[0];
+    const shortHash = lines[1];
+    const authorName = lines[2];
+    const authorEmail = lines[3];
+    const date = lines[4];
+    const subject = lines[5];
+    const body = lines.slice(6).join('\n');
+
+    // Get diff
+    const { stdout: diff } = await execAsync(
+      `git show ${args.commit_hash}`,
+      { cwd: args.repo_path }
+    );
+
+    // Get stats
+    const { stdout: stats } = await execAsync(
+      `git show --stat ${args.commit_hash}`,
+      { cwd: args.repo_path }
+    );
+
+    const commitFile = path.join(commitsDir, `${shortHash}.md`);
+    const today = new Date().toISOString().split('T')[0];
+
+    const content = `---
+commit_hash: ${fullHash}
+short_hash: ${shortHash}
+author: ${authorName} <${authorEmail}>
+date: ${date}
+session_id: ${this.currentSessionId}
+project: ${info.name}
+---
+
+# Commit: ${subject}
+
+**Session:** [[sessions/${this.currentSessionId}|${this.currentSessionId}]]
+**Project:** [[projects/${slug}/project|${info.name}]]
+**Date:** ${date}
+**Author:** ${authorName}
+
+## Summary
+${subject}
+
+${body}
+
+## Changes Overview
+\`\`\`
+${stats}
+\`\`\`
+
+## Full Diff
+\`\`\`diff
+${diff}
+\`\`\`
+
+## Related
+- **Session:** [[sessions/${this.currentSessionId}|${this.currentSessionId}]]
+- **Project:** [[projects/${slug}/project|${info.name}]]
+`;
+
+    await fs.writeFile(commitFile, content);
+
+    // Update project page with commit link
+    const projectFile = path.join(projectDir, 'project.md');
+    const projectContent = await fs.readFile(projectFile, 'utf-8');
+    const commitLink = `- [[projects/${slug}/commits/${shortHash}|${shortHash}: ${subject}]] (${today})`;
+
+    const updatedContent = projectContent.replace(
+      /## Recent Activity\n/,
+      `## Recent Activity\n${commitLink}\n`
+    );
+
+    await fs.writeFile(projectFile, updatedContent);
+
+    // Update session file with commit reference
+    if (this.currentSessionFile) {
+      const sessionContent = await fs.readFile(this.currentSessionFile, 'utf-8');
+      const appendContent = `\n## Git Commit\n- [[projects/${slug}/commits/${shortHash}|${shortHash}]]: ${subject}\n`;
+      await fs.writeFile(this.currentSessionFile, sessionContent + appendContent);
+    }
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `Commit recorded: ${shortHash}\nCommit page: projects/${slug}/commits/${shortHash}.md\nLinked to session and project.`,
+        },
+      ],
+    };
   }
 
   async run(): Promise<void> {
