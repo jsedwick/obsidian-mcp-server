@@ -145,6 +145,9 @@ class ObsidianMCPServer {
           case 'archive_topic':
             return await this.archiveTopic(args as { topic: string; reason?: string });
 
+          case 'list_recent_sessions':
+            return await this.listRecentSessions(args as { limit?: number });
+
           default:
             throw new Error(`Unknown tool: ${name}`);
         }
@@ -407,6 +410,20 @@ class ObsidianMCPServer {
             },
           },
           required: ['topic'],
+        },
+      },
+      {
+        name: 'list_recent_sessions',
+        description: 'List the most recent conversation sessions. Returns session metadata including ID, topic, date, and status.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            limit: {
+              type: 'number',
+              description: 'Maximum number of sessions to return (default: 5)',
+              default: 5,
+            },
+          },
         },
       },
     ];
@@ -1294,6 +1311,128 @@ Provide a structured analysis with:
         },
       ],
     };
+  }
+
+  private async listRecentSessions(args: { limit?: number }) {
+    await this.ensureVaultStructure();
+
+    const limit = args.limit || 5;
+    const sessionsDir = path.join(VAULT_PATH, 'sessions');
+
+    try {
+      const files = await fs.readdir(sessionsDir);
+
+      // Filter for .md files and get their stats
+      const sessionFiles: Array<{
+        file: string;
+        filePath: string;
+        mtime: Date;
+        session_id: string;
+        topic?: string;
+        date?: string;
+        status?: string;
+      }> = [];
+
+      for (const file of files) {
+        if (!file.endsWith('.md')) continue;
+
+        const filePath = path.join(sessionsDir, file);
+        const stats = await fs.stat(filePath);
+        const content = await fs.readFile(filePath, 'utf-8');
+
+        // Parse frontmatter to get metadata
+        const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
+        let session_id = file.replace('.md', '');
+        let topic: string | undefined;
+        let date: string | undefined;
+        let status: string | undefined;
+
+        if (frontmatterMatch) {
+          const frontmatter = frontmatterMatch[1];
+          const sessionIdMatch = frontmatter.match(/session_id:\s*(.+)/);
+          const topicsMatch = frontmatter.match(/topics:\s*(\[.*?\])/);
+          const dateMatch = frontmatter.match(/date:\s*(.+)/);
+          const statusMatch = frontmatter.match(/status:\s*(.+)/);
+
+          if (sessionIdMatch) session_id = sessionIdMatch[1].trim();
+          if (dateMatch) date = dateMatch[1].trim();
+          if (statusMatch) status = statusMatch[1].trim();
+
+          if (topicsMatch) {
+            try {
+              const topicsArray = JSON.parse(topicsMatch[1]);
+              if (Array.isArray(topicsArray) && topicsArray.length > 0) {
+                topic = topicsArray[0];
+              }
+            } catch {
+              // If parsing fails, try to extract from filename
+              const topicFromFilename = file.match(/_(.+)\.md$/);
+              if (topicFromFilename) {
+                topic = topicFromFilename[1].replace(/-/g, ' ');
+              }
+            }
+          } else {
+            // Extract from filename if not in frontmatter
+            const topicFromFilename = file.match(/_(.+)\.md$/);
+            if (topicFromFilename) {
+              topic = topicFromFilename[1].replace(/-/g, ' ');
+            }
+          }
+        }
+
+        sessionFiles.push({
+          file,
+          filePath,
+          mtime: stats.mtime,
+          session_id,
+          topic,
+          date,
+          status,
+        });
+      }
+
+      // Sort by modification time (most recent first)
+      sessionFiles.sort((a, b) => b.mtime.getTime() - a.mtime.getTime());
+
+      // Limit results
+      const recentSessions = sessionFiles.slice(0, limit);
+
+      if (recentSessions.length === 0) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: 'No sessions found. Start a new session with start_session.',
+            },
+          ],
+        };
+      }
+
+      // Format the output
+      let resultText = `Found ${recentSessions.length} recent session(s):\n\n`;
+
+      recentSessions.forEach((session, idx) => {
+        const number = idx + 1;
+        const statusIcon = session.status === 'completed' ? '✓' : '○';
+        const topicText = session.topic ? `: ${session.topic}` : '';
+        const dateText = session.date ? ` (${session.date})` : '';
+
+        resultText += `${number}. ${statusIcon} ${session.session_id}${topicText}${dateText}\n`;
+      });
+
+      resultText += `\nTo continue a session, use get_session_context with the session_id.`;
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: resultText,
+          },
+        ],
+      };
+    } catch (error) {
+      throw new Error(`Failed to list sessions: ${error}`);
+    }
   }
 
   async run(): Promise<void> {
