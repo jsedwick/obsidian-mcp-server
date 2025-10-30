@@ -29,10 +29,23 @@ Then restart Claude Code and start chatting!
 - Graph view of relationships
 - Full-text search in Obsidian
 
+### 🔧 Git Integration
+- **Repository Detection**: Automatically detect relevant Git repos from file access
+- **Commit Tracking**: Record commits with full diffs and link to sessions
+- **Project Pages**: Organize code work by repository
+- **File Access Tracking**: Track which files are read/edited/created
+
+### 📝 Topic Review System
+- **Stale Topic Detection**: Find topics that haven't been reviewed
+- **Review Workflow**: Analyze content and suggest updates
+- **Review History**: Track all reviews with timestamps
+- **Archive System**: Move outdated topics to archive
+
 ### 💾 Efficient Storage
 - Text-based: Years of conversations < 50 MB
 - Markdown format: Human-readable, version-controllable
 - No databases: Simple file system
+- Archive system for outdated content
 
 ## Project Structure
 
@@ -102,22 +115,49 @@ obsidian-vault/
 │   └── database-schema.md
 ├── decisions/
 │   └── 001-use-postgresql.md
+├── projects/
+│   └── my-app/
+│       ├── project.md
+│       └── commits/
+│           └── abc123.md
+├── archive/
+│   └── topics/
+│       └── old-topic.md
 └── index.md
 ```
 
 ## Available Tools (MCP Functions)
 
-The server provides 10 tools to Claude Code:
+The server provides 19 tools to Claude Code:
 
+### Session Management (4)
 1. **start_session** - Begin a new conversation
 2. **save_session_note** - Record information
-3. **search_vault** - Find past context
-4. **create_topic_page** - Document concepts
-5. **create_decision** - Record ADRs
-6. **update_topic_page** - Update existing topics
-7. **get_session_context** - Retrieve session details
-8. **link_to_topic** - Create wiki links
-9. **close_session** - Mark session complete
+3. **close_session** - Mark session complete
+4. **list_recent_sessions** - List recent conversation sessions
+
+### Search & Retrieval (2)
+5. **search_vault** - Find past context with relevance scoring
+6. **get_session_context** - Retrieve session details
+
+### Knowledge Management (4)
+7. **create_topic_page** - Document concepts
+8. **update_topic_page** - Update existing topics
+9. **create_decision** - Record ADRs
+10. **link_to_topic** - Create wiki links
+
+### Topic Review & Maintenance (4)
+11. **find_stale_topics** - Find topics that need review
+12. **review_topic** - Analyze topic for outdated content
+13. **approve_topic_update** - Apply or dismiss review
+14. **archive_topic** - Move topic to archive
+
+### Git Integration (5)
+15. **track_file_access** - Track files accessed during session
+16. **detect_session_repositories** - Auto-detect relevant Git repos
+17. **link_session_to_repository** - Link session to a repo
+18. **create_project_page** - Create/update project page
+19. **record_commit** - Record Git commit with diff
 
 ## Example Workflow
 

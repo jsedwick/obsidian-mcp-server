@@ -7,7 +7,10 @@ An MCP (Model Context Protocol) server that enables Claude Code to automatically
 - **Automatic Session Management**: Creates session notes for each conversation
 - **Intelligent Search**: Search across all vault content for relevant context
 - **Topic Pages**: Create and maintain pages for technical concepts
+- **Topic Review System**: Find stale topics, review them, and keep knowledge fresh
 - **Decision Records**: Track architectural decisions with ADR format
+- **Git Integration**: Automatically detect repos, track commits, link code changes to sessions
+- **Project Tracking**: Create project pages for repositories with commit history
 - **Smart Linking**: Automatic Obsidian-style wiki links between content
 - **Zero Storage Overhead**: Text-based storage uses minimal disk space
 
@@ -83,13 +86,21 @@ Updates: Current session file with key information
 Updates session status to 'completed'
 ```
 
+**list_recent_sessions** - List recent conversation sessions
+```
+Limit: 5 (default)
+Returns: Session metadata including ID, topic, date, and status
+```
+
 ### Search and Retrieval
 
 **search_vault** - Find relevant past context
 ```
 Query: "authentication database schema"
 Directories: ["sessions", "topics", "decisions"]
-Returns: Matching notes with context snippets
+Max results: 10 (default)
+Snippets only: true (default)
+Returns: Matching notes with context snippets and relevance scores
 ```
 
 **get_session_context** - Retrieve full session content
@@ -104,7 +115,7 @@ Returns: Complete session file content
 ```
 Topic: "JWT Authentication Flow"
 Content: "Overview of JWT implementation..."
-Creates: topics/jwt-authentication-flow.md
+Creates: topics/jwt-authentication-flow.md with metadata and review tracking
 ```
 
 **update_topic_page** - Add to existing topics
@@ -125,6 +136,74 @@ Creates: decisions/001-use-postgresql.md
 ```
 Topic: "Authentication System"
 Returns: [[topics/authentication-system|Authentication System]]
+Creates topic page if it doesn't exist
+```
+
+### Topic Review & Maintenance
+
+**find_stale_topics** - Find topics that need review
+```
+Age threshold days: 365 (default)
+Include never reviewed: true (default)
+Returns: List of topics older than threshold
+```
+
+**review_topic** - Analyze a topic for outdated content
+```
+Topic: "JWT Authentication Flow"
+Analysis prompt: (optional custom instructions)
+Returns: Review analysis with concerns and suggested updates
+```
+
+**approve_topic_update** - Apply or dismiss a pending review
+```
+Review ID: "review_1730123456789_jwt-authentication-flow"
+Action: "update" | "keep" | "archive" | "dismiss"
+Modified content: (optional edited content)
+Updates: Topic with new content and review history
+```
+
+**archive_topic** - Move topic to archive
+```
+Topic: "Legacy API v1"
+Reason: "API deprecated and removed"
+Moves: topics/legacy-api-v1.md to archive/topics/
+```
+
+### Git Integration
+
+**track_file_access** - Track files accessed during session
+```
+Path: "/path/to/project/src/auth.ts"
+Action: "read" | "edit" | "create"
+Tracks: File access for repository detection
+```
+
+**detect_session_repositories** - Auto-detect relevant Git repos
+```
+Returns: Scored list of Git repositories based on file access and context
+```
+
+**link_session_to_repository** - Link session to a Git repo
+```
+Repo path: "/path/to/project"
+Creates: Repository link in session metadata
+Updates: Project page with session reference
+```
+
+**create_project_page** - Create/update project page for repo
+```
+Repo path: "/path/to/project"
+Creates: projects/[project-name]/project.md with repo info
+Structure: Project directory with commits/ subdirectory
+```
+
+**record_commit** - Record a Git commit with full details
+```
+Repo path: "/path/to/project"
+Commit hash: "abc123"
+Creates: projects/[project-name]/commits/abc123.md with diff
+Links: Commit to session and project page
 ```
 
 ## Vault Structure
@@ -133,18 +212,27 @@ The MCP server automatically creates and maintains this structure:
 
 ```
 obsidian-vault/
-├── sessions/           # Individual conversation sessions
+├── sessions/              # Individual conversation sessions
 │   ├── 2025-10-28_14-30-00_api-auth.md
 │   └── 2025-10-28_15-45-00_database-design.md
-├── topics/            # Technical concepts and areas
+├── topics/                # Technical concepts and areas
 │   ├── authentication-system.md
 │   ├── database-schema.md
 │   └── jwt-tokens.md
-├── decisions/         # Architectural decision records
+├── decisions/             # Architectural decision records
 │   ├── 001-use-postgresql.md
 │   ├── 002-api-structure.md
 │   └── 003-deployment-strategy.md
-└── index.md          # Vault overview
+├── projects/              # Git repository tracking
+│   └── [project-slug]/
+│       ├── project.md     # Project overview and metadata
+│       └── commits/       # Individual commit records
+│           ├── abc123.md
+│           └── def456.md
+├── archive/               # Archived content
+│   └── topics/           # Archived topics
+│       └── deprecated-api.md
+└── index.md              # Vault overview
 ```
 
 ## Example Session Workflow

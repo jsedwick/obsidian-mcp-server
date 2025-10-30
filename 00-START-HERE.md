@@ -6,10 +6,13 @@ Welcome! This is your complete MCP server implementation for managing Claude Cod
 
 Enables Claude Code to automatically:
 - 📝 Save every conversation as structured notes
-- 🔍 Search past discussions instantly
+- 🔍 Search past discussions instantly with relevance scoring
 - 📚 Build a knowledge base of technical topics
+- 🔄 Review and maintain topic freshness
 - 🎯 Track architectural decisions
 - 🔗 Link related concepts together
+- 🐙 Integrate with Git repositories and track commits
+- 📦 Create project pages for code repositories
 
 All stored locally in plain Markdown files you can view in Obsidian.
 

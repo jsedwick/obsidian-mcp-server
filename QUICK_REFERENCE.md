@@ -30,17 +30,44 @@ npm run build
 
 ## 🛠️ Available MCP Tools
 
+### Session Management
 | Tool | Purpose |
 |------|---------|
 | `start_session` | Begin new conversation |
 | `save_session_note` | Record information |
-| `search_vault` | Find past context |
-| `create_topic_page` | Document concept |
-| `create_decision` | Record ADR |
-| `update_topic_page` | Update topic |
-| `get_session_context` | Retrieve session |
-| `link_to_topic` | Create wiki link |
 | `close_session` | Mark complete |
+| `list_recent_sessions` | List recent conversations |
+
+### Search & Retrieval
+| Tool | Purpose |
+|------|---------|
+| `search_vault` | Find past context with scoring |
+| `get_session_context` | Retrieve full session |
+
+### Knowledge Management
+| Tool | Purpose |
+|------|---------|
+| `create_topic_page` | Document new concept |
+| `update_topic_page` | Update existing topic |
+| `create_decision` | Record ADR |
+| `link_to_topic` | Create wiki link |
+
+### Topic Review & Maintenance
+| Tool | Purpose |
+|------|---------|
+| `find_stale_topics` | Find topics needing review |
+| `review_topic` | Analyze for outdated content |
+| `approve_topic_update` | Apply/dismiss review |
+| `archive_topic` | Move to archive |
+
+### Git Integration
+| Tool | Purpose |
+|------|---------|
+| `track_file_access` | Track file read/edit/create |
+| `detect_session_repositories` | Auto-detect Git repos |
+| `link_session_to_repository` | Link session to repo |
+| `create_project_page` | Create/update project page |
+| `record_commit` | Record commit with diff |
 
 ## 📂 Vault Structure
 
@@ -49,6 +76,12 @@ obsidian-vault/
 ├── sessions/      # Conversation sessions
 ├── topics/        # Technical topics
 ├── decisions/     # Architecture decisions
+├── projects/      # Git repository tracking
+│   └── [slug]/
+│       ├── project.md
+│       └── commits/
+├── archive/       # Archived content
+│   └── topics/
 └── index.md       # Vault overview
 ```
 
@@ -100,12 +133,13 @@ Claude: [Creates topics/mcp-servers.md]
 ## 🔍 Verification Checklist
 
 - [ ] `dist/index.js` exists
-- [ ] Vault directories created
+- [ ] Vault directories created (sessions, topics, decisions, projects, archive)
 - [ ] Config.json has correct paths
 - [ ] `npm test` passes
-- [ ] Claude Code recognizes server
+- [ ] Claude Code recognizes server (19 tools available)
 - [ ] Session files being created
 - [ ] Search finds content
+- [ ] Git integration works (if applicable)
 
 ## 📊 Storage
 
