@@ -710,13 +710,74 @@ ${args.topic ? `Working on: ${args.topic}` : 'New conversation session started.'
           let score = 0;
           let hasMatch = false;
 
+          // Parse document structure
+          const lines = content.split('\n');
+          const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
+          const frontmatter = frontmatterMatch ? frontmatterMatch[1] : '';
+          const frontmatterEnd = frontmatterMatch ? frontmatterMatch[0].split('\n').length : 0;
+
+          // Find first paragraph (first non-empty line after frontmatter/title that's not a heading)
+          let firstParagraphStart = frontmatterEnd;
+          let firstParagraphEnd = firstParagraphEnd;
+          for (let i = frontmatterEnd; i < lines.length; i++) {
+            const line = lines[i].trim();
+            if (line && !line.startsWith('#')) {
+              firstParagraphStart = i;
+              // Find end of first paragraph (empty line or next heading)
+              for (let j = i; j < Math.min(i + 10, lines.length); j++) {
+                if (!lines[j].trim() || lines[j].trim().startsWith('#')) {
+                  firstParagraphEnd = j;
+                  break;
+                }
+                firstParagraphEnd = j;
+              }
+              break;
+            }
+          }
+          const firstParagraph = lines.slice(firstParagraphStart, firstParagraphEnd + 1).join('\n').toLowerCase();
+
+          // #4: Check for exact phrase match (if query has multiple terms)
+          if (queryTerms.length > 1 && contentLower.includes(queryLower)) {
+            score += 15; // Major boost for exact phrase matches
+            hasMatch = true;
+          }
+
+          // Process each term
           for (const term of queryTerms) {
-            const termCount = (contentLower.match(new RegExp(term, 'g')) || []).length;
+            const termRegex = new RegExp(term, 'g');
+            const matches = contentLower.match(termRegex) || [];
+            const termCount = matches.length;
+
             if (termCount > 0) {
               hasMatch = true;
-              score += termCount;
 
-              // Boost score if term is in filename or title
+              // #2: Diminishing returns on frequency (logarithmic scaling)
+              const frequencyScore = Math.log(termCount + 1) * 3;
+              score += frequencyScore;
+
+              // #1: Position-based scoring
+
+              // Check if in title/headings (lines starting with #)
+              let inHeading = false;
+              for (const line of lines) {
+                if (line.trim().startsWith('#') && line.toLowerCase().includes(term)) {
+                  score += 10; // High boost for heading matches
+                  inHeading = true;
+                  break;
+                }
+              }
+
+              // Check if in frontmatter tags
+              if (frontmatter.toLowerCase().includes(`tags:`) && frontmatter.toLowerCase().includes(term)) {
+                score += 7; // Boost for tag matches
+              }
+
+              // Check if in first paragraph
+              if (firstParagraph.includes(term)) {
+                score += 3; // Moderate boost for early content
+              }
+
+              // Boost score if term is in filename
               if (file.toLowerCase().includes(term)) score += 5;
 
               // Boost score for recent files (based on creation/modification date)
@@ -760,7 +821,7 @@ ${args.topic ? `Working on: ${args.topic}` : 'New conversation session started.'
           }
 
           if (hasMatch) {
-            const lines = content.split('\n');
+            // Reuse lines array already created above
             const matchingLines = lines
               .filter(line => {
                 const lineLower = line.toLowerCase();
