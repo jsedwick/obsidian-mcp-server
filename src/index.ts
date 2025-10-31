@@ -174,7 +174,7 @@ class ObsidianMCPServer {
             return await this.archiveTopic(args as { topic: string; reason?: string });
 
           case 'list_recent_sessions':
-            return await this.listRecentSessions(args as { limit?: number });
+            return await this.listRecentSessions(args as { limit?: number; _invoked_by_slash_command?: boolean });
 
           case 'track_file_access':
             return await this.trackFileAccess(args as { path: string; action: 'read' | 'edit' | 'create' });
@@ -466,6 +466,11 @@ class ObsidianMCPServer {
               description: 'Maximum number of sessions to return (default: 5)',
               default: 5,
             },
+            _invoked_by_slash_command: {
+              type: 'boolean',
+              description: 'Internal parameter - must be true to invoke this tool. Only set by slash commands.',
+              default: false,
+            },
           },
         },
       },
@@ -718,7 +723,7 @@ ${args.topic ? `Working on: ${args.topic}` : 'New conversation session started.'
 
           // Find first paragraph (first non-empty line after frontmatter/title that's not a heading)
           let firstParagraphStart = frontmatterEnd;
-          let firstParagraphEnd = firstParagraphEnd;
+          let firstParagraphEnd = frontmatterEnd;
           for (let i = frontmatterEnd; i < lines.length; i++) {
             const line = lines[i].trim();
             if (line && !line.startsWith('#')) {
@@ -1586,7 +1591,12 @@ Provide a structured analysis with:
     };
   }
 
-  private async listRecentSessions(args: { limit?: number }) {
+  private async listRecentSessions(args: { limit?: number; _invoked_by_slash_command?: boolean }) {
+    // Enforce that this tool can only be called via the /sessions slash command
+    if (!args._invoked_by_slash_command) {
+      throw new Error('This tool can only be invoked via the /sessions slash command. Please ask the user to run the /sessions command.');
+    }
+
     await this.ensureVaultStructure();
 
     const limit = args.limit || 5;
