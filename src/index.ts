@@ -11,6 +11,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import { pipeline } from '@xenova/transformers';
 
 const execAsync = promisify(exec);
 
@@ -76,6 +77,19 @@ interface RepoCandidate {
   remote?: string;
 }
 
+interface EmbeddingCacheEntry {
+  file: string;
+  embedding: number[];
+  timestamp: number;
+}
+
+interface EmbeddingConfig {
+  enabled: boolean;
+  modelName: string;
+  cacheDir: string;
+  semanticWeight: number; // 0-1, how much weight semantic search gets (rest goes to keyword)
+}
+
 class ObsidianMCPServer {
   private server: Server;
   private currentSessionId: string | null = null;
@@ -86,6 +100,10 @@ class ObsidianMCPServer {
     action: 'read' | 'edit' | 'create';
     timestamp: string;
   }> = [];
+  private embeddingConfig: EmbeddingConfig;
+  private embeddingCache: Map<string, EmbeddingCacheEntry> = new Map();
+  private extractor: any = null;
+  private embeddingInitPromise: Promise<void> | null = null;
 
   constructor() {
     this.server = new Server(
@@ -99,6 +117,14 @@ class ObsidianMCPServer {
         },
       }
     );
+
+    // Initialize embedding config
+    this.embeddingConfig = {
+      enabled: process.env.ENABLE_EMBEDDINGS !== 'false', // Default: enabled
+      modelName: 'Xenova/all-MiniLM-L6-v2',
+      cacheDir: path.join(VAULT_PATH, '.embedding-cache'),
+      semanticWeight: 0.6, // 60% semantic, 40% keyword
+    };
 
     this.setupHandlers();
     this.setupErrorHandling();
@@ -207,6 +233,154 @@ class ObsidianMCPServer {
       }
     });
   }
+
+  // ==================== Embedding Methods ====================
+
+  private async ensureExtractorInitialized(): Promise<void> {
+    if (this.embeddingInitPromise) {
+      return this.embeddingInitPromise;
+    }
+
+    if (this.extractor) {
+      return;
+    }
+
+    if (!this.embeddingConfig.enabled) {
+      return;
+    }
+
+    this.embeddingInitPromise = (async () => {
+      try {
+        this.extractor = await pipeline('feature-extraction', this.embeddingConfig.modelName);
+      } catch (error) {
+        console.error('[Embedding] Failed to initialize extractor:', error);
+        this.embeddingConfig.enabled = false;
+      }
+    })();
+
+    await this.embeddingInitPromise;
+  }
+
+  private async generateEmbedding(text: string): Promise<number[]> {
+    await this.ensureExtractorInitialized();
+
+    if (!this.extractor) {
+      throw new Error('Embedding extractor not initialized');
+    }
+
+    try {
+      // Generate embedding for the text
+      const result = await this.extractor(text, { pooling: 'mean', normalize: true });
+
+      // Convert to array if needed
+      let embedding: number[];
+      if (result.data) {
+        embedding = Array.from(result.data as any) as number[];
+      } else if (Array.isArray(result)) {
+        embedding = (result as unknown[])[0] ? Array.from((result as unknown[])[0] as any) as number[] : Array.from(result as any) as number[];
+      } else {
+        embedding = Array.from(result as any) as number[];
+      }
+      return embedding;
+    } catch (error) {
+      console.error('[Embedding] Failed to generate embedding:', error);
+      throw error;
+    }
+  }
+
+  private cosineSimilarity(vecA: number[], vecB: number[]): number {
+    let dotProduct = 0;
+    let magnitudeA = 0;
+    let magnitudeB = 0;
+
+    const len = Math.min(vecA.length, vecB.length);
+    for (let i = 0; i < len; i++) {
+      dotProduct += vecA[i] * vecB[i];
+      magnitudeA += vecA[i] * vecA[i];
+      magnitudeB += vecB[i] * vecB[i];
+    }
+
+    magnitudeA = Math.sqrt(magnitudeA);
+    magnitudeB = Math.sqrt(magnitudeB);
+
+    if (magnitudeA === 0 || magnitudeB === 0) {
+      return 0;
+    }
+
+    return dotProduct / (magnitudeA * magnitudeB);
+  }
+
+  private async loadEmbeddingCache(): Promise<void> {
+    if (!this.embeddingConfig.enabled) {
+      return;
+    }
+
+    try {
+      const cacheFile = path.join(this.embeddingConfig.cacheDir, 'embeddings.json');
+      const data = await fs.readFile(cacheFile, 'utf-8');
+      const entries = JSON.parse(data) as EmbeddingCacheEntry[];
+
+      for (const entry of entries) {
+        this.embeddingCache.set(entry.file, entry);
+      }
+    } catch (error) {
+      // Cache file doesn't exist yet, which is fine
+    }
+  }
+
+  private async saveEmbeddingCache(): Promise<void> {
+    if (!this.embeddingConfig.enabled) {
+      return;
+    }
+
+    try {
+      await fs.mkdir(this.embeddingConfig.cacheDir, { recursive: true });
+      const entries = Array.from(this.embeddingCache.values());
+      const cacheFile = path.join(this.embeddingConfig.cacheDir, 'embeddings.json');
+      await fs.writeFile(cacheFile, JSON.stringify(entries, null, 2));
+    } catch (error) {
+      console.error('[Embedding] Failed to save cache:', error);
+    }
+  }
+
+  private async getCachedEmbedding(file: string, fileStats: any): Promise<number[] | null> {
+    if (!this.embeddingConfig.enabled) {
+      return null;
+    }
+
+    const cached = this.embeddingCache.get(file);
+    if (cached) {
+      // Check if file has been modified since cache
+      const fileMtime = Math.floor(fileStats.mtime.getTime() / 1000);
+      if (cached.timestamp >= fileMtime) {
+        return cached.embedding;
+      }
+    }
+
+    return null;
+  }
+
+  private async getOrCreateEmbedding(file: string, content: string, fileStats: any): Promise<number[]> {
+    // Try to get from cache
+    const cached = await this.getCachedEmbedding(file, fileStats);
+    if (cached) {
+      return cached;
+    }
+
+    // Generate new embedding
+    const embedding = await this.generateEmbedding(content);
+
+    // Cache it
+    this.embeddingCache.set(file, {
+      file,
+      embedding,
+      timestamp: Math.floor(fileStats.mtime.getTime() / 1000),
+    });
+
+    return embedding;
+  }
+
+  // ==================== End Embedding Methods ====================
 
   private getTools(): Tool[] {
     return [
@@ -680,6 +854,7 @@ ${args.topic ? `Working on: ${args.topic}` : 'New conversation session started.'
     snippets_only?: boolean;
   }) {
     await this.ensureVaultStructure();
+    await this.loadEmbeddingCache(); // Load embedding cache at start of search
 
     const searchDirs = args.directories || ['sessions', 'topics', 'decisions'];
     const maxResults = args.max_results || 10;
@@ -689,168 +864,82 @@ ${args.topic ? `Working on: ${args.topic}` : 'New conversation session started.'
       matches: string[];
       date?: string;
       score: number;
+      semanticScore?: number;
     }[] = [];
     const queryLower = args.query.toLowerCase();
     const queryTerms = queryLower.split(/\s+/).filter(t => t.length > 2);
+
+    // Generate query embedding if enabled
+    let queryEmbedding: number[] | null = null;
+    if (this.embeddingConfig.enabled) {
+      try {
+        queryEmbedding = await this.generateEmbedding(args.query);
+      } catch (error) {
+        console.error('[Search] Failed to generate query embedding, falling back to keyword search:', error);
+      }
+    }
 
     for (const dir of searchDirs) {
       const dirPath = path.join(VAULT_PATH, dir);
 
       try {
-        const files = await fs.readdir(dirPath);
+        const entries = await fs.readdir(dirPath, { withFileTypes: true });
 
-        for (const file of files) {
-          if (!file.endsWith('.md')) continue;
+        for (const entry of entries) {
+          // Handle month subdirectories for sessions
+          if (entry.isDirectory() && dir === 'sessions' && /^\d{4}-\d{2}$/.test(entry.name)) {
+            const monthFiles = await fs.readdir(path.join(dirPath, entry.name));
+            for (const file of monthFiles) {
+              if (!file.endsWith('.md')) continue;
+              const filePath = path.join(dirPath, entry.name, file);
+              const fileStats = await fs.stat(filePath);
+              const content = await fs.readFile(filePath, 'utf-8');
 
-          const filePath = path.join(dirPath, file);
-          const content = await fs.readFile(filePath, 'utf-8');
-          const contentLower = content.toLowerCase();
-
-          // Extract date from filename or frontmatter
-          const dateMatch = file.match(/^(\d{4}-\d{2}-\d{2})/);
-          const fileDate = dateMatch ? dateMatch[1] : undefined;
-
-          // Date filtering
-          if (args.date_range) {
-            if (args.date_range.start && fileDate && fileDate < args.date_range.start) continue;
-            if (args.date_range.end && fileDate && fileDate > args.date_range.end) continue;
-          }
-
-          // Calculate relevance score
-          let score = 0;
-          let hasMatch = false;
-
-          // Parse document structure
-          const lines = content.split('\n');
-          const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
-          const frontmatter = frontmatterMatch ? frontmatterMatch[1] : '';
-          const frontmatterEnd = frontmatterMatch ? frontmatterMatch[0].split('\n').length : 0;
-
-          // Find first paragraph (first non-empty line after frontmatter/title that's not a heading)
-          let firstParagraphStart = frontmatterEnd;
-          let firstParagraphEnd = frontmatterEnd;
-          for (let i = frontmatterEnd; i < lines.length; i++) {
-            const line = lines[i].trim();
-            if (line && !line.startsWith('#')) {
-              firstParagraphStart = i;
-              // Find end of first paragraph (empty line or next heading)
-              for (let j = i; j < Math.min(i + 10, lines.length); j++) {
-                if (!lines[j].trim() || lines[j].trim().startsWith('#')) {
-                  firstParagraphEnd = j;
-                  break;
-                }
-                firstParagraphEnd = j;
-              }
-              break;
-            }
-          }
-          const firstParagraph = lines.slice(firstParagraphStart, firstParagraphEnd + 1).join('\n').toLowerCase();
-
-          // #4: Check for exact phrase match (if query has multiple terms)
-          if (queryTerms.length > 1 && contentLower.includes(queryLower)) {
-            score += 15; // Major boost for exact phrase matches
-            hasMatch = true;
-          }
-
-          // Process each term
-          for (const term of queryTerms) {
-            const termRegex = new RegExp(term, 'g');
-            const matches = contentLower.match(termRegex) || [];
-            const termCount = matches.length;
-
-            if (termCount > 0) {
-              hasMatch = true;
-
-              // #2: Diminishing returns on frequency (logarithmic scaling)
-              const frequencyScore = Math.log(termCount + 1) * 3;
-              score += frequencyScore;
-
-              // #1: Position-based scoring
-
-              // Check if in title/headings (lines starting with #)
-              let inHeading = false;
-              for (const line of lines) {
-                if (line.trim().startsWith('#') && line.toLowerCase().includes(term)) {
-                  score += 10; // High boost for heading matches
-                  inHeading = true;
-                  break;
-                }
-              }
-
-              // Check if in frontmatter tags
-              if (frontmatter.toLowerCase().includes(`tags:`) && frontmatter.toLowerCase().includes(term)) {
-                score += 7; // Boost for tag matches
-              }
-
-              // Check if in first paragraph
-              if (firstParagraph.includes(term)) {
-                score += 3; // Moderate boost for early content
-              }
-
-              // Boost score if term is in filename
-              if (file.toLowerCase().includes(term)) score += 5;
-
-              // Boost score for recent files (based on creation/modification date)
-              if (fileDate) {
-                const age = this.getFileAgeDays(fileDate);
-                if (age < 7) score += 3;      // Within a week
-                else if (age < 30) score += 2; // Within a month
-                else if (age < 90) score += 1; // Within 3 months
+              const searchResult = await this.scoreSearchResult(
+                dir,
+                path.join(entry.name, file),
+                file,
+                content,
+                fileStats,
+                queryLower,
+                queryTerms,
+                queryEmbedding,
+                args.date_range
+              );
+              if (searchResult) {
+                results.push(searchResult);
               }
             }
-          }
+          } else if (entry.isFile() && entry.name.endsWith('.md')) {
+            // Regular file processing
+            const file = entry.name;
+            const filePath = path.join(dirPath, file);
+            const fileStats = await fs.stat(filePath);
+            const content = await fs.readFile(filePath, 'utf-8');
 
-          // For topics: apply review-based scoring adjustments
-          if (dir === 'topics' && hasMatch) {
-            const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
-            if (frontmatterMatch) {
-              const frontmatter = frontmatterMatch[1];
-              const lastReviewedMatch = frontmatter.match(/last_reviewed:\s*(.+)/);
-              const createdMatch = frontmatter.match(/created:\s*(.+)/);
-
-              if (lastReviewedMatch) {
-                const lastReviewed = lastReviewedMatch[1].trim();
-                const created = createdMatch ? createdMatch[1].trim() : null;
-                const reviewAge = this.getFileAgeDays(lastReviewed);
-
-                // Bonus for recently reviewed topics (within 1 year)
-                if (reviewAge < 365) {
-                  score += 2; // Reviewed within a year = trusted content
-                }
-              } else if (createdMatch) {
-                // No review date, check creation date
-                const created = createdMatch[1].trim();
-                const creationAge = this.getFileAgeDays(created);
-
-                // Penalty for old topics that have never been reviewed
-                if (creationAge > 365) {
-                  score -= 2; // Old + never reviewed = potentially stale
-                }
-              }
+            const searchResult = await this.scoreSearchResult(
+              dir,
+              file,
+              file,
+              content,
+              fileStats,
+              queryLower,
+              queryTerms,
+              queryEmbedding,
+              args.date_range
+            );
+            if (searchResult) {
+              results.push(searchResult);
             }
-          }
-
-          if (hasMatch) {
-            // Reuse lines array already created above
-            const matchingLines = lines
-              .filter(line => {
-                const lineLower = line.toLowerCase();
-                return queryTerms.some(term => lineLower.includes(term));
-              })
-              .slice(0, 3); // Limit to 3 matching lines per file
-
-            results.push({
-              file: path.join(dir, file),
-              matches: matchingLines,
-              date: fileDate,
-              score: score,
-            });
           }
         }
       } catch (error) {
         continue;
       }
     }
+
+    // Save embedding cache after search
+    await this.saveEmbeddingCache();
 
     // Sort by relevance score (descending) and limit results
     results.sort((a, b) => b.score - a.score);
@@ -875,7 +964,8 @@ ${args.topic ? `Working on: ${args.topic}` : 'New conversation session started.'
       resultText = `Found ${results.length} matches. Top ${topResults.length} results:\n\n`;
 
       topResults.forEach((r, idx) => {
-        resultText += `${idx + 1}. **${r.file}** ${r.date ? `(${r.date})` : ''}\n`;
+        const semanticIndicator = r.semanticScore !== undefined ? ` [semantic: ${(r.semanticScore * 100).toFixed(0)}%]` : '';
+        resultText += `${idx + 1}. **${r.file}** ${r.date ? `(${r.date})` : ''}${semanticIndicator}\n`;
         if (r.matches.length > 0) {
           resultText += r.matches
             .map(m => `   ${m.trim().substring(0, 100)}${m.length > 100 ? '...' : ''}`)
@@ -889,6 +979,9 @@ ${args.topic ? `Working on: ${args.topic}` : 'New conversation session started.'
       }
 
       resultText += `\n\n💡 Use get_session_context with a specific session_id to read full files.`;
+      if (this.embeddingConfig.enabled && queryEmbedding) {
+        resultText += `\n✨ Results include semantic search (${(this.embeddingConfig.semanticWeight * 100).toFixed(0)}% weight)`;
+      }
     } else {
       // Return full matching content (old behavior, for backwards compatibility)
       resultText = topResults
@@ -904,6 +997,172 @@ ${args.topic ? `Working on: ${args.topic}` : 'New conversation session started.'
         },
       ],
     };
+  }
+
+  private async scoreSearchResult(
+    dir: string,
+    relPath: string,
+    fileName: string,
+    content: string,
+    fileStats: any,
+    queryLower: string,
+    queryTerms: string[],
+    queryEmbedding: number[] | null,
+    dateRange?: { start?: string; end?: string }
+  ) {
+    const contentLower = content.toLowerCase();
+
+    // Extract date from filename or frontmatter
+    const dateMatch = fileName.match(/^(\d{4}-\d{2}-\d{2})/);
+    const fileDate = dateMatch ? dateMatch[1] : undefined;
+
+    // Date filtering
+    if (dateRange) {
+      if (dateRange.start && fileDate && fileDate < dateRange.start) return null;
+      if (dateRange.end && fileDate && fileDate > dateRange.end) return null;
+    }
+
+    // Calculate keyword score
+    let keywordScore = 0;
+    let hasMatch = false;
+
+    // Parse document structure
+    const lines = content.split('\n');
+    const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
+    const frontmatter = frontmatterMatch ? frontmatterMatch[1] : '';
+    const frontmatterEnd = frontmatterMatch ? frontmatterMatch[0].split('\n').length : 0;
+
+    // Find first paragraph
+    let firstParagraphStart = frontmatterEnd;
+    let firstParagraphEnd = frontmatterEnd;
+    for (let i = frontmatterEnd; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (line && !line.startsWith('#')) {
+        firstParagraphStart = i;
+        for (let j = i; j < Math.min(i + 10, lines.length); j++) {
+          if (!lines[j].trim() || lines[j].trim().startsWith('#')) {
+            firstParagraphEnd = j;
+            break;
+          }
+          firstParagraphEnd = j;
+        }
+        break;
+      }
+    }
+    const firstParagraph = lines.slice(firstParagraphStart, firstParagraphEnd + 1).join('\n').toLowerCase();
+
+    // Exact phrase match
+    if (queryTerms.length > 1 && contentLower.includes(queryLower)) {
+      keywordScore += 15;
+      hasMatch = true;
+    }
+
+    // Term matching
+    for (const term of queryTerms) {
+      const termRegex = new RegExp(term, 'g');
+      const matches = contentLower.match(termRegex) || [];
+      const termCount = matches.length;
+
+      if (termCount > 0) {
+        hasMatch = true;
+
+        // Frequency scoring
+        const frequencyScore = Math.log(termCount + 1) * 3;
+        keywordScore += frequencyScore;
+
+        // Position-based scoring
+        for (const line of lines) {
+          if (line.trim().startsWith('#') && line.toLowerCase().includes(term)) {
+            keywordScore += 10;
+            break;
+          }
+        }
+
+        // Tag matching
+        if (frontmatter.toLowerCase().includes(`tags:`) && frontmatter.toLowerCase().includes(term)) {
+          keywordScore += 7;
+        }
+
+        // First paragraph matching
+        if (firstParagraph.includes(term)) {
+          keywordScore += 3;
+        }
+
+        // Filename matching
+        if (fileName.toLowerCase().includes(term)) keywordScore += 5;
+
+        // Recency
+        if (fileDate) {
+          const age = this.getFileAgeDays(fileDate);
+          if (age < 7) keywordScore += 3;
+          else if (age < 30) keywordScore += 2;
+          else if (age < 90) keywordScore += 1;
+        }
+      }
+    }
+
+    // Topic review scoring
+    if (dir === 'topics' && hasMatch) {
+      if (frontmatterMatch) {
+        const lastReviewedMatch = frontmatter.match(/last_reviewed:\s*(.+)/);
+        const createdMatch = frontmatter.match(/created:\s*(.+)/);
+
+        if (lastReviewedMatch) {
+          const lastReviewed = lastReviewedMatch[1].trim();
+          const reviewAge = this.getFileAgeDays(lastReviewed);
+          if (reviewAge < 365) {
+            keywordScore += 2;
+          }
+        } else if (createdMatch) {
+          const created = createdMatch[1].trim();
+          const creationAge = this.getFileAgeDays(created);
+          if (creationAge > 365) {
+            keywordScore -= 2;
+          }
+        }
+      }
+    }
+
+    // Calculate semantic score if embeddings enabled
+    let semanticScore = 0;
+    if (queryEmbedding && hasMatch) {
+      try {
+        const docEmbedding = await this.getOrCreateEmbedding(relPath, content, fileStats);
+        semanticScore = this.cosineSimilarity(queryEmbedding, docEmbedding);
+      } catch (error) {
+        console.error(`[Search] Failed to get embedding for ${relPath}:`, error);
+      }
+    }
+
+    // Combine keyword and semantic scores
+    let finalScore: number;
+    if (queryEmbedding && semanticScore > 0) {
+      const keywordWeight = 1 - this.embeddingConfig.semanticWeight;
+      // Normalize keyword score to 0-1 range (rough approximation)
+      const normalizedKeywordScore = Math.min(keywordScore / 30, 1);
+      finalScore = (normalizedKeywordScore * keywordWeight) + (semanticScore * this.embeddingConfig.semanticWeight);
+    } else {
+      finalScore = keywordScore;
+    }
+
+    if (hasMatch || (queryEmbedding && semanticScore > 0.3)) {
+      const matchingLines = lines
+        .filter(line => {
+          const lineLower = line.toLowerCase();
+          return queryTerms.some(term => lineLower.includes(term));
+        })
+        .slice(0, 3);
+
+      return {
+        file: path.join(dir, relPath),
+        matches: matchingLines,
+        date: fileDate,
+        score: finalScore,
+        semanticScore: queryEmbedding ? semanticScore : undefined,
+      };
+    }
+
+    return null;
   }
 
   private async createTopicPage(args: { topic: string; content: string }) {
