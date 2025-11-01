@@ -599,7 +599,12 @@ Check the sessions/ directory for recent conversations.
     const topicSlug = args.topic ? `_${this.slugify(args.topic)}` : '';
 
     this.currentSessionId = `${dateStr}_${timeStr}${topicSlug}`;
-    this.currentSessionFile = path.join(VAULT_PATH, 'sessions', `${this.currentSessionId}.md`);
+
+    // Organize sessions by month: sessions/YYYY-MM/
+    const monthStr = dateStr.substring(0, 7); // YYYY-MM
+    const monthDir = path.join(VAULT_PATH, 'sessions', monthStr);
+    await fs.mkdir(monthDir, { recursive: true });
+    this.currentSessionFile = path.join(monthDir, `${this.currentSessionId}.md`);
 
     const metadata: SessionMetadata = {
       date: dateStr,
@@ -1040,14 +1045,41 @@ ${this.currentSessionId ? `- Session: [[sessions/${this.currentSessionId}]]` : '
 
   private async getSessionContext(args: { session_id?: string }) {
     const sessionId = args.session_id || this.currentSessionId;
-    
+
     if (!sessionId) {
       throw new Error('No session ID provided and no active session.');
     }
 
-    const sessionFile = args.session_id
-      ? path.join(VAULT_PATH, 'sessions', `${sessionId}.md`)
-      : this.currentSessionFile!;
+    let sessionFile: string;
+
+    if (this.currentSessionFile && !args.session_id) {
+      // Use current session file if available
+      sessionFile = this.currentSessionFile;
+    } else if (args.session_id) {
+      // Try to find the session file in monthly directories or root
+      // First, extract the date from session_id (format: YYYY-MM-DD_HH-mm-ss...)
+      const dateMatch = args.session_id.match(/^(\d{4}-\d{2}-\d{2})/);
+
+      if (dateMatch) {
+        const dateStr = dateMatch[1];
+        const monthStr = dateStr.substring(0, 7); // YYYY-MM
+        const monthDir = path.join(VAULT_PATH, 'sessions', monthStr);
+        const monthFile = path.join(monthDir, `${sessionId}.md`);
+
+        try {
+          await fs.access(monthFile);
+          sessionFile = monthFile;
+        } catch {
+          // Fall back to root if not in month directory
+          sessionFile = path.join(VAULT_PATH, 'sessions', `${sessionId}.md`);
+        }
+      } else {
+        // No date in session_id, try root directory
+        sessionFile = path.join(VAULT_PATH, 'sessions', `${sessionId}.md`);
+      }
+    } else {
+      throw new Error('Cannot determine session file path.');
+    }
 
     const content = await fs.readFile(sessionFile, 'utf-8');
 
@@ -1603,9 +1635,7 @@ Provide a structured analysis with:
     const sessionsDir = path.join(VAULT_PATH, 'sessions');
 
     try {
-      const files = await fs.readdir(sessionsDir);
-
-      // Filter for .md files and get their stats
+      // Filter for .md files and get their stats, including from month subdirectories
       const sessionFiles: Array<{
         file: string;
         filePath: string;
@@ -1616,13 +1646,8 @@ Provide a structured analysis with:
         status?: string;
       }> = [];
 
-      for (const file of files) {
-        if (!file.endsWith('.md')) continue;
-
-        const filePath = path.join(sessionsDir, file);
-        const stats = await fs.stat(filePath);
-        const content = await fs.readFile(filePath, 'utf-8');
-
+      // Helper function to parse session file metadata
+      const parseSessionFile = (file: string, filePath: string, stats: any, content: string) => {
         // Parse frontmatter to get metadata
         const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
         let session_id = file.replace('.md', '');
@@ -1672,6 +1697,41 @@ Provide a structured analysis with:
           date,
           status,
         });
+      };
+
+      // Read both root sessions directory and month subdirectories (YYYY-MM)
+      const entries = await fs.readdir(sessionsDir, { withFileTypes: true });
+
+      for (const entry of entries) {
+        const entryPath = path.join(sessionsDir, entry.name);
+
+        if (entry.isDirectory() && /^\d{4}-\d{2}$/.test(entry.name)) {
+          // This is a month directory, read .md files from it
+          const monthFiles = await fs.readdir(entryPath);
+          for (const file of monthFiles) {
+            if (!file.endsWith('.md')) continue;
+            const filePath = path.join(entryPath, file);
+            const stats = await fs.stat(filePath);
+            const content = await fs.readFile(filePath, 'utf-8');
+            parseSessionFile(file, filePath, stats, content);
+          }
+        } else if (entry.isFile() && entry.name.endsWith('.md')) {
+          // Root-level .md file (for backwards compatibility)
+          const stats = await fs.stat(entryPath);
+          const content = await fs.readFile(entryPath, 'utf-8');
+          parseSessionFile(entry.name, entryPath, stats, content);
+        }
+      }
+
+      if (sessionFiles.length === 0) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: 'No sessions found. Start a new session with start_session.',
+            },
+          ],
+        };
       }
 
       // Sort by modification time (most recent first)
