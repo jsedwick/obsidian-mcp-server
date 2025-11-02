@@ -954,29 +954,32 @@ ${args.topic ? `Working on: ${args.topic}` : 'New conversation session started.'
       }
     }
 
-    // Search across all configured vaults
-    const vaults = this.getAllVaults();
+    // Recursive function to search directories
+    const searchDirectory = async (dirPath: string, relativePath: string = '', vaultName: string) => {
+      try {
+        const entries = await fs.readdir(dirPath, { withFileTypes: true });
 
-    for (const vault of vaults) {
-      for (const dir of searchDirs) {
-        const dirPath = path.join(vault.path, dir);
+        for (const entry of entries) {
+          const fullPath = path.join(dirPath, entry.name);
+          const relativeFilePath = relativePath ? path.join(relativePath, entry.name) : entry.name;
 
-        try {
-          const entries = await fs.readdir(dirPath, { withFileTypes: true });
-
-          for (const entry of entries) {
-            // Handle month subdirectories for sessions
-            if (entry.isDirectory() && dir === 'sessions' && /^\d{4}-\d{2}$/.test(entry.name)) {
-              const monthFiles = await fs.readdir(path.join(dirPath, entry.name));
+          if (entry.isDirectory()) {
+            // Skip common ignored directories
+            if (['.git', 'node_modules', '.DS_Store', '.obsidian'].includes(entry.name)) {
+              continue;
+            }
+            // Handle month subdirectories for sessions (YYYY-MM format)
+            if (/^\d{4}-\d{2}$/.test(entry.name)) {
+              const monthFiles = await fs.readdir(fullPath);
               for (const file of monthFiles) {
                 if (!file.endsWith('.md')) continue;
-                const filePath = path.join(dirPath, entry.name, file);
+                const filePath = path.join(fullPath, file);
                 const fileStats = await fs.stat(filePath);
                 const content = await fs.readFile(filePath, 'utf-8');
 
                 const searchResult = await this.scoreSearchResult(
-                  dir,
-                  path.join(entry.name, file),
+                  'sessions',
+                  path.join(relativeFilePath, file),
                   file,
                   content,
                   fileStats,
@@ -986,35 +989,58 @@ ${args.topic ? `Working on: ${args.topic}` : 'New conversation session started.'
                   args.date_range
                 );
                 if (searchResult) {
-                  results.push({ ...searchResult, vault: vault.name });
+                  results.push({ ...searchResult, vault: vaultName });
                 }
               }
-            } else if (entry.isFile() && entry.name.endsWith('.md')) {
-              // Regular file processing
-              const file = entry.name;
-              const filePath = path.join(dirPath, file);
-              const fileStats = await fs.stat(filePath);
-              const content = await fs.readFile(filePath, 'utf-8');
+            } else {
+              // Recursively search subdirectories
+              await searchDirectory(fullPath, relativeFilePath, vaultName);
+            }
+          } else if (entry.isFile() && entry.name.endsWith('.md')) {
+            // Process markdown file
+            const fileStats = await fs.stat(fullPath);
+            const content = await fs.readFile(fullPath, 'utf-8');
 
-              const searchResult = await this.scoreSearchResult(
-                dir,
-                file,
-                file,
-                content,
-                fileStats,
-                queryLower,
-                queryTerms,
-                queryEmbedding,
-                args.date_range
-              );
-              if (searchResult) {
-                results.push({ ...searchResult, vault: vault.name });
-              }
+            // Determine category based on path
+            let category = 'document';
+            if (relativeFilePath.includes('sessions')) category = 'sessions';
+            else if (relativeFilePath.includes('topics')) category = 'topics';
+            else if (relativeFilePath.includes('decisions')) category = 'decisions';
+
+            const searchResult = await this.scoreSearchResult(
+              category,
+              relativeFilePath,
+              entry.name,
+              content,
+              fileStats,
+              queryLower,
+              queryTerms,
+              queryEmbedding,
+              args.date_range
+            );
+            if (searchResult) {
+              results.push({ ...searchResult, vault: vaultName });
             }
           }
-        } catch (error) {
-          continue;
         }
+      } catch (error) {
+        // Directory doesn't exist or can't be accessed
+      }
+    };
+
+    // Search across all configured vaults
+    const vaults = this.getAllVaults();
+
+    for (const vault of vaults) {
+      // For primary vault, search only in standard directories
+      if (vault === this.config.primaryVault) {
+        for (const dir of searchDirs) {
+          const dirPath = path.join(vault.path, dir);
+          await searchDirectory(dirPath, dir, vault.name);
+        }
+      } else {
+        // For secondary vaults, search everything recursively
+        await searchDirectory(vault.path, '', vault.name);
       }
     }
 
