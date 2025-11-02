@@ -1,0 +1,16 @@
+{
+  "primaryVault": {
+    "path": "/Users/yourusername/Documents/Obsidian/MainVault",
+    "name": "Main Vault"
+  },
+  "secondaryVaults": [
+    {
+      "path": "/Users/yourusername/Documents/Obsidian/WorkVault",
+      "name": "Work Vault"
+    },
+    {
+      "path": "/Users/yourusername/Documents/Obsidian/PersonalVault",
+      "name": "Personal Vault"
+    }
+  ]
+}

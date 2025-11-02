@@ -64,6 +64,62 @@ Create or edit `~/.config/claude-code/config.json` (or equivalent for your OS):
 
 **Important**: Replace `/path/to/obsidian-mcp-server` with the actual path to this project, and `/path/to/your/obsidian-vault` with your Obsidian vault location.
 
+## Multi-Vault Configuration
+
+The MCP server supports multiple vaults for search operations while maintaining a single primary vault for write operations.
+
+### Option 1: Configuration File (Recommended)
+
+Create a `.obsidian-mcp.json` file in the working directory where you run Claude Code:
+
+```json
+{
+  "primaryVault": {
+    "path": "/Users/yourusername/Documents/Obsidian/MainVault",
+    "name": "Main Vault"
+  },
+  "secondaryVaults": [
+    {
+      "path": "/Users/yourusername/Documents/Obsidian/WorkVault",
+      "name": "Work Vault"
+    },
+    {
+      "path": "/Users/yourusername/Documents/Obsidian/PersonalVault",
+      "name": "Personal Vault"
+    }
+  ]
+}
+```
+
+See `.obsidian-mcp.json.example` for a template.
+
+### Option 2: Environment Variables
+
+Alternatively, you can configure multiple vaults via environment variables in your Claude Code config:
+
+```json
+{
+  "mcpServers": {
+    "obsidian": {
+      "command": "node",
+      "args": ["/path/to/obsidian-mcp-server/dist/index.js"],
+      "env": {
+        "OBSIDIAN_VAULT_PATH": "/path/to/primary/vault",
+        "OBSIDIAN_VAULT_NAME": "Main Vault",
+        "OBSIDIAN_SECONDARY_VAULTS": "/path/to/vault2,/path/to/vault3"
+      }
+    }
+  }
+}
+```
+
+### Multi-Vault Behavior
+
+- **Primary Vault**: Used for all write operations (sessions, topics, decisions, projects)
+- **Secondary Vaults**: Read-only, used for search operations only
+- **Search Results**: Will indicate which vault each result comes from
+- **Automatic Detection**: The config file is checked first, then falls back to environment variables
+
 ## Usage
 
 Once configured, Claude Code will automatically have access to these tools:

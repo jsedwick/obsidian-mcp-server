@@ -18,8 +18,69 @@ const execAsync = promisify(exec);
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Configuration
-const VAULT_PATH = process.env.OBSIDIAN_VAULT_PATH || path.join(process.env.HOME || '', 'obsidian-vault');
+// Configuration types
+interface VaultConfig {
+  path: string;
+  name: string;
+  readonly: boolean;
+}
+
+interface ServerConfig {
+  primaryVault: VaultConfig;
+  secondaryVaults: VaultConfig[];
+}
+
+// Load configuration
+function loadConfig(): ServerConfig {
+  // Try to load from config file first
+  const configPath = path.join(process.cwd(), '.obsidian-mcp.json');
+  try {
+    const configData = require('fs').readFileSync(configPath, 'utf-8');
+    const config = JSON.parse(configData);
+
+    // Validate config structure
+    if (!config.primaryVault || !config.primaryVault.path) {
+      throw new Error('Invalid config: primaryVault.path is required');
+    }
+
+    return {
+      primaryVault: {
+        path: config.primaryVault.path,
+        name: config.primaryVault.name || 'Primary Vault',
+        readonly: false,
+      },
+      secondaryVaults: (config.secondaryVaults || []).map((v: any) => ({
+        path: v.path,
+        name: v.name || path.basename(v.path),
+        readonly: true,
+      })),
+    };
+  } catch (error) {
+    // Fall back to environment variables
+    const primaryPath = process.env.OBSIDIAN_VAULT_PATH || path.join(process.env.HOME || '', 'obsidian-vault');
+
+    // Parse secondary vaults from env (comma-separated paths)
+    const secondaryPaths = process.env.OBSIDIAN_SECONDARY_VAULTS
+      ? process.env.OBSIDIAN_SECONDARY_VAULTS.split(',').map(p => p.trim()).filter(p => p)
+      : [];
+
+    return {
+      primaryVault: {
+        path: primaryPath,
+        name: process.env.OBSIDIAN_VAULT_NAME || 'Primary Vault',
+        readonly: false,
+      },
+      secondaryVaults: secondaryPaths.map((p, idx) => ({
+        path: p,
+        name: `Secondary Vault ${idx + 1}`,
+        readonly: true,
+      })),
+    };
+  }
+}
+
+const CONFIG = loadConfig();
+const VAULT_PATH = CONFIG.primaryVault.path; // Keep for backward compatibility
 
 interface SessionMetadata {
   date: string;
@@ -92,6 +153,7 @@ interface EmbeddingConfig {
 
 class ObsidianMCPServer {
   private server: Server;
+  private config: ServerConfig;
   private currentSessionId: string | null = null;
   private currentSessionFile: string | null = null;
   private pendingReviews: Map<string, PendingReview> = new Map();
@@ -106,6 +168,7 @@ class ObsidianMCPServer {
   private embeddingInitPromise: Promise<void> | null = null;
 
   constructor() {
+    this.config = CONFIG;
     this.server = new Server(
       {
         name: 'obsidian-context-manager',
@@ -122,7 +185,7 @@ class ObsidianMCPServer {
     this.embeddingConfig = {
       enabled: process.env.ENABLE_EMBEDDINGS !== 'false', // Default: enabled
       modelName: 'Xenova/all-MiniLM-L6-v2',
-      cacheDir: path.join(VAULT_PATH, '.embedding-cache'),
+      cacheDir: path.join(this.config.primaryVault.path, '.embedding-cache'),
       semanticWeight: 0.6, // 60% semantic, 40% keyword
     };
 
@@ -140,6 +203,15 @@ class ObsidianMCPServer {
       await this.server.close();
       process.exit(0);
     });
+  }
+
+  // Helper methods for vault management
+  private getAllVaults(): VaultConfig[] {
+    return [this.config.primaryVault, ...this.config.secondaryVaults];
+  }
+
+  private getPrimaryVaultPath(): string {
+    return this.config.primaryVault.path;
   }
 
   private setupHandlers(): void {
@@ -725,15 +797,17 @@ class ObsidianMCPServer {
   }
 
   private async ensureVaultStructure(): Promise<void> {
+    // Only ensure structure for primary vault (write operations)
+    const primaryPath = this.getPrimaryVaultPath();
     const dirs = ['sessions', 'topics', 'decisions', 'archive/topics', 'projects'];
 
     for (const dir of dirs) {
-      const dirPath = path.join(VAULT_PATH, dir);
+      const dirPath = path.join(primaryPath, dir);
       await fs.mkdir(dirPath, { recursive: true });
     }
 
     // Create index.md if it doesn't exist
-    const indexPath = path.join(VAULT_PATH, 'index.md');
+    const indexPath = path.join(primaryPath, 'index.md');
     try {
       await fs.access(indexPath);
     } catch {
@@ -865,6 +939,7 @@ ${args.topic ? `Working on: ${args.topic}` : 'New conversation session started.'
       date?: string;
       score: number;
       semanticScore?: number;
+      vault?: string;
     }[] = [];
     const queryLower = args.query.toLowerCase();
     const queryTerms = queryLower.split(/\s+/).filter(t => t.length > 2);
@@ -879,25 +954,51 @@ ${args.topic ? `Working on: ${args.topic}` : 'New conversation session started.'
       }
     }
 
-    for (const dir of searchDirs) {
-      const dirPath = path.join(VAULT_PATH, dir);
+    // Search across all configured vaults
+    const vaults = this.getAllVaults();
 
-      try {
-        const entries = await fs.readdir(dirPath, { withFileTypes: true });
+    for (const vault of vaults) {
+      for (const dir of searchDirs) {
+        const dirPath = path.join(vault.path, dir);
 
-        for (const entry of entries) {
-          // Handle month subdirectories for sessions
-          if (entry.isDirectory() && dir === 'sessions' && /^\d{4}-\d{2}$/.test(entry.name)) {
-            const monthFiles = await fs.readdir(path.join(dirPath, entry.name));
-            for (const file of monthFiles) {
-              if (!file.endsWith('.md')) continue;
-              const filePath = path.join(dirPath, entry.name, file);
+        try {
+          const entries = await fs.readdir(dirPath, { withFileTypes: true });
+
+          for (const entry of entries) {
+            // Handle month subdirectories for sessions
+            if (entry.isDirectory() && dir === 'sessions' && /^\d{4}-\d{2}$/.test(entry.name)) {
+              const monthFiles = await fs.readdir(path.join(dirPath, entry.name));
+              for (const file of monthFiles) {
+                if (!file.endsWith('.md')) continue;
+                const filePath = path.join(dirPath, entry.name, file);
+                const fileStats = await fs.stat(filePath);
+                const content = await fs.readFile(filePath, 'utf-8');
+
+                const searchResult = await this.scoreSearchResult(
+                  dir,
+                  path.join(entry.name, file),
+                  file,
+                  content,
+                  fileStats,
+                  queryLower,
+                  queryTerms,
+                  queryEmbedding,
+                  args.date_range
+                );
+                if (searchResult) {
+                  results.push({ ...searchResult, vault: vault.name });
+                }
+              }
+            } else if (entry.isFile() && entry.name.endsWith('.md')) {
+              // Regular file processing
+              const file = entry.name;
+              const filePath = path.join(dirPath, file);
               const fileStats = await fs.stat(filePath);
               const content = await fs.readFile(filePath, 'utf-8');
 
               const searchResult = await this.scoreSearchResult(
                 dir,
-                path.join(entry.name, file),
+                file,
                 file,
                 content,
                 fileStats,
@@ -907,34 +1008,13 @@ ${args.topic ? `Working on: ${args.topic}` : 'New conversation session started.'
                 args.date_range
               );
               if (searchResult) {
-                results.push(searchResult);
+                results.push({ ...searchResult, vault: vault.name });
               }
             }
-          } else if (entry.isFile() && entry.name.endsWith('.md')) {
-            // Regular file processing
-            const file = entry.name;
-            const filePath = path.join(dirPath, file);
-            const fileStats = await fs.stat(filePath);
-            const content = await fs.readFile(filePath, 'utf-8');
-
-            const searchResult = await this.scoreSearchResult(
-              dir,
-              file,
-              file,
-              content,
-              fileStats,
-              queryLower,
-              queryTerms,
-              queryEmbedding,
-              args.date_range
-            );
-            if (searchResult) {
-              results.push(searchResult);
-            }
           }
+        } catch (error) {
+          continue;
         }
-      } catch (error) {
-        continue;
       }
     }
 
@@ -965,7 +1045,8 @@ ${args.topic ? `Working on: ${args.topic}` : 'New conversation session started.'
 
       topResults.forEach((r, idx) => {
         const semanticIndicator = r.semanticScore !== undefined ? ` [semantic: ${(r.semanticScore * 100).toFixed(0)}%]` : '';
-        resultText += `${idx + 1}. **${r.file}** ${r.date ? `(${r.date})` : ''}${semanticIndicator}\n`;
+        const vaultIndicator = r.vault && r.vault !== this.config.primaryVault.name ? ` [${r.vault}]` : '';
+        resultText += `${idx + 1}. **${r.file}** ${r.date ? `(${r.date})` : ''}${semanticIndicator}${vaultIndicator}\n`;
         if (r.matches.length > 0) {
           resultText += r.matches
             .map(m => `   ${m.trim().substring(0, 100)}${m.length > 100 ? '...' : ''}`)
@@ -981,6 +1062,9 @@ ${args.topic ? `Working on: ${args.topic}` : 'New conversation session started.'
       resultText += `\n\n💡 Use get_session_context with a specific session_id to read full files.`;
       if (this.embeddingConfig.enabled && queryEmbedding) {
         resultText += `\n✨ Results include semantic search (${(this.embeddingConfig.semanticWeight * 100).toFixed(0)}% weight)`;
+      }
+      if (this.config.secondaryVaults.length > 0) {
+        resultText += `\n📚 Searched ${1 + this.config.secondaryVaults.length} vault(s)`;
       }
     } else {
       // Return full matching content (old behavior, for backwards compatibility)
