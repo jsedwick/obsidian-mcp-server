@@ -142,12 +142,13 @@ interface EmbeddingCacheEntry {
   file: string;
   embedding: number[];
   timestamp: number;
+  vaultPath?: string; // Track which vault this file came from
 }
 
 interface EmbeddingConfig {
   enabled: boolean;
   modelName: string;
-  cacheDir: string;
+  cacheDirs: Map<string, string>; // Map of vaultPath -> cacheDir
   semanticWeight: number; // 0-1, how much weight semantic search gets (rest goes to keyword)
 }
 
@@ -181,11 +182,19 @@ class ObsidianMCPServer {
       }
     );
 
-    // Initialize embedding config
+    // Initialize embedding config with per-vault cache directories
+    const cacheDirs = new Map<string, string>();
+    // Primary vault cache
+    cacheDirs.set(this.config.primaryVault.path, path.join(this.config.primaryVault.path, '.embedding-cache'));
+    // Secondary vaults cache
+    for (const vault of this.config.secondaryVaults) {
+      cacheDirs.set(vault.path, path.join(vault.path, '.embedding-cache'));
+    }
+
     this.embeddingConfig = {
       enabled: process.env.ENABLE_EMBEDDINGS !== 'false', // Default: enabled
       modelName: 'Xenova/all-MiniLM-L6-v2',
-      cacheDir: path.join(this.config.primaryVault.path, '.embedding-cache'),
+      cacheDirs: cacheDirs,
       semanticWeight: 0.6, // 60% semantic, 40% keyword
     };
 
@@ -308,6 +317,20 @@ class ObsidianMCPServer {
 
   // ==================== Embedding Methods ====================
 
+  private getVaultForFile(filePath: string): VaultConfig | null {
+    // Determine which vault a file belongs to based on its absolute path
+    for (const vault of [this.config.primaryVault, ...this.config.secondaryVaults]) {
+      if (filePath.startsWith(vault.path)) {
+        return vault;
+      }
+    }
+    return null;
+  }
+
+  private getCacheDirForVault(vaultPath: string): string {
+    return this.embeddingConfig.cacheDirs.get(vaultPath) || '';
+  }
+
   private async ensureExtractorInitialized(): Promise<void> {
     if (this.embeddingInitPromise) {
       return this.embeddingInitPromise;
@@ -387,16 +410,26 @@ class ObsidianMCPServer {
       return;
     }
 
-    try {
-      const cacheFile = path.join(this.embeddingConfig.cacheDir, 'embeddings.json');
-      const data = await fs.readFile(cacheFile, 'utf-8');
-      const entries = JSON.parse(data) as EmbeddingCacheEntry[];
+    // Load cache from all vault directories
+    for (const [vaultPath, cacheDir] of this.embeddingConfig.cacheDirs) {
+      try {
+        const cacheFile = path.join(cacheDir, 'embeddings.json');
+        const data = await fs.readFile(cacheFile, 'utf-8');
+        const entries = JSON.parse(data) as EmbeddingCacheEntry[];
 
-      for (const entry of entries) {
-        this.embeddingCache.set(entry.file, entry);
+        for (const entry of entries) {
+          // Reconstruct absolute file path for cache key
+          const absolutePath = path.join(vaultPath, entry.file);
+          const cacheEntry: EmbeddingCacheEntry = {
+            ...entry,
+            vaultPath: vaultPath,
+            file: absolutePath, // Store absolute path as cache key
+          };
+          this.embeddingCache.set(absolutePath, cacheEntry);
+        }
+      } catch (error) {
+        // Cache file doesn't exist for this vault yet, which is fine
       }
-    } catch (error) {
-      // Cache file doesn't exist yet, which is fine
     }
   }
 
@@ -405,13 +438,38 @@ class ObsidianMCPServer {
       return;
     }
 
-    try {
-      await fs.mkdir(this.embeddingConfig.cacheDir, { recursive: true });
-      const entries = Array.from(this.embeddingCache.values());
-      const cacheFile = path.join(this.embeddingConfig.cacheDir, 'embeddings.json');
-      await fs.writeFile(cacheFile, JSON.stringify(entries, null, 2));
-    } catch (error) {
-      console.error('[Embedding] Failed to save cache:', error);
+    // Group cache entries by vault
+    const entriesByVault = new Map<string, EmbeddingCacheEntry[]>();
+
+    for (const [absolutePath, entry] of this.embeddingCache) {
+      const vault = this.getVaultForFile(absolutePath);
+      if (!vault) continue;
+
+      if (!entriesByVault.has(vault.path)) {
+        entriesByVault.set(vault.path, []);
+      }
+
+      // Convert absolute path back to relative path for storage
+      const relativePath = path.relative(vault.path, absolutePath);
+      const storeEntry: EmbeddingCacheEntry = {
+        ...entry,
+        file: relativePath,
+        vaultPath: vault.path,
+      };
+
+      entriesByVault.get(vault.path)!.push(storeEntry);
+    }
+
+    // Save each vault's cache to its directory
+    for (const [vaultPath, entries] of entriesByVault) {
+      try {
+        const cacheDir = this.getCacheDirForVault(vaultPath);
+        await fs.mkdir(cacheDir, { recursive: true });
+        const cacheFile = path.join(cacheDir, 'embeddings.json');
+        await fs.writeFile(cacheFile, JSON.stringify(entries, null, 2));
+      } catch (error) {
+        console.error(`[Embedding] Failed to save cache for vault ${vaultPath}:`, error);
+      }
     }
   }
 
@@ -442,11 +500,13 @@ class ObsidianMCPServer {
     // Generate new embedding
     const embedding = await this.generateEmbedding(content);
 
-    // Cache it
+    // Cache it with vault information
+    const vault = this.getVaultForFile(file);
     this.embeddingCache.set(file, {
       file,
       embedding,
       timestamp: Math.floor(fileStats.mtime.getTime() / 1000),
+      vaultPath: vault?.path,
     });
 
     return embedding;
@@ -986,7 +1046,8 @@ ${args.topic ? `Working on: ${args.topic}` : 'New conversation session started.'
                   queryLower,
                   queryTerms,
                   queryEmbedding,
-                  args.date_range
+                  args.date_range,
+                  filePath // Pass absolute path for embedding cache key
                 );
                 if (searchResult) {
                   results.push({ ...searchResult, vault: vaultName });
@@ -1016,7 +1077,8 @@ ${args.topic ? `Working on: ${args.topic}` : 'New conversation session started.'
               queryLower,
               queryTerms,
               queryEmbedding,
-              args.date_range
+              args.date_range,
+              fullPath // Pass absolute path for embedding cache key
             );
             if (searchResult) {
               results.push({ ...searchResult, vault: vaultName });
@@ -1120,7 +1182,8 @@ ${args.topic ? `Working on: ${args.topic}` : 'New conversation session started.'
     queryLower: string,
     queryTerms: string[],
     queryEmbedding: number[] | null,
-    dateRange?: { start?: string; end?: string }
+    dateRange?: { start?: string; end?: string },
+    absolutePath?: string // Absolute file path for embedding cache key
   ) {
     const contentLower = content.toLowerCase();
 
@@ -1239,7 +1302,9 @@ ${args.topic ? `Working on: ${args.topic}` : 'New conversation session started.'
     let semanticScore = 0;
     if (queryEmbedding && hasMatch) {
       try {
-        const docEmbedding = await this.getOrCreateEmbedding(relPath, content, fileStats);
+        // Use absolute path if available for proper cache key, otherwise use relative path
+        const cacheKey = absolutePath || relPath;
+        const docEmbedding = await this.getOrCreateEmbedding(cacheKey, content, fileStats);
         semanticScore = this.cosineSimilarity(queryEmbedding, docEmbedding);
       } catch (error) {
         console.error(`[Search] Failed to get embedding for ${relPath}:`, error);
