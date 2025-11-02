@@ -1033,7 +1033,9 @@ ${args.topic ? `Working on: ${args.topic}` : 'New conversation session started.'
 
     for (const vault of vaults) {
       // For primary vault, search only in standard directories
-      if (vault === this.config.primaryVault) {
+      const isPrimaryVault = vault.path === this.config.primaryVault.path;
+
+      if (isPrimaryVault) {
         for (const dir of searchDirs) {
           const dirPath = path.join(vault.path, dir);
           await searchDirectory(dirPath, dir, vault.name);
