@@ -4,14 +4,15 @@ An MCP (Model Context Protocol) server that enables Claude Code to automatically
 
 ## Features
 
-- **Automatic Session Management**: Creates session notes for each conversation
-- **Intelligent Search**: Search across all vault content for relevant context
+- **Automatic Session Management**: Creates session notes for each conversation, organized by month
+- **Intelligent Search with Semantic Understanding**: Hybrid keyword + embedding-based search using local AI models (no API calls)
 - **Topic Pages**: Create and maintain pages for technical concepts
 - **Topic Review System**: Find stale topics, review them, and keep knowledge fresh
 - **Decision Records**: Track architectural decisions with ADR format
-- **Git Integration**: Automatically detect repos, track commits, link code changes to sessions
+- **Git Integration**: Automatically detect repos, track commits, link code changes to sessions with smart repository detection
 - **Project Tracking**: Create project pages for repositories with commit history
 - **Smart Linking**: Automatic Obsidian-style wiki links between content
+- **Recent Sessions Command**: List the 5 most recent sessions for quick context access
 - **Zero Storage Overhead**: Text-based storage uses minimal disk space
 
 ## Installation
@@ -90,6 +91,7 @@ Updates session status to 'completed'
 ```
 Limit: 5 (default)
 Returns: Session metadata including ID, topic, date, and status
+Note: Available via /sessions slash command in Claude Code
 ```
 
 ### Search and Retrieval
@@ -108,6 +110,77 @@ Returns: Matching notes with context snippets and relevance scores
 Session ID: "2025-10-28_14-30-00_api-auth"
 Returns: Complete session file content
 ```
+
+## Advanced Features
+
+### Semantic Search with Local Embeddings
+
+The `search_vault` tool uses a hybrid approach combining keyword matching with semantic understanding:
+
+**How it works:**
+- Generates embeddings using a local transformer model (Xenova/all-MiniLM-L6-v2)
+- No external API calls - everything runs locally
+- Scoring: 60% semantic similarity + 40% keyword relevance
+- Intelligent caching of embeddings for performance
+
+**Performance:**
+- First search in a session: ~30 seconds (model initialization)
+- Subsequent searches: <1 second (embeddings cached)
+- Cache size: ~3.2 KB per document (~320 KB for 100-document vault)
+
+**Configuration:**
+- Enabled by default
+- Disable with: `ENABLE_EMBEDDINGS=false`
+- Cache location: `.embedding-cache/embeddings.json` in your vault
+- Gracefully falls back to keyword-only search if embeddings fail
+
+**Benefits:**
+- Find relevant content even with different wording
+- Understand semantic relationships between concepts
+- Faster, more accurate context retrieval
+
+### Improved Search Ranking
+
+The search algorithm ranks results by:
+1. **Exact phrase matches** - Highest priority
+2. **Semantic similarity** - AI-powered concept matching
+3. **Term frequency** - How often search terms appear
+4. **Positional weight** - Earlier matches score higher
+5. **Filename relevance** - Matching in filenames scores well
+6. **Recency** - More recent files score higher
+7. **Review status** - Recently reviewed topics prioritized
+
+### Monthly Session Organization
+
+Sessions are automatically organized into monthly directories:
+- Sessions from October 2025: `sessions/2025-10/`
+- Sessions from November 2025: `sessions/2025-11/`
+- Easy to navigate large session collections
+- Supports automatic archival of old months
+
+### Automatic Git Repository Detection
+
+When you end a session, the server automatically:
+1. Detects which Git repositories you worked with based on file access
+2. Scores repositories by relevance (number of files accessed, file types, etc.)
+3. Prompts you to link the session to the most relevant repository
+4. Creates project pages if needed
+
+The detection algorithm considers:
+- Files accessed during the session
+- Repository proximity (nearest `.git` directory)
+- File types and naming patterns
+- Repository metadata
+
+### Slash Command Integration
+
+The MCP server supports Claude Code slash commands for quick access to common features:
+
+**Available slash commands:**
+- `/sessions` - List the 5 most recent conversation sessions
+  - Returns session metadata including topic, date, and status
+  - Quick way to jump back into previous conversations
+  - Only available within Claude Code, not directly as an MCP tool
 
 ### Knowledge Management
 
@@ -212,9 +285,12 @@ The MCP server automatically creates and maintains this structure:
 
 ```
 obsidian-vault/
-├── sessions/              # Individual conversation sessions
-│   ├── 2025-10-28_14-30-00_api-auth.md
-│   └── 2025-10-28_15-45-00_database-design.md
+├── sessions/              # Individual conversation sessions organized by month
+│   ├── 2025-10/          # Monthly subdirectories
+│   │   ├── 2025-10-28_14-30-00_api-auth.md
+│   │   └── 2025-10-28_15-45-00_database-design.md
+│   └── 2025-11/          # Current month
+│       └── 2025-11-01_09-20-00_feature-discussion.md
 ├── topics/                # Technical concepts and areas
 │   ├── authentication-system.md
 │   ├── database-schema.md
@@ -232,6 +308,8 @@ obsidian-vault/
 ├── archive/               # Archived content
 │   └── topics/           # Archived topics
 │       └── deprecated-api.md
+├── .embedding-cache/      # Local embedding cache for semantic search
+│   └── embeddings.json   # Cached embeddings (regenerated as needed)
 └── index.md              # Vault overview
 ```
 
@@ -241,34 +319,43 @@ When you start a conversation with Claude Code:
 
 1. **Automatic Context Loading**:
    - Claude Code calls `start_session` with your topic
-   - Creates a timestamped session file
-   - Searches vault for related past context
+   - Creates a timestamped session file in `sessions/YYYY-MM/` directory
+   - Searches vault for related past context using semantic + keyword search
+   - Automatically detects projects you're working on
 
 2. **During Conversation**:
    - Claude automatically saves key points with `save_session_note`
    - Creates topic pages for new concepts with `create_topic_page`
    - Records decisions with `create_decision`
    - Links related concepts together
+   - Tracks file access for repository detection
 
 3. **Context Retrieval**:
    - When you ask "what did we discuss about X?"
-   - Claude uses `search_vault` to find relevant notes
-   - Cites specific sessions and topics
+   - Claude uses `search_vault` with semantic understanding to find relevant notes
+   - Hybrid search combines keyword matching with AI-powered concept matching
+   - Cites specific sessions and topics with relevance scores
 
 4. **Session Close**:
    - At conversation end, `close_session` is called
    - Session marked as completed
+   - Automatically detects Git repositories you accessed
+   - Optionally links session to relevant project pages
    - All context preserved for future reference
 
 ## Example Session File
 
 ```markdown
 ---
-date: 2025-10-28
-session_id: 2025-10-28_14-30-00_api-authentication
+date: 2025-11-01
+session_id: 2025-11-01_14-30-00_api-authentication
 topics: ["authentication", "jwt", "security"]
 decisions: [[002-api-structure]]
 status: completed
+repository:
+  path: /home/user/projects/my-api
+  name: my-api
+  commits: [abc123, def456]
 ---
 
 # Session: API Authentication Implementation
@@ -280,20 +367,36 @@ Working on implementing user authentication system for the API.
 - Decided to use JWT tokens with refresh token rotation
 - Need to implement token blacklisting for logout
 - Related to [[topics/authentication-system|Authentication System]]
+- Semantic search found 3 related past sessions
 
 ## Outcomes
 - [[decisions/002-api-structure|Decision 002]]: REST API structure finalized
 - Created topic page: [[topics/jwt-tokens|JWT Tokens]]
+- Linked session to [[projects/my-api|my-api]] project
+- Recorded 2 commits to project
 - Next session: Implement token refresh logic
 
 ## Code References
 - File: `src/auth/jwt.ts`
 - Changes: Added token validation and refresh logic
+- Related commits: [[projects/my-api/commits/abc123|abc123]], [[projects/my-api/commits/def456|def456]]
 ```
+
+**File location:** `sessions/2025-11/2025-11-01_14-30-00_api-authentication.md`
+
+**Notable features in this session file:**
+- Sessions are stored in monthly subdirectories (`sessions/YYYY-MM/`)
+- Repository information automatically populated at session close
+- Git commits linked and tracked
+- Semantic search results referenced
+- Cross-references to projects and commits
 
 ## Environment Variables
 
 - `OBSIDIAN_VAULT_PATH`: Path to your Obsidian vault (required)
+- `ENABLE_EMBEDDINGS`: Enable semantic search with embeddings (default: `true`)
+  - Set to `false` to disable and use keyword-only search
+  - Useful if you prefer faster searches or have limited system resources
 
 ## Development
 
@@ -357,6 +460,31 @@ All notes are valid Markdown and work seamlessly in Obsidian:
 1. Verify vault structure exists
 2. Check file extensions are `.md`
 3. Ensure content is saved in vault directories
+
+### Semantic search issues
+
+**Embeddings taking too long:**
+- First search generates the model (~30 seconds) - this is normal
+- Subsequent searches use cache (<1 second)
+- Model is only initialized once per session
+
+**Embeddings failing or causing errors:**
+- Check if transformers.js is installed: `npm list @xenova/transformers`
+- Verify network (model downloads on first use)
+- Disable embeddings: `ENABLE_EMBEDDINGS=false` environment variable
+- Server will gracefully fall back to keyword-only search
+
+**Embedding cache growing too large:**
+- Cache is automatically maintained at ~3.2 KB per document
+- Safe to manually delete `.embedding-cache/embeddings.json` - it will regenerate
+- Cache rebuilds automatically as needed
+
+### Session directory organization
+
+If sessions aren't appearing in monthly directories:
+- Ensure `npm run build` has been run recently
+- Check that session files have proper frontmatter with date
+- Older sessions won't be automatically moved to monthly dirs (only new sessions use this structure)
 
 ## License
 
