@@ -32,8 +32,8 @@ interface ServerConfig {
 
 // Load configuration
 function loadConfig(): ServerConfig {
-  // Try to load from config file first
-  const configPath = path.join(process.cwd(), '.obsidian-mcp.json');
+  // Try to load from config file in MCP server directory
+  const configPath = path.join(path.dirname(new URL(import.meta.url).pathname), '.obsidian-mcp.json');
   try {
     const configData = require('fs').readFileSync(configPath, 'utf-8');
     const config = JSON.parse(configData);

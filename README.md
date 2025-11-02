@@ -70,7 +70,7 @@ The MCP server supports multiple vaults for search operations while maintaining 
 
 ### Option 1: Configuration File (Recommended)
 
-Create a `.obsidian-mcp.json` file in the working directory where you run Claude Code:
+Create a `.obsidian-mcp.json` file in the obsidian-mcp-server directory:
 
 ```json
 {
@@ -91,7 +91,7 @@ Create a `.obsidian-mcp.json` file in the working directory where you run Claude
 }
 ```
 
-See `.obsidian-mcp.json.example` for a template.
+This config file is automatically discovered by the MCP server regardless of which directory Claude Code is launched from. See `.obsidian-mcp.json.example` for a template.
 
 ### Option 2: Environment Variables
 

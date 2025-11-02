@@ -1,0 +1,12 @@
+{
+  "primaryVault": {
+    "path": "/Users/jsedwick/Documents/Obsidian/Claude/Claude/",
+    "name": "Claude Vault"
+  },
+  "secondaryVaults": [
+    {
+      "path": "/Users/jsedwick/Documents/Obsidian/Work/",
+      "name": "Work Vault"
+    }
+  ]
+}
