@@ -152,6 +152,11 @@ interface EmbeddingConfig {
   semanticWeight: number; // 0-1, how much weight semantic search gets (rest goes to keyword)
 }
 
+interface EmbeddingToggleConfig {
+  enabled: boolean;
+  lastModified: string;
+}
+
 class ObsidianMCPServer {
   private server: Server;
   private config: ServerConfig;
@@ -167,6 +172,7 @@ class ObsidianMCPServer {
   private embeddingCache: Map<string, EmbeddingCacheEntry> = new Map();
   private extractor: any = null;
   private embeddingInitPromise: Promise<void> | null = null;
+  private embeddingToggleFile: string = '';
 
   constructor() {
     this.config = CONFIG;
@@ -191,8 +197,14 @@ class ObsidianMCPServer {
       cacheDirs.set(vault.path, path.join(vault.path, '.embedding-cache'));
     }
 
+    this.embeddingToggleFile = path.join(
+      this.config.primaryVault.path,
+      '.embedding-toggle.json'
+    );
+
+    // Try to load embedding state from toggle file, fallback to env var
     this.embeddingConfig = {
-      enabled: process.env.ENABLE_EMBEDDINGS !== 'false', // Default: enabled
+      enabled: this.loadEmbeddingToggleState(),
       modelName: 'Xenova/all-MiniLM-L6-v2',
       cacheDirs: cacheDirs,
       semanticWeight: 0.6, // 60% semantic, 40% keyword
@@ -297,6 +309,9 @@ class ObsidianMCPServer {
 
           case 'record_commit':
             return await this.recordCommit(args as { repo_path: string; commit_hash: string });
+
+          case 'toggle_embeddings':
+            return await this.toggleEmbeddings(args as { enabled?: boolean });
 
           default:
             throw new Error(`Unknown tool: ${name}`);
@@ -510,6 +525,67 @@ class ObsidianMCPServer {
     });
 
     return embedding;
+  }
+
+  private loadEmbeddingToggleState(): boolean {
+    // Try to load from toggle file first
+    try {
+      if (require('fs').existsSync(this.embeddingToggleFile)) {
+        const data = require('fs').readFileSync(this.embeddingToggleFile, 'utf-8');
+        const config: EmbeddingToggleConfig = JSON.parse(data);
+        return config.enabled;
+      }
+    } catch (error) {
+      // Fall through to env var
+    }
+
+    // Fall back to environment variable (default: enabled)
+    return process.env.ENABLE_EMBEDDINGS !== 'false';
+  }
+
+  private async saveEmbeddingToggleState(enabled: boolean): Promise<void> {
+    const config: EmbeddingToggleConfig = {
+      enabled,
+      lastModified: new Date().toISOString(),
+    };
+
+    try {
+      await fs.writeFile(this.embeddingToggleFile, JSON.stringify(config, null, 2));
+    } catch (error) {
+      console.error('[Embedding] Failed to save toggle state:', error);
+      throw new Error(`Failed to save embedding toggle state: ${error}`);
+    }
+  }
+
+  private async toggleEmbeddings(args: { enabled?: boolean }): Promise<any> {
+    // If no explicit state provided, toggle current state
+    const newState = args.enabled !== undefined ? args.enabled : !this.embeddingConfig.enabled;
+
+    // Update in-memory config
+    this.embeddingConfig.enabled = newState;
+
+    // Save to file
+    await this.saveEmbeddingToggleState(newState);
+
+    // If disabling, reset the extractor
+    if (!newState) {
+      this.extractor = null;
+      this.embeddingInitPromise = null;
+      // Clear cache to prevent stale embeddings
+      this.embeddingCache.clear();
+    }
+
+    const status = newState ? 'enabled' : 'disabled';
+    const action = newState ? 'enabled (will generate on next search)' : 'disabled (using keyword search only)';
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `Embeddings ${action}\n\nConfiguration saved to: ${this.embeddingToggleFile}\n\nCurrent state: ${status}`,
+        },
+      ],
+    };
   }
 
   // ==================== End Embedding Methods ====================
@@ -851,6 +927,19 @@ class ObsidianMCPServer {
             },
           },
           required: ['repo_path', 'commit_hash'],
+        },
+      },
+      {
+        name: 'toggle_embeddings',
+        description: 'Toggle the embedding cache on or off. Embeddings are used for semantic search in search_vault. Easily toggle without restarting the server.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            enabled: {
+              type: 'boolean',
+              description: 'Optional: true to enable, false to disable. If not provided, toggles current state.',
+            },
+          },
         },
       },
     ];

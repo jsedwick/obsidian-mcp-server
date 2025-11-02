@@ -186,7 +186,7 @@ The `search_vault` tool uses a hybrid approach combining keyword matching with s
 
 **Configuration:**
 - Enabled by default
-- Disable with: `ENABLE_EMBEDDINGS=false`
+- Disable with: `ENABLE_EMBEDDINGS=false` environment variable
 - Cache location: `.embedding-cache/embeddings.json` in your vault
 - Gracefully falls back to keyword-only search if embeddings fail
 
@@ -194,6 +194,19 @@ The `search_vault` tool uses a hybrid approach combining keyword matching with s
 - Find relevant content even with different wording
 - Understand semantic relationships between concepts
 - Faster, more accurate context retrieval
+
+**Toggle Embeddings On/Off:**
+
+Use the `toggle_embeddings` tool to easily enable or disable semantic search without restarting:
+
+```
+toggle_embeddings - Enable/disable semantic search
+Enabled: true/false (toggle current state if not provided)
+Saves configuration to: .embedding-toggle.json in your vault
+Effect: Immediate - no server restart needed
+```
+
+This is useful if you're experiencing issues with the embedding cache or want to test search quality with keyword-only mode. The toggle state is persisted in your vault, so your preference is remembered across restarts.
 
 ### Improved Search Ranking
 
@@ -447,12 +460,28 @@ Working on implementing user authentication system for the API.
 - Semantic search results referenced
 - Cross-references to projects and commits
 
-## Environment Variables
+## Configuration
+
+### Environment Variables
 
 - `OBSIDIAN_VAULT_PATH`: Path to your Obsidian vault (required)
 - `ENABLE_EMBEDDINGS`: Enable semantic search with embeddings (default: `true`)
   - Set to `false` to disable and use keyword-only search
   - Useful if you prefer faster searches or have limited system resources
+  - Note: `toggle_embeddings` tool overrides this setting at runtime
+
+### Embedding Toggle Configuration
+
+The embedding toggle state is saved to `.embedding-toggle.json` in your vault:
+
+```json
+{
+  "enabled": true,
+  "lastModified": "2025-11-02T14:30:00.000Z"
+}
+```
+
+This file is automatically created and updated by the `toggle_embeddings` tool. You can also manually edit it to change the embedding state without restarting the server.
 
 ## Development
 
