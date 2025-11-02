@@ -50,9 +50,9 @@ Claude will automatically:
 **You:** "Start a new session about building an authentication system"
 
 **Claude:** *Automatically calls `start_session` with topic "authentication system"*
-- Creates `sessions/2025-10-28_14-30-00_authentication-system.md`
-- Searches for past sessions about authentication
-- References relevant topic pages
+- Creates `sessions/2025-11/2025-11-01_authentication-system.md` (organized by month)
+- Searches for past sessions about authentication using semantic search
+- References relevant topic pages and decisions
 
 **You:** "I think we should use JWT tokens with refresh token rotation"
 
@@ -107,6 +107,8 @@ To verify the server is working:
 1. Check Claude Code logs for MCP server connection messages
 2. Ask Claude Code: "Can you search my Obsidian vault?"
 3. If Claude responds with tool information, it's working!
+4. Start a conversation and check `sessions/2025-11/` (or current month) for a new session file
+5. Ask Claude: "What sessions have we worked on?" to test the `/sessions` slash command
 
 ## Troubleshooting
 
@@ -128,17 +130,41 @@ To verify the server is working:
 2. Check that files have .md extension
 3. Verify vault path is correct
 
+## Advanced Features
+
+Once you have the basics running, explore these powerful capabilities:
+
+### Git Integration
+Your sessions automatically track code changes and detect relevant Git repositories:
+- **File Tracking**: Records which files you edited during a session
+- **Repository Detection**: Automatically finds repos related to your work
+- **Commit Linking**: Links sessions to Git commits with full context
+- **Project Pages**: Creates organized project documentation in Obsidian
+
+### Semantic Search
+Find past discussions with AI-powered understanding:
+- **Embedding-Based Search**: Uses local AI (Xenova/all-MiniLM) for semantic understanding
+- **Hybrid Ranking**: Combines semantic similarity with keyword matching
+- **Fast Performance**: ~30s first search, <1s for cached searches
+- **No API Calls**: All processing happens locally
+
+### Session Organization
+Sessions are automatically organized by month:
+- **Monthly Folders**: `sessions/2025-10/`, `sessions/2025-11/`, etc.
+- **Easy Navigation**: Find sessions from specific time periods instantly
+- **Scalable**: Keeps vault organized even with hundreds of conversations
+
 ## Next Steps
 
 Once running, explore the full capabilities:
 
-- **Context Persistence**: Every conversation is saved
-- **Smart Search**: Find past discussions instantly  
-- **Knowledge Building**: Create interconnected topic pages
-- **Decision Tracking**: Maintain ADRs automatically
-- **Obsidian Integration**: Open vault in Obsidian anytime
+- **Context Persistence**: Every conversation is saved automatically
+- **Smart Search**: Find past discussions with semantic understanding
+- **Knowledge Building**: Create interconnected topic pages and decisions
+- **Git Integration**: Track code changes and link to commits
+- **Project Management**: Organize work by repository
 
-Check out `README.md` for complete documentation!
+Check out `README.md` for complete documentation and `ARCHITECTURE.md` for system design!
 
 ## Tips for Best Results
 
