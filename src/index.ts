@@ -1420,7 +1420,7 @@ ${args.topic ? `Working on: ${args.topic}` : 'New conversation session started.'
         .slice(0, 3);
 
       return {
-        file: path.join(dir, relPath),
+        file: absolutePath || path.join(dir, relPath), // Use absolute path when available
         matches: matchingLines,
         date: fileDate,
         score: finalScore,
