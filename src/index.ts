@@ -7,6 +7,7 @@ import {
   Tool,
 } from '@modelcontextprotocol/sdk/types.js';
 import fs from 'fs/promises';
+import fssync from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { exec } from 'child_process';
@@ -35,7 +36,7 @@ function loadConfig(): ServerConfig {
   // Try to load from config file in MCP server directory
   const configPath = path.join(path.dirname(new URL(import.meta.url).pathname), '.obsidian-mcp.json');
   try {
-    const configData = require('fs').readFileSync(configPath, 'utf-8');
+    const configData = fssync.readFileSync(configPath, 'utf-8');
     const config = JSON.parse(configData);
 
     // Validate config structure
