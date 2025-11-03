@@ -267,7 +267,7 @@ class ObsidianMCPServer {
             return await this.createTopicPage(args as { topic: string; content: string });
           
           case 'create_decision':
-            return await this.createDecision(args as { title: string; content: string; context?: string });
+            return await this.createDecision(args as { title: string; content: string; context?: string; force?: boolean });
           
           case 'update_topic_page':
             return await this.updateTopicPage(args as { topic: string; content: string; append?: boolean });
@@ -664,7 +664,18 @@ class ObsidianMCPServer {
       },
       {
         name: 'create_topic_page',
-        description: 'Create a new topic page in the topics/ directory. Use this for significant technical concepts or areas that will be referenced multiple times.',
+        description: `Create a technical reference page in topics/ directory.
+
+USE FOR:
+- Technical implementation details, architecture explanations, algorithms
+- How-to guides, troubleshooting procedures, setup instructions
+- System behavior documentation and API references
+- Bug fix summaries, lessons learned, and design patterns
+
+DO NOT USE FOR:
+- Strategic or organizational decisions (use create_decision instead)
+- Git repository tracking (use create_project_page instead)
+- Conversation logs (use save_session_note instead)`,
         inputSchema: {
           type: 'object',
           properties: {
@@ -682,7 +693,22 @@ class ObsidianMCPServer {
       },
       {
         name: 'create_decision',
-        description: 'Create a new architectural decision record in the decisions/ directory.',
+        description: `Create an architectural decision record (ADR) in decisions/ directory.
+
+USE FOR:
+- Strategic architectural choices between alternatives (flat vs hierarchical)
+- Technology selection decisions (which library, framework, or approach)
+- Organizational decisions with tradeoffs (process changes, standards)
+- Major design decisions that affect system structure or behavior
+
+DO NOT USE FOR:
+- Bug fixes or implementation details (use create_topic_page instead)
+- General technical documentation (use create_topic_page instead)
+- How-to guides or troubleshooting (use create_topic_page instead)
+
+A decision should have: context, multiple alternatives considered, rationale for choice, and consequences.
+
+NOTE: If your title contains implementation keywords (fix, bug, implement, etc.), the tool will suggest using create_topic_page instead. Use force: true if the decision is genuinely strategic despite the keywords (e.g., decision to fix architecture that also includes implementation guide).`,
         inputSchema: {
           type: 'object',
           properties: {
@@ -697,6 +723,10 @@ class ObsidianMCPServer {
             context: {
               type: 'string',
               description: 'Optional context for the decision',
+            },
+            force: {
+              type: 'boolean',
+              description: 'Set to true to bypass keyword detection warnings. Use when title contains implementation keywords but the decision is genuinely strategic (e.g., "Implement Feature X: considered approach A vs B, chose B")',
             },
           },
           required: ['title', 'content'],
@@ -1487,8 +1517,34 @@ ${args.content}
     };
   }
 
-  private async createDecision(args: { title: string; content: string; context?: string }) {
+  private async createDecision(args: { title: string; content: string; context?: string; force?: boolean }) {
     await this.ensureVaultStructure();
+
+    // Keyword detection: warn if title suggests this should be a topic instead
+    const topicKeywords = ['fix', 'bug', 'issue', 'implement', 'how', 'guide', 'setup', 'error', 'crash', 'problem'];
+    const titleLower = args.title.toLowerCase();
+    const matchedTopicKeywords = topicKeywords.filter(kw => titleLower.includes(kw));
+
+    if (matchedTopicKeywords.length > 0 && !args.force) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `⚠️  This title suggests it might be better suited as a topic page, not a decision.
+
+Title contains keywords typical of topics: ${matchedTopicKeywords.join(', ')}
+
+DECISIONS are for strategic choices with alternatives considered (e.g., "Flat vs Hierarchical Organization").
+TOPICS are for implementation details, bug fixes, and how-to guides (e.g., "Fix search algorithm bug").
+
+If you still want to create this as a decision, provide context that explains the strategic choice and alternatives.
+Otherwise, use create_topic_page instead.
+
+To proceed anyway, call create_decision again with force: true.`,
+          },
+        ],
+      };
+    }
 
     const decisionsDir = path.join(VAULT_PATH, 'decisions');
     const files = await fs.readdir(decisionsDir);
