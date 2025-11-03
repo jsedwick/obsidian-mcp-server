@@ -1327,6 +1327,9 @@ ${args.topic ? `Working on: ${args.topic}` : 'New conversation session started.'
       const matches = contentLower.match(termRegex) || [];
       const termCount = matches.length;
 
+      // Check if term matches filename first
+      const matchesFilename = fileName.toLowerCase().includes(term);
+
       if (termCount > 0) {
         hasMatch = true;
 
@@ -1352,9 +1355,6 @@ ${args.topic ? `Working on: ${args.topic}` : 'New conversation session started.'
           keywordScore += 3;
         }
 
-        // Filename matching
-        if (fileName.toLowerCase().includes(term)) keywordScore += 5;
-
         // Recency
         if (fileDate) {
           const age = this.getFileAgeDays(fileDate);
@@ -1362,6 +1362,12 @@ ${args.topic ? `Working on: ${args.topic}` : 'New conversation session started.'
           else if (age < 30) keywordScore += 2;
           else if (age < 90) keywordScore += 1;
         }
+      }
+
+      // Filename matching - contributes to hasMatch even if content doesn't match
+      if (matchesFilename) {
+        hasMatch = true;
+        keywordScore += 5;
       }
     }
 
