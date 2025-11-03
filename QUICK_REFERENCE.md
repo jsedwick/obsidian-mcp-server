@@ -60,6 +60,11 @@ npm run build
 | `approve_topic_update` | Apply/dismiss review |
 | `archive_topic` | Move to archive |
 
+### Search Configuration
+| Tool | Purpose |
+|------|---------|
+| `toggle_embeddings` | Enable/disable semantic search |
+
 ### Git Integration
 | Tool | Purpose |
 |------|---------|
@@ -136,10 +141,11 @@ Claude: [Creates topics/mcp-servers.md]
 - [ ] Vault directories created (sessions, topics, decisions, projects, archive)
 - [ ] Config.json has correct paths
 - [ ] `npm test` passes
-- [ ] Claude Code recognizes server (19 tools available)
+- [ ] Claude Code recognizes server (20 tools available)
 - [ ] Session files being created
 - [ ] Search finds content
 - [ ] Git integration works (if applicable)
+- [ ] Embeddings toggle works
 
 ## 📊 Storage
 

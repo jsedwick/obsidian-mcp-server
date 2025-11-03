@@ -78,6 +78,35 @@ Use this checklist to track your progress implementing the Obsidian MCP Server.
 - [ ] Closed a session properly
 - [ ] Verified session status changed to "completed"
 
+## ✅ Semantic Search & Embeddings
+
+- [ ] Verified semantic search is working (hybrid ranking)
+- [ ] Tested toggling embeddings on/off with `toggle_embeddings`
+- [ ] Confirmed `.embedding-toggle.json` is created
+- [ ] Verified keyword-only search still works
+- [ ] Tested embedding cache is being created (`.embedding-cache/`)
+- [ ] Performance: First search ~30s, subsequent <1s
+
+## ✅ Multi-Vault Support
+
+- [ ] Created `.obsidian-mcp.json` configuration file
+- [ ] Configured primary vault
+- [ ] Added secondary vault(s)
+- [ ] Server finds config file automatically
+- [ ] Search results show which vault they come from
+- [ ] Can search across multiple vaults
+
+## ✅ Git Integration
+
+- [ ] Worked on files in a Git repository
+- [ ] Closed session and saw repository detection
+- [ ] Used `link_session_to_repository` to link session
+- [ ] Project page was created in `projects/` directory
+- [ ] Created a Git commit
+- [ ] Used `record_commit` to record commit with diff
+- [ ] Verified commit page shows full diff and session link
+- [ ] Session metadata includes repository information
+
 ## ✅ Customization (Optional)
 
 - [ ] Reviewed session template in src/index.ts

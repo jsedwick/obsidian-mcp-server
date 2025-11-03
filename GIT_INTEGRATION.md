@@ -277,12 +277,49 @@ Generated via Claude Code Session
 
 ## Configuration
 
-The MCP server uses these environment variables:
+The MCP server supports two configuration methods:
+
+### Configuration File (Recommended)
+
+Create a `.obsidian-mcp.json` file (automatically discovered):
+
+```json
+{
+  "primaryVault": {
+    "path": "/Users/yourusername/Documents/Obsidian/MainVault",
+    "name": "Main Vault"
+  },
+  "secondaryVaults": [
+    {
+      "path": "/Users/yourusername/Documents/Obsidian/WorkVault",
+      "name": "Work Vault"
+    }
+  ]
+}
+```
+
+**Benefits:**
+- Automatically discovered from multiple locations
+- No restart needed to apply changes
+- Supports multi-vault setups
+- File locations checked in order:
+  1. Project directory: `./obsidian-mcp-server/.obsidian-mcp.json`
+  2. Home directory: `~/.obsidian-mcp.json`
+  3. Config directory: `~/.config/.obsidian-mcp.json`
+
+### Environment Variables
+
+Alternatively, use environment variables:
 
 ```bash
-OBSIDIAN_VAULT_PATH=/path/to/your/vault  # Required
-PWD=/current/working/directory           # Auto-detected
+OBSIDIAN_VAULT_PATH=/path/to/primary/vault  # Required if no config file
+OBSIDIAN_VAULT_NAME=Main Vault              # Optional display name
+OBSIDIAN_SECONDARY_VAULTS=/path/to/vault2,/path/to/vault3  # Optional
+PWD=/current/working/directory              # Auto-detected
+ENABLE_EMBEDDINGS=true                      # Optional (default: true)
 ```
+
+**Note:** Configuration file takes precedence over environment variables.
 
 ## Auto-Detection on Session Close
 

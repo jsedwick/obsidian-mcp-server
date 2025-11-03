@@ -24,6 +24,7 @@ graph TB
 
         subgraph "Search & Retrieval"
             T3[search_vault]
+            T20[toggle_embeddings]
             SE[Semantic Engine<br/>+ Keyword Search]
         end
 
@@ -75,11 +76,13 @@ graph TB
     MCP --> T12
     MCP --> T13
     MCP --> T14
+    MCP --> T20
 
     T1 -.->|Creates| Sessions
     T2 -.->|Updates| Sessions
     T3 -.->|Searches| Sessions & Topics & Decisions
     T3 -->|Uses| SE
+    T20 -.->|Controls| SE
     SE -->|Caches| Cache
     SE -->|Reads| Cache
     T4 -.->|Creates| Topics

@@ -29,11 +29,25 @@ Then restart Claude Code and start chatting!
 - Graph view of relationships
 - Full-text search in Obsidian
 
+### 🧠 Semantic Search with Smart Controls
+- **AI-Powered Understanding**: Uses local embeddings (Xenova/all-MiniLM-L6-v2)
+- **Hybrid Ranking**: 60% semantic similarity + 40% keyword matching
+- **Toggle On/Off**: Enable/disable embeddings without restart
+- **Efficient Caching**: ~30s first search, <1s for cached searches
+- **No API Calls**: All processing happens locally
+
+### 📦 Multi-Vault Support
+- **Primary Vault**: Write operations
+- **Secondary Vaults**: Read-only search targets
+- **Auto-Discovery**: Configuration file automatically discovered
+- **Unified Search**: Results indicate which vault each comes from
+
 ### 🔧 Git Integration
 - **Repository Detection**: Automatically detect relevant Git repos from file access
 - **Commit Tracking**: Record commits with full diffs and link to sessions
 - **Project Pages**: Organize code work by repository
 - **File Access Tracking**: Track which files are read/edited/created
+- **Auto-Detection**: Detects repos when closing sessions
 
 ### 📝 Topic Review System
 - **Stale Topic Detection**: Find topics that haven't been reviewed

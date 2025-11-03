@@ -70,7 +70,13 @@ The MCP server supports multiple vaults for search operations while maintaining 
 
 ### Option 1: Configuration File (Recommended)
 
-Create a `.obsidian-mcp.json` file in the obsidian-mcp-server directory:
+Create a `.obsidian-mcp.json` file in any of these locations (checked in order):
+
+1. **Project directory**: `./obsidian-mcp-server/.obsidian-mcp.json`
+2. **User home directory**: `~/.obsidian-mcp.json`
+3. **User config directory**: `~/.config/.obsidian-mcp.json` (Linux/macOS)
+
+Example configuration:
 
 ```json
 {
@@ -91,7 +97,13 @@ Create a `.obsidian-mcp.json` file in the obsidian-mcp-server directory:
 }
 ```
 
-This config file is automatically discovered by the MCP server regardless of which directory Claude Code is launched from. See `.obsidian-mcp.json.example` for a template.
+**Benefits of config file:**
+- ✅ Works from any directory (automatically discovered)
+- ✅ Persisted across Claude Code restarts
+- ✅ Easy to share or version control
+- ✅ Overrides environment variables
+
+See `.obsidian-mcp.json.example` for a template.
 
 ### Option 2: Environment Variables
 
@@ -206,7 +218,28 @@ Saves configuration to: .embedding-toggle.json in your vault
 Effect: Immediate - no server restart needed
 ```
 
-This is useful if you're experiencing issues with the embedding cache or want to test search quality with keyword-only mode. The toggle state is persisted in your vault, so your preference is remembered across restarts.
+**Parameters:**
+- `enabled` (optional boolean)
+  - `true`: Enable semantic search with embeddings
+  - `false`: Disable embeddings, use keyword-only search
+  - `undefined`: Toggle current state
+
+**Use Cases:**
+- **Troubleshooting**: If embeddings are causing issues, disable them instantly
+- **Testing**: Compare keyword-only vs semantic search quality
+- **Performance**: Reduce overhead on slower systems
+- **First-run**: Speed up initial searches before embeddings cache builds
+
+**Storage:**
+The toggle state is persisted in `.embedding-toggle.json`:
+```json
+{
+  "enabled": true,
+  "lastModified": "2025-11-02T14:30:00.000Z"
+}
+```
+
+The toggle state is remembered across restarts, so your preference persists. You can also manually edit this file if needed.
 
 ### Improved Search Ranking
 
@@ -310,6 +343,13 @@ Updates: Topic with new content and review history
 Topic: "Legacy API v1"
 Reason: "API deprecated and removed"
 Moves: topics/legacy-api-v1.md to archive/topics/
+```
+
+**toggle_embeddings** - Enable/disable semantic search on the fly
+```
+Enabled: true/false (toggle if not specified)
+Effect: Immediate without server restart
+Saves: Configuration to .embedding-toggle.json in vault
 ```
 
 ### Git Integration

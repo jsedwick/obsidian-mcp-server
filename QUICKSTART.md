@@ -134,19 +134,30 @@ To verify the server is working:
 
 Once you have the basics running, explore these powerful capabilities:
 
+### Semantic Search with Smart Controls
+Find past discussions with AI-powered understanding:
+- **Embedding-Based Search**: Uses local AI (Xenova/all-MiniLM) for semantic understanding
+- **Hybrid Ranking**: Combines semantic similarity with keyword matching
+- **Fast Performance**: ~30s first search, <1s for cached searches
+- **No API Calls**: All processing happens locally
+- **Toggle On/Off**: Use `toggle_embeddings` to enable/disable without restart
+  - Useful for testing, troubleshooting, or reducing system overhead
+  - State persists across restarts
+
 ### Git Integration
 Your sessions automatically track code changes and detect relevant Git repositories:
 - **File Tracking**: Records which files you edited during a session
 - **Repository Detection**: Automatically finds repos related to your work
 - **Commit Linking**: Links sessions to Git commits with full context
 - **Project Pages**: Creates organized project documentation in Obsidian
+- **Auto-Detection**: `close_session` automatically detects repositories
 
-### Semantic Search
-Find past discussions with AI-powered understanding:
-- **Embedding-Based Search**: Uses local AI (Xenova/all-MiniLM) for semantic understanding
-- **Hybrid Ranking**: Combines semantic similarity with keyword matching
-- **Fast Performance**: ~30s first search, <1s for cached searches
-- **No API Calls**: All processing happens locally
+### Multi-Vault Search
+Search across multiple Obsidian vaults while keeping one as primary:
+- **Primary Vault**: Write operations go here
+- **Secondary Vaults**: Read-only search targets
+- **Config File**: Automatically discovered (no restart needed)
+- **Unified Results**: Search indicates which vault each result comes from
 
 ### Session Organization
 Sessions are automatically organized by month:

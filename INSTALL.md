@@ -136,13 +136,41 @@ EOF
 
 ## Configuration
 
-### Environment Variables
+### Multi-Vault Support (Recommended)
 
-The server uses one required environment variable:
+The server supports searching across multiple vaults while keeping one as the primary write location.
 
-- `OBSIDIAN_VAULT_PATH`: Absolute path to your Obsidian vault
+#### Configuration File Method (Automatic Discovery)
 
-This is set in the Claude Code configuration file:
+Create a `.obsidian-mcp.json` file in one of these locations (checked in order):
+1. Project directory: `./obsidian-mcp-server/.obsidian-mcp.json`
+2. Home directory: `~/.obsidian-mcp.json`
+3. Config directory: `~/.config/.obsidian-mcp.json`
+
+Example:
+```json
+{
+  "primaryVault": {
+    "path": "/Users/yourusername/Documents/Obsidian/MainVault",
+    "name": "Main Vault"
+  },
+  "secondaryVaults": [
+    {
+      "path": "/Users/yourusername/Documents/Obsidian/WorkVault",
+      "name": "Work Vault"
+    }
+  ]
+}
+```
+
+Benefits:
+- ✅ Automatically discovered (no restart needed)
+- ✅ Works from any directory
+- ✅ Persists configuration
+
+#### Environment Variable Method
+
+Alternatively, set environment variables in Claude Code config:
 
 ```json
 {
@@ -151,12 +179,27 @@ This is set in the Claude Code configuration file:
       "command": "node",
       "args": ["/path/to/dist/index.js"],
       "env": {
-        "OBSIDIAN_VAULT_PATH": "/path/to/vault"
+        "OBSIDIAN_VAULT_PATH": "/path/to/primary/vault",
+        "OBSIDIAN_VAULT_NAME": "Main Vault",
+        "OBSIDIAN_SECONDARY_VAULTS": "/path/to/vault2,/path/to/vault3"
       }
     }
   }
 }
 ```
+
+### Environment Variables
+
+The server supports these optional environment variables:
+
+- `OBSIDIAN_VAULT_PATH`: Absolute path to your primary Obsidian vault (required if no config file)
+- `OBSIDIAN_VAULT_NAME`: Display name for primary vault
+- `OBSIDIAN_SECONDARY_VAULTS`: Comma-separated list of secondary vault paths
+- `ENABLE_EMBEDDINGS`: Enable semantic search (default: `true`)
+  - Set to `false` to use keyword-only search
+  - Can be toggled at runtime with `toggle_embeddings` tool
+
+Note: Configuration file takes precedence over environment variables.
 
 ### Multiple Claude Code Profiles
 
@@ -336,7 +379,22 @@ Ask Claude Code these test questions:
    cat ~/obsidian-vault/sessions/*.md
    ```
 
-3. **Test with known content**:
+3. **Test with keyword-only search**:
+   If semantic search seems broken, disable embeddings:
+   ```
+   Ask Claude: "Disable embeddings"
+   Or call: toggle_embeddings(enabled: false)
+   ```
+   Then retry your search. If it works with keyword-only, embeddings cache may be corrupted.
+
+4. **Reset embedding cache**:
+   ```bash
+   rm -rf ~/obsidian-vault/.embedding-cache
+   rm ~/obsidian-vault/.embedding-toggle.json
+   ```
+   Then re-enable embeddings: `toggle_embeddings(enabled: true)`
+
+5. **Test with known content**:
    Create a test file and search for it:
    ```bash
    echo "test content xyz123" > ~/obsidian-vault/topics/test.md
