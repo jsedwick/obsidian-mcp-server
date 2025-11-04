@@ -314,6 +314,9 @@ class ObsidianMCPServer {
           case 'toggle_embeddings':
             return await this.toggleEmbeddings(args as { enabled?: boolean });
 
+          case 'vault_custodian':
+            return await this.vaultCustodian();
+
           default:
             throw new Error(`Unknown tool: ${name}`);
         }
@@ -971,6 +974,14 @@ NOTE: If your title contains implementation keywords (fix, bug, implement, etc.)
               description: 'Optional: true to enable, false to disable. If not provided, toggles current state.',
             },
           },
+        },
+      },
+      {
+        name: 'vault_custodian',
+        description: 'Verify vault integrity by checking file organization, validating links, and reorganizing/relinking files as necessary. Ensures all files are in logical locations and properly connected.',
+        inputSchema: {
+          type: 'object',
+          properties: {},
         },
       },
     ];
@@ -2825,6 +2836,234 @@ ${diff}
         },
       ],
     };
+  }
+
+  private async vaultCustodian() {
+    await this.ensureVaultStructure();
+
+    const issues: string[] = [];
+    const fixes: string[] = [];
+    const warnings: string[] = [];
+
+    try {
+      // Check 1: Verify sessions are in the correct directory
+      const sessionsDir = path.join(VAULT_PATH, 'sessions');
+      const sessionFiles = await this.findMarkdownFiles(sessionsDir);
+
+      for (const file of sessionFiles) {
+        const content = await fs.readFile(file, 'utf-8');
+        const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
+
+        if (!frontmatterMatch) {
+          issues.push(`Session file missing frontmatter: ${path.relative(VAULT_PATH, file)}`);
+          continue;
+        }
+
+        // Check if session file is in date-organized subdirectory
+        const relativePath = path.relative(sessionsDir, file);
+        const dateMatch = relativePath.match(/^(\d{4})-(\d{2})\//);
+        const filenameDate = path.basename(file).match(/^(\d{4})-(\d{2})-(\d{2})/);
+
+        if (filenameDate) {
+          const expectedDir = path.join(sessionsDir, `${filenameDate[1]}-${filenameDate[2]}`);
+          const actualDir = path.dirname(file);
+
+          if (actualDir !== expectedDir) {
+            issues.push(`Session in wrong directory: ${path.relative(VAULT_PATH, file)}`);
+
+            // Move to correct directory
+            await fs.mkdir(expectedDir, { recursive: true });
+            const newPath = path.join(expectedDir, path.basename(file));
+            await fs.rename(file, newPath);
+            fixes.push(`Moved ${path.relative(VAULT_PATH, file)} to ${path.relative(VAULT_PATH, newPath)}`);
+          }
+        }
+      }
+
+      // Check 2: Verify topics are properly formatted
+      const topicsDir = path.join(VAULT_PATH, 'topics');
+      const topicFiles = await this.findMarkdownFiles(topicsDir);
+
+      for (const file of topicFiles) {
+        const content = await fs.readFile(file, 'utf-8');
+        const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
+
+        if (!frontmatterMatch) {
+          issues.push(`Topic file missing frontmatter: ${path.relative(VAULT_PATH, file)}`);
+
+          // Add basic frontmatter
+          const title = path.basename(file, '.md');
+          const today = new Date().toISOString().split('T')[0];
+          const newContent = `---
+title: ${title}
+created: ${today}
+tags: []
+---
+
+${content}`;
+          await fs.writeFile(file, newContent);
+          fixes.push(`Added frontmatter to ${path.relative(VAULT_PATH, file)}`);
+        }
+      }
+
+      // Check 3: Verify project structure
+      const projectsDir = path.join(VAULT_PATH, 'projects');
+      try {
+        const projectDirs = await fs.readdir(projectsDir);
+
+        for (const projectDir of projectDirs) {
+          const projectPath = path.join(projectsDir, projectDir);
+          const stat = await fs.stat(projectPath);
+
+          if (!stat.isDirectory()) continue;
+
+          const projectFile = path.join(projectPath, 'project.md');
+          try {
+            await fs.access(projectFile);
+          } catch {
+            issues.push(`Project directory missing project.md: projects/${projectDir}`);
+            warnings.push(`Consider creating a project.md file in projects/${projectDir}`);
+          }
+
+          // Check for commits directory
+          const commitsDir = path.join(projectPath, 'commits');
+          try {
+            const commitStat = await fs.stat(commitsDir);
+            if (commitStat.isDirectory()) {
+              const commits = await fs.readdir(commitsDir);
+              if (commits.length === 0) {
+                warnings.push(`Empty commits directory: projects/${projectDir}/commits`);
+              }
+            }
+          } catch {
+            // No commits directory is fine
+          }
+        }
+      } catch (error) {
+        // No projects directory is fine
+      }
+
+      // Check 4: Validate internal links
+      const allFiles = [
+        ...await this.findMarkdownFiles(sessionsDir),
+        ...await this.findMarkdownFiles(topicsDir),
+        ...await this.findMarkdownFiles(projectsDir),
+      ];
+
+      for (const file of allFiles) {
+        const content = await fs.readFile(file, 'utf-8');
+        const linkRegex = /\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g;
+        let match;
+
+        while ((match = linkRegex.exec(content)) !== null) {
+          const linkPath = match[1];
+
+          // Try to resolve the link
+          const possiblePaths = [
+            path.join(VAULT_PATH, `${linkPath}.md`),
+            path.join(VAULT_PATH, linkPath),
+            path.join(path.dirname(file), `${linkPath}.md`),
+            path.join(path.dirname(file), linkPath),
+          ];
+
+          let found = false;
+          for (const p of possiblePaths) {
+            try {
+              await fs.access(p);
+              found = true;
+              break;
+            } catch {
+              // Continue checking
+            }
+          }
+
+          if (!found) {
+            warnings.push(`Broken link in ${path.relative(VAULT_PATH, file)}: [[${linkPath}]]`);
+          }
+        }
+      }
+
+      // Generate report
+      let report = '# Vault Custodian Report\n\n';
+
+      if (issues.length === 0 && warnings.length === 0) {
+        report += '✅ Vault integrity check passed! No issues found.\n';
+      } else {
+        if (issues.length > 0) {
+          report += `## Issues Found (${issues.length})\n`;
+          for (const issue of issues) {
+            report += `- ❌ ${issue}\n`;
+          }
+          report += '\n';
+        }
+
+        if (fixes.length > 0) {
+          report += `## Fixes Applied (${fixes.length})\n`;
+          for (const fix of fixes) {
+            report += `- ✅ ${fix}\n`;
+          }
+          report += '\n';
+        }
+
+        if (warnings.length > 0) {
+          report += `## Warnings (${warnings.length})\n`;
+          for (const warning of warnings) {
+            report += `- ⚠️  ${warning}\n`;
+          }
+          report += '\n';
+        }
+      }
+
+      report += '\n---\n';
+      report += `**Checked:** ${allFiles.length} files\n`;
+      report += `**Issues:** ${issues.length} found, ${fixes.length} fixed\n`;
+      report += `**Warnings:** ${warnings.length}\n`;
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: report,
+          },
+        ],
+      };
+
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Error during vault integrity check: ${errorMessage}`,
+          },
+        ],
+      };
+    }
+  }
+
+  private async findMarkdownFiles(dir: string): Promise<string[]> {
+    const files: string[] = [];
+
+    try {
+      const entries = await fs.readdir(dir, { withFileTypes: true });
+
+      for (const entry of entries) {
+        const fullPath = path.join(dir, entry.name);
+
+        if (entry.isDirectory()) {
+          // Skip hidden directories and cache directories
+          if (!entry.name.startsWith('.')) {
+            files.push(...await this.findMarkdownFiles(fullPath));
+          }
+        } else if (entry.isFile() && entry.name.endsWith('.md')) {
+          files.push(fullPath);
+        }
+      }
+    } catch (error) {
+      // Directory doesn't exist or can't be read
+    }
+
+    return files;
   }
 
   async run(): Promise<void> {
