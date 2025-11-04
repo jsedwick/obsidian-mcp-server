@@ -60,6 +60,11 @@ npm run build
 | `approve_topic_update` | Apply/dismiss review |
 | `archive_topic` | Move to archive |
 
+### Vault Maintenance
+| Tool | Purpose |
+|------|---------|
+| `vault_custodian` | Check integrity & fix organization |
+
 ### Search Configuration
 | Tool | Purpose |
 |------|---------|
@@ -141,7 +146,7 @@ Claude: [Creates topics/mcp-servers.md]
 - [ ] Vault directories created (sessions, topics, decisions, projects, archive)
 - [ ] Config.json has correct paths
 - [ ] `npm test` passes
-- [ ] Claude Code recognizes server (20 tools available)
+- [ ] Claude Code recognizes server (21 tools available)
 - [ ] Session files being created
 - [ ] Search finds content
 - [ ] Git integration works (if applicable)

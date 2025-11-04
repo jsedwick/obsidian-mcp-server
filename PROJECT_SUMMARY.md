@@ -55,6 +55,12 @@ Then restart Claude Code and start chatting!
 - **Review History**: Track all reviews with timestamps
 - **Archive System**: Move outdated topics to archive
 
+### 🔧 Vault Maintenance
+- **Integrity Checking**: Verify vault organization and structure
+- **Automatic Fixes**: Move misplaced files, add missing frontmatter
+- **Link Validation**: Detect and report broken internal links
+- **Health Reports**: Detailed summaries of issues and fixes
+
 ### 💾 Efficient Storage
 - Text-based: Years of conversations < 50 MB
 - Markdown format: Human-readable, version-controllable
@@ -142,7 +148,7 @@ obsidian-vault/
 
 ## Available Tools (MCP Functions)
 
-The server provides 19 tools to Claude Code:
+The server provides 21 tools to Claude Code:
 
 ### Session Management (4)
 1. **start_session** - Begin a new conversation
@@ -166,12 +172,18 @@ The server provides 19 tools to Claude Code:
 13. **approve_topic_update** - Apply or dismiss review
 14. **archive_topic** - Move topic to archive
 
+### Vault Maintenance (1)
+15. **vault_custodian** - Check integrity & fix organization
+
+### Search Configuration (1)
+16. **toggle_embeddings** - Enable/disable semantic search
+
 ### Git Integration (5)
-15. **track_file_access** - Track files accessed during session
-16. **detect_session_repositories** - Auto-detect relevant Git repos
-17. **link_session_to_repository** - Link session to a repo
-18. **create_project_page** - Create/update project page
-19. **record_commit** - Record Git commit with diff
+17. **track_file_access** - Track files accessed during session
+18. **detect_session_repositories** - Auto-detect relevant Git repos
+19. **link_session_to_repository** - Link session to a repo
+20. **create_project_page** - Create/update project page
+21. **record_commit** - Record Git commit with diff
 
 ## Example Workflow
 
@@ -198,7 +210,7 @@ npm test
 
 This verifies:
 - ✅ MCP server starts correctly
-- ✅ All 10 tools work
+- ✅ All 21 tools are available
 - ✅ Files are created in vault
 - ✅ Search finds content
 - ✅ Session lifecycle works

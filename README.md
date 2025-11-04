@@ -9,6 +9,7 @@ An MCP (Model Context Protocol) server that enables Claude Code to automatically
 - **Topic Pages**: Create and maintain pages for technical concepts
 - **Topic Review System**: Find stale topics, review them, and keep knowledge fresh
 - **Decision Records**: Track architectural decisions with ADR format
+- **Vault Maintenance**: Automatic integrity checking and file organization with vault custodian
 - **Git Integration**: Automatically detect repos, track commits, link code changes to sessions with smart repository detection
 - **Project Tracking**: Create project pages for repositories with commit history
 - **Smart Linking**: Automatic Obsidian-style wiki links between content
@@ -351,6 +352,27 @@ Enabled: true/false (toggle if not specified)
 Effect: Immediate without server restart
 Saves: Configuration to .embedding-toggle.json in vault
 ```
+
+### Vault Maintenance
+
+**vault_custodian** - Verify and maintain vault integrity
+```
+Checks:
+  - Sessions are in date-organized subdirectories (sessions/YYYY-MM/)
+  - Session files have proper frontmatter
+  - Topics have required metadata (title, created, tags)
+  - Project structure is valid (project.md exists)
+  - Internal Obsidian links are not broken
+
+Actions:
+  - Automatically moves misplaced session files to correct directories
+  - Adds missing frontmatter to topic files
+  - Reports broken links for manual review
+
+Returns: Detailed report showing issues found, fixes applied, and warnings
+```
+
+The vault custodian runs comprehensive integrity checks and automatically fixes organizational issues. It's recommended to run this periodically to keep your vault well-organized, especially after bulk imports or manual file operations.
 
 ### Git Integration
 
