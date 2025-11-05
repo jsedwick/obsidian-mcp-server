@@ -2953,6 +2953,55 @@ ${diff}
     };
   }
 
+  /**
+   * Smart filtering for link validation to reduce false positives
+   */
+  private shouldSkipLinkValidation(linkPath: string, content: string, matchIndex: number): boolean {
+    // Skip template variables (e.g., [[sessions/${this.currentSessionId}]])
+    if (linkPath.includes('${')) {
+      return true;
+    }
+
+    // Skip bash conditionals (e.g., [[ "$OSTYPE" == "darwin"* ]])
+    // These start with quotes or $ and aren't wiki links
+    if (linkPath.startsWith('"') || linkPath.startsWith('$')) {
+      return true;
+    }
+
+    // Skip common placeholder patterns used in documentation/examples
+    const placeholderPatterns = [
+      'topic-name',
+      'note-name',
+      'other-topic',
+      'another-topic',
+      'file',
+      'path/to/note',
+      'topic-slug',
+      'sessions/null',  // Common in project files when session_id is null
+    ];
+
+    if (placeholderPatterns.includes(linkPath)) {
+      return true;
+    }
+
+    // Check if the link is inside a code block (triple backticks)
+    // Find all code block boundaries before this match
+    const beforeContent = content.substring(0, matchIndex);
+    const codeBlockMatches = beforeContent.match(/```/g);
+
+    // If odd number of ``` before this point, we're inside a code block
+    if (codeBlockMatches && codeBlockMatches.length % 2 === 1) {
+      return true;
+    }
+
+    // Skip links that look like bash conditions (contain operators)
+    if (linkPath.includes('==') || linkPath.includes('!=') || linkPath.includes('||') || linkPath.includes('&&')) {
+      return true;
+    }
+
+    return false;
+  }
+
   private async vaultCustodian() {
     await this.ensureVaultStructure();
 
@@ -3072,6 +3121,12 @@ ${content}`;
 
         while ((match = linkRegex.exec(content)) !== null) {
           const linkPath = match[1];
+          const matchIndex = match.index;
+
+          // Skip false positives
+          if (this.shouldSkipLinkValidation(linkPath, content, matchIndex)) {
+            continue;
+          }
 
           // Try to resolve the link
           const possiblePaths = [
