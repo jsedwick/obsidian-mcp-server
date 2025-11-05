@@ -6,9 +6,10 @@ An MCP (Model Context Protocol) server that enables Claude Code to automatically
 
 - **Automatic Session Management**: Creates session notes for each conversation, organized by month
 - **Intelligent Search with Semantic Understanding**: Hybrid keyword + embedding-based search using local AI models (no API calls)
+- **AI-Powered Analysis**: Sub-agent integration for topic analysis, auto-tagging, and decision extraction
 - **Topic Pages**: Create and maintain pages for technical concepts
 - **Topic Review System**: Find stale topics, review them, and keep knowledge fresh
-- **Decision Records**: Track architectural decisions with ADR format
+- **Decision Records**: Track architectural decisions with ADR format, with automated extraction from sessions
 - **Vault Maintenance**: Automatic integrity checking and file organization with vault custodian
 - **Git Integration**: Automatically detect repos, track commits, link code changes to sessions with smart repository detection
 - **Project Tracking**: Create project pages for repositories with commit history
@@ -373,6 +374,48 @@ Returns: Detailed report showing issues found, fixes applied, and warnings
 ```
 
 The vault custodian runs comprehensive integrity checks and automatically fixes organizational issues. It's recommended to run this periodically to keep your vault well-organized, especially after bulk imports or manual file operations.
+
+### AI-Powered Analysis
+
+**analyze_topic_content** - Analyze topic content with AI for auto-tagging and insights
+```
+Content: "Topic content to analyze..."
+Topic name: (optional) "Authentication System"
+Context: (optional) "Additional context about the topic"
+
+Returns:
+  - Structured analysis prompt for sub-agent execution
+  - Potential duplicate topics found in vault
+  - Suggestions for tags, summary, key concepts, related topics
+  - Content type categorization
+
+Usage:
+  1. Call analyze_topic_content with your content
+  2. Execute the returned analysis prompt via Claude Code sub-agent
+  3. Use the JSON analysis to enhance topic creation
+```
+
+**extract_decisions_from_session** - Extract architectural decisions from sessions
+```
+Session ID: (optional) "2025-11-05_14-30-00_..." or uses current session
+Content: (optional) Direct content to analyze
+
+Returns:
+  - Structured extraction prompt for sub-agent execution
+  - Instructions for creating ADRs from results
+  - Template for converting decisions to proper ADR format
+
+Workflow:
+  1. Call extract_decisions_from_session on a completed session
+  2. Execute the returned extraction prompt via Claude Code sub-agent
+  3. For each decision found with strategic_level >= 3:
+     - Use create_decision tool to generate ADR
+     - Link back to original session
+
+Only extracts strategic decisions (level 3-5), ignoring tactical details.
+```
+
+These tools leverage Claude Code's sub-agent capabilities for deep content analysis. They generate structured prompts that can be executed via sub-agents to produce AI-powered insights, auto-tagging, and decision extraction.
 
 ### Git Integration
 

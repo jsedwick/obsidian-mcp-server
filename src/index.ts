@@ -317,6 +317,19 @@ class ObsidianMCPServer {
           case 'vault_custodian':
             return await this.vaultCustodian();
 
+          case 'analyze_topic_content':
+            return await this.analyzeTopicContent(args as {
+              content: string;
+              topic_name?: string;
+              context?: string;
+            });
+
+          case 'extract_decisions_from_session':
+            return await this.extractDecisionsFromSession(args as {
+              session_id?: string;
+              content?: string;
+            });
+
           default:
             throw new Error(`Unknown tool: ${name}`);
         }
@@ -982,6 +995,45 @@ NOTE: If your title contains implementation keywords (fix, bug, implement, etc.)
         inputSchema: {
           type: 'object',
           properties: {},
+        },
+      },
+      {
+        name: 'analyze_topic_content',
+        description: 'Analyze topic content using AI to generate tags, summary, find related topics, and detect duplicates. Returns structured analysis that can be used to enhance topic creation.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            content: {
+              type: 'string',
+              description: 'The topic content to analyze',
+            },
+            topic_name: {
+              type: 'string',
+              description: 'Optional topic name for better context',
+            },
+            context: {
+              type: 'string',
+              description: 'Optional additional context about the topic',
+            },
+          },
+          required: ['content'],
+        },
+      },
+      {
+        name: 'extract_decisions_from_session',
+        description: 'Extract architectural decisions from a session and generate ADR-formatted decision records. Analyzes session content to identify strategic choices, alternatives considered, and consequences.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            session_id: {
+              type: 'string',
+              description: 'Optional session ID to analyze. If not provided, uses current session.',
+            },
+            content: {
+              type: 'string',
+              description: 'Optional content to analyze instead of reading from session file',
+            },
+          },
         },
       },
     ];
@@ -3064,6 +3116,276 @@ ${content}`;
     }
 
     return files;
+  }
+
+  // ==================== Sub-Agent Powered Analysis Methods ====================
+
+  private async analyzeTopicContent(args: {
+    content: string;
+    topic_name?: string;
+    context?: string;
+  }) {
+    // Build analysis prompt for the sub-agent
+    const analysisPrompt = `Analyze the following topic content and provide structured analysis.
+
+${args.topic_name ? `Topic Name: ${args.topic_name}` : ''}
+${args.context ? `Context: ${args.context}` : ''}
+
+Content to analyze:
+${args.content}
+
+Please provide:
+1. **Tags**: 3-7 relevant tags that categorize this topic (e.g., technology names, concepts, domains)
+2. **Summary**: A concise 1-2 sentence summary of the main idea
+3. **Key Concepts**: List 3-5 key technical concepts or terms discussed
+4. **Related Topics**: Suggest 2-4 topic names that would be related (based on common knowledge and the content)
+5. **Content Type**: Categorize as one of: implementation, architecture, troubleshooting, reference, tutorial, concept
+
+Respond in JSON format:
+{
+  "tags": ["tag1", "tag2", ...],
+  "summary": "...",
+  "key_concepts": ["concept1", "concept2", ...],
+  "related_topics": ["topic1", "topic2", ...],
+  "content_type": "..."
+}`;
+
+    try {
+      // Search for similar existing topics
+      const searchResults = await this.searchVault({
+        query: args.content.substring(0, 200), // Use first 200 chars for similarity search
+        directories: ['topics'],
+        max_results: 5,
+        snippets_only: true,
+      });
+
+      // Parse search results to find potential duplicates
+      const potentialDuplicates = searchResults.content[0].text.includes('Found 0 matches')
+        ? []
+        : searchResults.content[0].text.split('\n')
+            .filter(line => line.includes('**'))
+            .slice(0, 3)
+            .map(line => {
+              const match = line.match(/\*\*(.+?)\*\*/);
+              return match ? match[1] : null;
+            })
+            .filter(Boolean);
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `# Topic Content Analysis
+
+## Analysis Prompt for Sub-Agent
+To complete this analysis, use a sub-agent with the following prompt:
+
+\`\`\`
+${analysisPrompt}
+\`\`\`
+
+## Potential Duplicate Topics
+${potentialDuplicates.length > 0
+  ? `Found ${potentialDuplicates.length} potentially similar existing topics:\n${potentialDuplicates.map((t, i) => `${i + 1}. ${t}`).join('\n')}`
+  : 'No similar topics found in the vault.'}
+
+## Next Steps
+1. Run the analysis prompt above through a sub-agent to get structured analysis
+2. Review the potential duplicates to decide if this is truly new content
+3. Use the analysis results to enhance topic creation with auto-generated tags and summary`,
+          },
+        ],
+      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Error analyzing topic content: ${errorMessage}`,
+          },
+        ],
+      };
+    }
+  }
+
+  private async extractDecisionsFromSession(args: {
+    session_id?: string;
+    content?: string;
+  }) {
+    try {
+      let sessionContent = args.content;
+      let sessionId = args.session_id;
+
+      // If no content provided, read from session file
+      if (!sessionContent) {
+        if (!sessionId && !this.currentSessionFile) {
+          return {
+            content: [
+              {
+                type: 'text',
+                text: 'Error: No session_id provided and no current session active.',
+              },
+            ],
+          };
+        }
+
+        sessionId = sessionId || this.currentSessionId || '';
+        const sessionFile = sessionId
+          ? await this.findSessionFile(sessionId)
+          : this.currentSessionFile;
+
+        if (!sessionFile) {
+          return {
+            content: [
+              {
+                type: 'text',
+                text: `Error: Session file not found for ID: ${sessionId}`,
+              },
+            ],
+          };
+        }
+
+        sessionContent = await fs.readFile(sessionFile, 'utf-8');
+      }
+
+      // Build decision extraction prompt
+      const extractionPrompt = `Analyze the following session content and extract any architectural or technical decisions that were made.
+
+Session Content:
+${sessionContent}
+
+For each decision found, provide:
+1. **Decision Title**: A clear, concise title (e.g., "Use PostgreSQL instead of MongoDB")
+2. **Context**: What problem or situation led to this decision?
+3. **Alternatives Considered**: What other options were discussed or considered?
+4. **Decision Made**: What was ultimately chosen?
+5. **Rationale**: Why was this choice made?
+6. **Consequences**: What are the positive and negative consequences?
+7. **Strategic Level**: Rate from 1-5 (1=tactical implementation detail, 5=major architectural choice)
+
+Only extract decisions with strategic level 3 or higher. Ignore minor implementation details.
+
+Respond in JSON format:
+{
+  "decisions": [
+    {
+      "title": "...",
+      "context": "...",
+      "alternatives": ["...", "..."],
+      "decision": "...",
+      "rationale": "...",
+      "consequences": {
+        "positive": ["...", "..."],
+        "negative": ["..."]
+      },
+      "strategic_level": 4
+    }
+  ]
+}
+
+If no significant decisions are found, return { "decisions": [] }`;
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `# Decision Extraction Analysis
+
+## Session Information
+- Session ID: ${sessionId || 'Current session'}
+- Content length: ${sessionContent?.length || 0} characters
+
+## Extraction Prompt for Sub-Agent
+To complete this extraction, use a sub-agent with the following prompt:
+
+\`\`\`
+${extractionPrompt}
+\`\`\`
+
+## Next Steps
+1. Run the extraction prompt through a sub-agent to identify decisions
+2. For each decision found with strategic_level >= 3:
+   - Review the extracted information for accuracy
+   - Use \`create_decision\` tool to generate an ADR
+   - Link the ADR back to this session
+3. If no significant decisions found, no action needed
+
+## How to Create ADRs from Results
+For each decision in the JSON response:
+\`\`\`
+create_decision({
+  title: decision.title,
+  context: decision.context,
+  content: \`
+## Decision
+\${decision.decision}
+
+## Alternatives Considered
+\${decision.alternatives.map((alt, i) => \`\${i + 1}. \${alt}\`).join('\\n')}
+
+## Rationale
+\${decision.rationale}
+
+## Consequences
+
+### Positive
+\${decision.consequences.positive.map(c => \`- \${c}\`).join('\\n')}
+
+### Negative
+\${decision.consequences.negative.map(c => \`- \${c}\`).join('\\n')}
+\`
+})
+\`\`\``,
+          },
+        ],
+      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Error extracting decisions: ${errorMessage}`,
+          },
+        ],
+      };
+    }
+  }
+
+  private async findSessionFile(sessionId: string): Promise<string | null> {
+    const primaryPath = this.getPrimaryVaultPath();
+    const sessionsDir = path.join(primaryPath, 'sessions');
+
+    try {
+      // Try to find the session file in monthly subdirectories
+      const entries = await fs.readdir(sessionsDir, { withFileTypes: true });
+
+      for (const entry of entries) {
+        if (entry.isDirectory() && /^\d{4}-\d{2}$/.test(entry.name)) {
+          const monthDir = path.join(sessionsDir, entry.name);
+          const files = await fs.readdir(monthDir);
+
+          for (const file of files) {
+            if (file.includes(sessionId)) {
+              return path.join(monthDir, file);
+            }
+          }
+        }
+      }
+
+      // Also check root sessions directory for older sessions
+      const rootFiles = await fs.readdir(sessionsDir);
+      for (const file of rootFiles) {
+        if (file.endsWith('.md') && file.includes(sessionId)) {
+          return path.join(sessionsDir, file);
+        }
+      }
+    } catch (error) {
+      // Directory doesn't exist or can't be read
+    }
+
+    return null;
   }
 
   async run(): Promise<void> {
