@@ -296,6 +296,9 @@ class ObsidianMCPServer {
           case 'list_recent_sessions':
             return await this.listRecentSessions(args as { limit?: number; _invoked_by_slash_command?: boolean });
 
+          case 'list_recent_projects':
+            return await this.listRecentProjects(args as { limit?: number; _invoked_by_slash_command?: boolean });
+
           case 'track_file_access':
             return await this.trackFileAccess(args as { path: string; action: 'read' | 'edit' | 'create' });
 
@@ -908,6 +911,25 @@ NOTE: If your title contains implementation keywords (fix, bug, implement, etc.)
             limit: {
               type: 'number',
               description: 'Maximum number of sessions to return (default: 5)',
+              default: 5,
+            },
+            _invoked_by_slash_command: {
+              type: 'boolean',
+              description: 'Internal parameter - must be true to invoke this tool. Only set by slash commands.',
+              default: false,
+            },
+          },
+        },
+      },
+      {
+        name: 'list_recent_projects',
+        description: 'List the most recent projects. Returns project metadata including name, repository path, creation date, and activity.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            limit: {
+              type: 'number',
+              description: 'Maximum number of projects to return (default: 5)',
               default: 5,
             },
             _invoked_by_slash_command: {
@@ -2489,6 +2511,145 @@ Provide a structured analysis with:
       };
     } catch (error) {
       throw new Error(`Failed to list sessions: ${error}`);
+    }
+  }
+
+  private async listRecentProjects(args: { limit?: number; _invoked_by_slash_command?: boolean }) {
+    // Enforce that this tool can only be called via the /projects slash command
+    if (!args._invoked_by_slash_command) {
+      throw new Error('This tool can only be invoked via the /projects slash command. Please ask the user to run the /projects command.');
+    }
+
+    await this.ensureVaultStructure();
+
+    const limit = args.limit || 5;
+    const projectsDir = path.join(VAULT_PATH, 'projects');
+
+    try {
+      // Check if projects directory exists
+      try {
+        await fs.access(projectsDir);
+      } catch {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: 'No projects directory found. Create a project with create_project_page.',
+            },
+          ],
+        };
+      }
+
+      // Find all project.md files in subdirectories
+      const projectFiles: Array<{
+        file: string;
+        filePath: string;
+        mtime: Date;
+        title?: string;
+        project_slug?: string;
+        repo_path?: string;
+        repo_name?: string;
+        created?: string;
+        status?: string;
+      }> = [];
+
+      const entries = await fs.readdir(projectsDir, { withFileTypes: true });
+
+      for (const entry of entries) {
+        if (!entry.isDirectory()) continue;
+
+        const projectFile = path.join(projectsDir, entry.name, 'project.md');
+        try {
+          const stats = await fs.stat(projectFile);
+          const content = await fs.readFile(projectFile, 'utf-8');
+
+          // Parse frontmatter
+          const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
+          let title: string | undefined;
+          let project_slug: string | undefined;
+          let repo_path: string | undefined;
+          let repo_name: string | undefined;
+          let created: string | undefined;
+          let status: string | undefined;
+
+          if (frontmatterMatch) {
+            const frontmatter = frontmatterMatch[1];
+            const titleMatch = frontmatter.match(/title:\s*(.+)/);
+            const slugMatch = frontmatter.match(/project_slug:\s*(.+)/);
+            const createdMatch = frontmatter.match(/created:\s*(.+)/);
+            const statusMatch = frontmatter.match(/status:\s*(.+)/);
+
+            // Extract repository info
+            const repoPathMatch = frontmatter.match(/repository:\s*\n\s*path:\s*(.+)/);
+            const repoNameMatch = frontmatter.match(/repository:\s*\n\s*path:.*\n\s*name:\s*(.+)/);
+
+            if (titleMatch) title = titleMatch[1].trim();
+            if (slugMatch) project_slug = slugMatch[1].trim();
+            if (createdMatch) created = createdMatch[1].trim();
+            if (statusMatch) status = statusMatch[1].trim();
+            if (repoPathMatch) repo_path = repoPathMatch[1].trim();
+            if (repoNameMatch) repo_name = repoNameMatch[1].trim();
+          }
+
+          projectFiles.push({
+            file: entry.name,
+            filePath: projectFile,
+            mtime: stats.mtime,
+            title: title || entry.name,
+            project_slug,
+            repo_path,
+            repo_name,
+            created,
+            status,
+          });
+        } catch {
+          // Skip if project.md doesn't exist in this directory
+          continue;
+        }
+      }
+
+      if (projectFiles.length === 0) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: 'No projects found. Create a project with create_project_page.',
+            },
+          ],
+        };
+      }
+
+      // Sort by modification time (most recent first)
+      projectFiles.sort((a, b) => b.mtime.getTime() - a.mtime.getTime());
+
+      // Limit results
+      const recentProjects = projectFiles.slice(0, limit);
+
+      // Format the output
+      let resultText = `Found ${recentProjects.length} recent project(s):\n\n`;
+
+      recentProjects.forEach((project, idx) => {
+        const number = idx + 1;
+        const statusIcon = project.status === 'active' ? '●' : '○';
+        const titleText = project.title || project.file;
+        const repoText = project.repo_path ? `\n   Repository: ${project.repo_path}` : '';
+        const createdText = project.created ? ` (created ${project.created})` : '';
+
+        resultText += `${number}. ${statusIcon} ${titleText}${createdText}${repoText}\n`;
+      });
+
+      resultText += `\nTo view project details, please specify which project number you'd like to see.`;
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: resultText,
+          },
+        ],
+      };
+    } catch (error) {
+      throw new Error(`Failed to list projects: ${error}`);
     }
   }
 
