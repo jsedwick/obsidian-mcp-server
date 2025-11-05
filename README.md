@@ -6,7 +6,9 @@ An MCP (Model Context Protocol) server that enables Claude Code to automatically
 
 - **Automatic Session Management**: Creates session notes for each conversation, organized by month
 - **Intelligent Search with Semantic Understanding**: Hybrid keyword + embedding-based search using local AI models (no API calls)
+- **Enhanced Search with Query Understanding**: AI-powered query expansion for improved discovery and contextual refinement
 - **AI-Powered Analysis**: Sub-agent integration for topic analysis, auto-tagging, and decision extraction
+- **Git Commit Impact Analysis**: Automatic analysis of commits to identify documentation updates and architectural implications
 - **Topic Pages**: Create and maintain pages for technical concepts
 - **Topic Review System**: Find stale topics, review them, and keep knowledge fresh
 - **Decision Records**: Track architectural decisions with ADR format, with automated extraction from sessions
@@ -415,7 +417,34 @@ Workflow:
 Only extracts strategic decisions (level 3-5), ignoring tactical details.
 ```
 
-These tools leverage Claude Code's sub-agent capabilities for deep content analysis. They generate structured prompts that can be executed via sub-agents to produce AI-powered insights, auto-tagging, and decision extraction.
+**enhanced_search** - Intelligent search with query understanding and expansion
+```
+Query: "how did we handle auth?"
+Context: (optional) "Working on authentication refactoring"
+Current session ID: (optional) "2025-11-05_14-30-00_..."
+Max results per query: (optional) 5
+
+Returns:
+  - Query expansion prompt for sub-agent execution
+  - Preliminary search results for the original query
+  - Workflow instructions for multi-query search
+  - Deduplication and synthesis guidance
+
+Workflow:
+  1. Call enhanced_search with your query
+  2. Execute the query expansion prompt via sub-agent to get 4-5 variations
+  3. Search with each variation using search_vault
+  4. Deduplicate results (using Map with file paths as keys)
+  5. Present synthesized findings
+
+Benefits:
+  - Improved recall through multiple query perspectives
+  - Context-aware refinement using session information
+  - Efficient deduplication to avoid repeated results
+  - Automatic embedding cache reuse for performance
+```
+
+These tools leverage Claude Code's sub-agent capabilities for deep content analysis. They generate structured prompts that can be executed via sub-agents to produce AI-powered insights, auto-tagging, decision extraction, and intelligent search.
 
 ### Git Integration
 
@@ -451,6 +480,44 @@ Repo path: "/path/to/project"
 Commit hash: "abc123"
 Creates: projects/[project-name]/commits/abc123.md with diff
 Links: Commit to session and project page
+```
+
+**analyze_commit_impact** - AI-powered commit analysis for documentation updates
+```
+Repo path: "/path/to/project"
+Commit hash: "abc123" or "HEAD"
+Include diff: (optional) false (default: uses stat summary only)
+
+Returns:
+  - Commit summary (hash, author, date, message)
+  - Files changed with statistics
+  - Related topics/decisions found in vault (automatic search)
+  - Impact analysis prompt for sub-agent execution
+  - Suggestions for documentation updates
+
+Workflow:
+  1. Call analyze_commit_impact after making a commit
+  2. Review related content automatically found in vault
+  3. Execute the analysis prompt via sub-agent
+  4. Follow suggested actions:
+     - Update affected topics with new implementation details
+     - Create new topics for significant features
+     - Link decisions to implementation commits
+  5. Use record_commit to persist the commit details
+
+Benefits:
+  - Automatic documentation trigger detection
+  - Links code changes to conceptual documentation
+  - Identifies architectural implications
+  - Suggests specific update actions
+  - Builds knowledge graph between commits and topics
+
+Impact Levels:
+  1 = Minor fix/tweak
+  2 = Small feature/bug fix
+  3 = Notable feature/refactoring
+  4 = Major feature/architectural change
+  5 = Fundamental system redesign
 ```
 
 ## Vault Structure
