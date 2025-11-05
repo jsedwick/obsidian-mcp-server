@@ -148,7 +148,7 @@ obsidian-vault/
 
 ## Available Tools (MCP Functions)
 
-The server provides 21 tools to Claude Code:
+The server provides 25 tools to Claude Code:
 
 ### Session Management (4)
 1. **start_session** - Begin a new conversation
@@ -185,6 +185,12 @@ The server provides 21 tools to Claude Code:
 20. **create_project_page** - Create/update project page
 21. **record_commit** - Record Git commit with diff
 
+### AI-Powered Analysis (4)
+22. **analyze_topic_content** - Auto-tag and analyze topics with AI
+23. **extract_decisions_from_session** - Extract architectural decisions from sessions
+24. **enhanced_search** - Query expansion and understanding for better discovery
+25. **analyze_commit_impact** - AI-powered commit analysis for documentation updates
+
 ## Example Workflow
 
 ```
@@ -210,7 +216,7 @@ npm test
 
 This verifies:
 - ✅ MCP server starts correctly
-- ✅ All 21 tools are available
+- ✅ All 25 tools are available
 - ✅ Files are created in vault
 - ✅ Search finds content
 - ✅ Session lifecycle works
