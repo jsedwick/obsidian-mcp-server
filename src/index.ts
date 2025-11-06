@@ -3252,6 +3252,96 @@ ${diff}
   }
 
   /**
+   * Find the correct path for a broken link by searching vault directories
+   */
+  private async findCorrectLinkPath(linkPath: string): Promise<string | null> {
+    // Extract filename from path (remove any directory prefixes)
+    const filename = path.basename(linkPath);
+
+    // Check if it looks like a session file (YYYY-MM-DD_HH-MM-SS_...)
+    const sessionPattern = /^(\d{4})-(\d{2})-(\d{2})_/;
+    const sessionMatch = filename.match(sessionPattern);
+
+    if (sessionMatch) {
+      const year = sessionMatch[1];
+      const month = sessionMatch[2];
+      const sessionPath = path.join(VAULT_PATH, 'sessions', `${year}-${month}`, `${filename}.md`);
+
+      try {
+        await fs.access(sessionPath);
+        return filename; // Return just the filename for wiki-style links
+      } catch {
+        // File doesn't exist
+        return null;
+      }
+    }
+
+    // Check topics directory
+    const topicPath = path.join(VAULT_PATH, 'topics', `${filename}.md`);
+    try {
+      await fs.access(topicPath);
+      return filename;
+    } catch {
+      // Continue checking
+    }
+
+    // Check decisions directory
+    const decisionPath = path.join(VAULT_PATH, 'decisions', `${filename}.md`);
+    try {
+      await fs.access(decisionPath);
+      return filename;
+    } catch {
+      // Continue checking
+    }
+
+    // Check for project files (projects/project-name/project.md)
+    // Look for pattern: projects/xxx/project or just xxx
+    if (linkPath.includes('projects/') || linkPath.includes('/project')) {
+      const projectsDir = path.join(VAULT_PATH, 'projects');
+      try {
+        const projectDirs = await fs.readdir(projectsDir);
+
+        for (const projectDir of projectDirs) {
+          const projectFile = path.join(projectsDir, projectDir, 'project.md');
+          try {
+            await fs.access(projectFile);
+            // Check if the link mentions this project
+            if (linkPath.includes(projectDir) || linkPath.includes('project')) {
+              return `projects/${projectDir}/project`;
+            }
+          } catch {
+            continue;
+          }
+        }
+      } catch {
+        // Projects dir doesn't exist
+      }
+    }
+
+    // Check for commit files (projects/project-name/commits/hash.md)
+    if (linkPath.includes('commits/') || /^[a-f0-9]{7,40}$/.test(filename)) {
+      const projectsDir = path.join(VAULT_PATH, 'projects');
+      try {
+        const projectDirs = await fs.readdir(projectsDir);
+
+        for (const projectDir of projectDirs) {
+          const commitFile = path.join(projectsDir, projectDir, 'commits', `${filename}.md`);
+          try {
+            await fs.access(commitFile);
+            return `projects/${projectDir}/commits/${filename}`;
+          } catch {
+            continue;
+          }
+        }
+      } catch {
+        // Projects dir doesn't exist
+      }
+    }
+
+    return null;
+  }
+
+  /**
    * Smart filtering for link validation to reduce false positives
    */
   private shouldSkipLinkValidation(linkPath: string, content: string, matchIndex: number): boolean {
@@ -3276,9 +3366,20 @@ ${diff}
       'path/to/note',
       'topic-slug',
       'sessions/null',  // Common in project files when session_id is null
+      'session-id',
+      'sessions/session-id',
+      '2025-11-06_...',  // Truncated session IDs in examples
+      'xxx',
+      'example',
+      'placeholder',
     ];
 
     if (placeholderPatterns.includes(linkPath)) {
+      return true;
+    }
+
+    // Skip links with ellipsis or other obvious placeholder indicators
+    if (linkPath.includes('...') || linkPath.includes('XXX')) {
       return true;
     }
 
@@ -3405,7 +3506,7 @@ ${content}`;
         // No projects directory is fine
       }
 
-      // Check 4: Validate internal links
+      // Check 4: Validate and fix internal links
       const allFiles = [
         ...await this.findMarkdownFiles(sessionsDir),
         ...await this.findMarkdownFiles(topicsDir),
@@ -3413,13 +3514,17 @@ ${content}`;
       ];
 
       for (const file of allFiles) {
-        const content = await fs.readFile(file, 'utf-8');
+        let content = await fs.readFile(file, 'utf-8');
         const linkRegex = /\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g;
         let match;
+        let fileModified = false;
+        const linksToFix: Array<{ original: string; corrected: string; fullMatch: string }> = [];
 
+        // First pass: collect all broken links
         while ((match = linkRegex.exec(content)) !== null) {
           const linkPath = match[1];
           const matchIndex = match.index;
+          const fullMatch = match[0];
 
           // Skip false positives
           if (this.shouldSkipLinkValidation(linkPath, content, matchIndex)) {
@@ -3446,8 +3551,35 @@ ${content}`;
           }
 
           if (!found) {
-            warnings.push(`Broken link in ${path.relative(VAULT_PATH, file)}: [[${linkPath}]]`);
+            // Try to find the correct path
+            const correctedPath = await this.findCorrectLinkPath(linkPath);
+
+            if (correctedPath) {
+              linksToFix.push({
+                original: linkPath,
+                corrected: correctedPath,
+                fullMatch: fullMatch,
+              });
+            } else {
+              warnings.push(`Broken link in ${path.relative(VAULT_PATH, file)}: [[${linkPath}]]`);
+            }
           }
+        }
+
+        // Second pass: fix all broken links
+        if (linksToFix.length > 0) {
+          for (const link of linksToFix) {
+            // Replace the link in content
+            // Handle both [[link]] and [[link|display]] formats
+            const escapedOriginal = link.original.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const linkPattern = new RegExp(`\\[\\[${escapedOriginal}(?:\\|[^\\]]+)?\\]\\]`, 'g');
+            content = content.replace(linkPattern, `[[${link.corrected}]]`);
+            fixes.push(`Fixed link in ${path.relative(VAULT_PATH, file)}: [[${link.original}]] → [[${link.corrected}]]`);
+            fileModified = true;
+          }
+
+          // Write the updated content back to the file
+          await fs.writeFile(file, content);
         }
       }
 
