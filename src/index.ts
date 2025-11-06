@@ -169,6 +169,10 @@ class ObsidianMCPServer {
     action: 'read' | 'edit' | 'create';
     timestamp: string;
   }> = [];
+  // Track content created during conversation (for lazy session creation)
+  private topicsCreated: Array<{ slug: string; title: string; file: string }> = [];
+  private decisionsCreated: Array<{ slug: string; title: string; file: string }> = [];
+  private projectsCreated: Array<{ slug: string; name: string; file: string }> = [];
   private embeddingConfig: EmbeddingConfig;
   private embeddingCache: Map<string, EmbeddingCacheEntry> = new Map();
   private extractor: any = null;
@@ -221,7 +225,8 @@ class ObsidianMCPServer {
     };
 
     process.on('SIGINT', async () => {
-      await this.closeSession();
+      // With lazy session creation, we don't need to close sessions on SIGINT
+      // Sessions are only created when user explicitly runs /close
       await this.server.close();
       process.exit(0);
     });
@@ -279,7 +284,7 @@ class ObsidianMCPServer {
             return await this.linkToTopic(args as { topic: string });
           
           case 'close_session':
-            return await this.closeSession();
+            return await this.closeSession(args as { summary: string; topic?: string });
 
           case 'find_stale_topics':
             return await this.findStaleTopics(args as { age_threshold_days?: number; include_never_reviewed?: boolean });
@@ -629,7 +634,7 @@ class ObsidianMCPServer {
     return [
       {
         name: 'start_session',
-        description: 'Start a new conversation session and create a session file in the Obsidian vault. Call this at the beginning of each conversation.',
+        description: '[DEPRECATED] Sessions are now created retroactively via close_session. This tool is kept for backward compatibility but should not be used.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -642,7 +647,7 @@ class ObsidianMCPServer {
       },
       {
         name: 'save_session_note',
-        description: 'Save or append content to the current session file. Use this to record key points, decisions, and context during the conversation.',
+        description: '[DEPRECATED] Sessions are now created retroactively via close_session. Use close_session with a summary parameter instead.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -818,10 +823,20 @@ NOTE: If your title contains implementation keywords (fix, bug, implement, etc.)
       },
       {
         name: 'close_session',
-        description: 'Mark the current session as completed. Call this at the end of a conversation.',
+        description: 'Create a session retroactively to capture the work done in this conversation. Call this at the end of a conversation to persist the session to the vault.',
         inputSchema: {
           type: 'object',
-          properties: {},
+          properties: {
+            summary: {
+              type: 'string',
+              description: 'A summary of what was accomplished in this conversation. This will be the main content of the session file.',
+            },
+            topic: {
+              type: 'string',
+              description: 'Optional topic or title for this session (will be slugified for the filename)',
+            },
+          },
+          required: ['summary'],
         },
       },
       {
@@ -1647,7 +1662,10 @@ ${args.content}
 
     await fs.writeFile(topicFile, content);
 
-    // Update current session to reference this topic
+    // Track topic creation for lazy session creation
+    this.topicsCreated.push({ slug, title: args.topic, file: topicFile });
+
+    // Update current session to reference this topic (if session exists)
     if (this.currentSessionFile) {
       await this.saveSessionNote({
         content: `\n- Created topic page: [[topics/${slug}|${args.topic}]]`,
@@ -1730,7 +1748,14 @@ ${this.currentSessionId ? `- Session: [[sessions/${this.currentSessionId}]]` : '
 
     await fs.writeFile(decisionFile, content);
 
-    // Update current session
+    // Track decision creation for lazy session creation
+    this.decisionsCreated.push({
+      slug: `${numberStr}-${slug}`,
+      title: args.title,
+      file: decisionFile
+    });
+
+    // Update current session (if session exists)
     if (this.currentSessionFile) {
       await this.saveSessionNote({
         content: `\n- [[decisions/${numberStr}-${slug}|Decision ${numberStr}]]: ${args.title}`,
@@ -1853,26 +1878,115 @@ ${this.currentSessionId ? `- Session: [[sessions/${this.currentSessionId}]]` : '
     };
   }
 
-  private async closeSession() {
-    if (!this.currentSessionFile) {
-      return {
-        content: [
-          {
-            type: 'text',
-            text: 'No active session to close.',
-          },
-        ],
-      };
+  private async closeSession(args: { summary: string; topic?: string }) {
+    await this.ensureVaultStructure();
+
+    // Generate session ID from current timestamp and optional topic
+    const now = new Date();
+    const dateStr = now.toISOString().split('T')[0];
+    const timeStr = now.toTimeString().split(' ')[0].replace(/:/g, '-');
+    const topicSlug = args.topic ? `_${this.slugify(args.topic)}` : '';
+    const sessionId = `${dateStr}_${timeStr}${topicSlug}`;
+
+    // Organize sessions by month
+    const monthStr = dateStr.substring(0, 7); // YYYY-MM
+    const monthDir = path.join(VAULT_PATH, 'sessions', monthStr);
+    await fs.mkdir(monthDir, { recursive: true });
+    const sessionFile = path.join(monthDir, `${sessionId}.md`);
+
+    // Build topics list from created content
+    const topicsList = this.topicsCreated.map(t => t.title);
+    const decisionsList = this.decisionsCreated.map(d => d.title);
+
+    // Build session content
+    let sessionContent = `---
+date: ${dateStr}
+session_id: ${sessionId}
+topics: ${JSON.stringify(args.topic ? [args.topic, ...topicsList] : topicsList)}
+decisions: ${JSON.stringify(decisionsList)}
+status: completed
+---
+
+# Session: ${args.topic || 'Work session'}
+
+## Summary
+
+${args.summary}
+
+## Files Accessed
+
+${this.filesAccessed.length > 0 ? this.filesAccessed.map(f => `- [\`${f.action}\`] ${f.path}`).join('\n') : '_No files tracked_'}
+
+## Topics Created
+
+${this.topicsCreated.length > 0 ? this.topicsCreated.map(t => `- [[topics/${t.slug}|${t.title}]]`).join('\n') : '_No topics created_'}
+
+## Decisions Made
+
+${this.decisionsCreated.length > 0 ? this.decisionsCreated.map(d => `- [[decisions/${d.slug}|${d.title}]]`).join('\n') : '_No decisions made_'}
+
+## Projects
+
+${this.projectsCreated.length > 0 ? this.projectsCreated.map(p => `- [[projects/${p.slug}/project|${p.name}]]`).join('\n') : '_No projects created_'}
+`;
+
+    // Write session file
+    await fs.writeFile(sessionFile, sessionContent);
+
+    // Set current session for back-linking
+    this.currentSessionId = sessionId;
+    this.currentSessionFile = sessionFile;
+
+    // Back-link topics to this session
+    for (const topic of this.topicsCreated) {
+      try {
+        const content = await fs.readFile(topic.file, 'utf-8');
+        const sessionLink = `- [[sessions/${sessionId}|${sessionId}]]`;
+        if (!content.includes(sessionLink)) {
+          const updatedContent = content.replace(
+            /## Related Sessions\n/,
+            `## Related Sessions\n${sessionLink}\n`
+          );
+          await fs.writeFile(topic.file, updatedContent);
+        }
+      } catch (error) {
+        // Continue on error
+      }
     }
 
-    // Update status in frontmatter
-    const content = await fs.readFile(this.currentSessionFile, 'utf-8');
-    const updatedContent = content.replace(/status: ongoing/, 'status: completed');
-    await fs.writeFile(this.currentSessionFile, updatedContent);
+    // Back-link decisions to this session
+    for (const decision of this.decisionsCreated) {
+      try {
+        const content = await fs.readFile(decision.file, 'utf-8');
+        const sessionLink = `- Session: [[sessions/${sessionId}]]`;
+        const updatedContent = content.replace(
+          /## Related\n.*\n/,
+          `## Related\n${sessionLink}\n`
+        );
+        await fs.writeFile(decision.file, updatedContent);
+      } catch (error) {
+        // Continue on error
+      }
+    }
 
-    const sessionId = this.currentSessionId;
+    // Back-link projects to this session
+    for (const project of this.projectsCreated) {
+      try {
+        const content = await fs.readFile(project.file, 'utf-8');
+        const sessionLink = `- [[sessions/${sessionId}|${sessionId}]]`;
+        if (!content.includes(sessionLink)) {
+          const updatedContent = content.replace(
+            /## Related Sessions\n/,
+            `## Related Sessions\n${sessionLink}\n`
+          );
+          await fs.writeFile(project.file, updatedContent);
+        }
+      } catch (error) {
+        // Continue on error
+      }
+    }
 
-    // Auto-detect Git repositories before closing
+    // Auto-detect Git repositories
     let repoDetectionMessage = '';
     if (this.filesAccessed.length > 0) {
       try {
@@ -1880,14 +1994,12 @@ ${this.currentSessionId ? `- Session: [[sessions/${this.currentSessionId}]]` : '
         const repoPaths = await this.findGitRepos(cwd);
 
         if (repoPaths.length > 0) {
-          // Score each repository
           const candidates: RepoCandidate[] = [];
 
           for (const repoPath of repoPaths) {
             let score = 0;
             const reasons: string[] = [];
 
-            // Score based on files accessed
             const filesInRepo = this.filesAccessed.filter(f => f.path.startsWith(repoPath));
             const editedFiles = filesInRepo.filter(f => f.action === 'edit' || f.action === 'create');
             const readFiles = filesInRepo.filter(f => f.action === 'read');
@@ -1902,7 +2014,6 @@ ${this.currentSessionId ? `- Session: [[sessions/${this.currentSessionId}]]` : '
               reasons.push(`${readFiles.length} file(s) read`);
             }
 
-            // Score based on session topic
             if (sessionId) {
               const repoName = path.basename(repoPath);
               if (sessionId.toLowerCase().includes(repoName.toLowerCase())) {
@@ -1911,7 +2022,6 @@ ${this.currentSessionId ? `- Session: [[sessions/${this.currentSessionId}]]` : '
               }
             }
 
-            // Score based on proximity to CWD
             if (repoPath === cwd) {
               score += 15;
               reasons.push('Repo is current working directory');
@@ -1936,7 +2046,6 @@ ${this.currentSessionId ? `- Session: [[sessions/${this.currentSessionId}]]` : '
             }
           }
 
-          // Sort by score
           candidates.sort((a, b) => b.score - a.score);
 
           if (candidates.length > 0) {
@@ -1964,14 +2073,41 @@ ${this.currentSessionId ? `- Session: [[sessions/${this.currentSessionId}]]` : '
       }
     }
 
-    this.currentSessionId = null;
-    this.currentSessionFile = null;
+    // Build summary message
+    let summary = `✅ Session created: ${sessionId}\n`;
+    summary += `📄 Session file: ${sessionFile}\n\n`;
+
+    if (this.topicsCreated.length > 0) {
+      summary += `📚 Topics linked (${this.topicsCreated.length}):\n`;
+      summary += this.topicsCreated.map(t => `   - ${t.title}`).join('\n') + '\n\n';
+    }
+
+    if (this.decisionsCreated.length > 0) {
+      summary += `🎯 Decisions linked (${this.decisionsCreated.length}):\n`;
+      summary += this.decisionsCreated.map(d => `   - ${d.title}`).join('\n') + '\n\n';
+    }
+
+    if (this.projectsCreated.length > 0) {
+      summary += `📦 Projects linked (${this.projectsCreated.length}):\n`;
+      summary += this.projectsCreated.map(p => `   - ${p.name}`).join('\n') + '\n\n';
+    }
+
+    if (this.filesAccessed.length > 0) {
+      summary += `📁 Files accessed: ${this.filesAccessed.length}\n`;
+    }
+
+    // Clear state for next conversation
+    this.topicsCreated = [];
+    this.decisionsCreated = [];
+    this.projectsCreated = [];
+    this.filesAccessed = [];
+    // Keep currentSessionId and currentSessionFile set for potential follow-up operations
 
     return {
       content: [
         {
           type: 'text',
-          text: `Session closed: ${sessionId}${repoDetectionMessage}`,
+          text: summary + repoDetectionMessage,
         },
       ],
     };
@@ -2654,10 +2790,8 @@ Provide a structured analysis with:
   }
 
   private async trackFileAccess(args: { path: string; action: 'read' | 'edit' | 'create' }) {
-    if (!this.currentSessionId) {
-      throw new Error('No active session. Call start_session first.');
-    }
-
+    // Track file access regardless of whether a session exists
+    // This data will be used when /close is invoked to create the session
     const timestamp = new Date().toISOString();
     this.filesAccessed.push({
       path: args.path,
@@ -2749,9 +2883,8 @@ Provide a structured analysis with:
   }
 
   private async detectSessionRepositories() {
-    if (!this.currentSessionId || !this.currentSessionFile) {
-      throw new Error('No active session.');
-    }
+    // Can be called before or after session creation
+    // If before, it helps inform user. If after, it can update session metadata.
 
     // Get current working directory from environment or use vault path
     const cwd = process.env.PWD || process.cwd();
@@ -2944,21 +3077,25 @@ Provide a structured analysis with:
 
     const today = new Date().toISOString().split('T')[0];
 
+    // Track project creation for lazy session creation
+    this.projectsCreated.push({ slug, name: info.name, file: projectFile });
+
     // Check if project page already exists
     let content: string;
     try {
       content = await fs.readFile(projectFile, 'utf-8');
 
-      // Update existing project page
-      const sessionLink = `- [[sessions/${this.currentSessionId}|${this.currentSessionId}]]`;
-      if (!content.includes(sessionLink)) {
-        content = content.replace(
-          /## Related Sessions\n/,
-          `## Related Sessions\n${sessionLink}\n`
-        );
+      // Update existing project page (only if session exists)
+      if (this.currentSessionId) {
+        const sessionLink = `- [[sessions/${this.currentSessionId}|${this.currentSessionId}]]`;
+        if (!content.includes(sessionLink)) {
+          content = content.replace(
+            /## Related Sessions\n/,
+            `## Related Sessions\n${sessionLink}\n`
+          );
+        }
+        await fs.writeFile(projectFile, content);
       }
-
-      await fs.writeFile(projectFile, content);
     } catch {
       // Create new project page
       content = `---
@@ -2985,7 +3122,7 @@ Git repository tracked via Claude Code sessions.
 ## Recent Activity
 
 ## Related Sessions
-- [[sessions/${this.currentSessionId}|${this.currentSessionId}]]
+${this.currentSessionId ? `- [[sessions/${this.currentSessionId}|${this.currentSessionId}]]` : ''}
 
 ## Topics
 
