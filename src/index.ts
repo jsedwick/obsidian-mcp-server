@@ -1742,7 +1742,7 @@ ${args.content}
 ## Consequences
 
 ## Related
-${this.currentSessionId ? `- Session: [[sessions/${this.currentSessionId}]]` : ''}
+${this.currentSessionId ? `- Session: [[${this.currentSessionId}]]` : ''}
 
 `;
 
@@ -1941,7 +1941,7 @@ ${this.projectsCreated.length > 0 ? this.projectsCreated.map(p => `- [[projects/
     for (const topic of this.topicsCreated) {
       try {
         const content = await fs.readFile(topic.file, 'utf-8');
-        const sessionLink = `- [[sessions/${sessionId}|${sessionId}]]`;
+        const sessionLink = `- [[${sessionId}]]`;
         if (!content.includes(sessionLink)) {
           const updatedContent = content.replace(
             /## Related Sessions\n/,
@@ -1958,7 +1958,7 @@ ${this.projectsCreated.length > 0 ? this.projectsCreated.map(p => `- [[projects/
     for (const decision of this.decisionsCreated) {
       try {
         const content = await fs.readFile(decision.file, 'utf-8');
-        const sessionLink = `- Session: [[sessions/${sessionId}]]`;
+        const sessionLink = `- Session: [[${sessionId}]]`;
         const updatedContent = content.replace(
           /## Related\n.*\n/,
           `## Related\n${sessionLink}\n`
@@ -1973,7 +1973,7 @@ ${this.projectsCreated.length > 0 ? this.projectsCreated.map(p => `- [[projects/
     for (const project of this.projectsCreated) {
       try {
         const content = await fs.readFile(project.file, 'utf-8');
-        const sessionLink = `- [[sessions/${sessionId}|${sessionId}]]`;
+        const sessionLink = `- [[${sessionId}]]`;
         if (!content.includes(sessionLink)) {
           const updatedContent = content.replace(
             /## Related Sessions\n/,
@@ -3087,7 +3087,7 @@ Provide a structured analysis with:
 
       // Update existing project page (only if session exists)
       if (this.currentSessionId) {
-        const sessionLink = `- [[sessions/${this.currentSessionId}|${this.currentSessionId}]]`;
+        const sessionLink = `- [[${this.currentSessionId}]]`;
         if (!content.includes(sessionLink)) {
           content = content.replace(
             /## Related Sessions\n/,
@@ -3122,7 +3122,7 @@ Git repository tracked via Claude Code sessions.
 ## Recent Activity
 
 ## Related Sessions
-${this.currentSessionId ? `- [[sessions/${this.currentSessionId}|${this.currentSessionId}]]` : ''}
+${this.currentSessionId ? `- [[${this.currentSessionId}]]` : ''}
 
 ## Topics
 
@@ -3195,7 +3195,7 @@ project: ${info.name}
 
 # Commit: ${subject}
 
-**Session:** [[sessions/${this.currentSessionId}|${this.currentSessionId}]]
+**Session:** [[${this.currentSessionId}]]
 **Project:** [[projects/${slug}/project|${info.name}]]
 **Date:** ${date}
 **Author:** ${authorName}
@@ -3216,7 +3216,7 @@ ${diff}
 \`\`\`
 
 ## Related
-- **Session:** [[sessions/${this.currentSessionId}|${this.currentSessionId}]]
+- **Session:** [[${this.currentSessionId}]]
 - **Project:** [[projects/${slug}/project|${info.name}]]
 `;
 
