@@ -253,12 +253,6 @@ class ObsidianMCPServer {
 
       try {
         switch (name) {
-          case 'start_session':
-            return await this.startSession(args as { topic?: string });
-          
-          case 'save_session_note':
-            return await this.saveSessionNote(args as { content: string; append?: boolean });
-          
           case 'search_vault':
             return await this.searchVault(args as {
               query: string;
@@ -635,38 +629,6 @@ class ObsidianMCPServer {
 
   private getTools(): Tool[] {
     return [
-      {
-        name: 'start_session',
-        description: '[DEPRECATED] Sessions are now created retroactively via close_session. This tool is kept for backward compatibility but should not be used.',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            topic: {
-              type: 'string',
-              description: 'Optional initial topic for the session',
-            },
-          },
-        },
-      },
-      {
-        name: 'save_session_note',
-        description: '[DEPRECATED] Sessions are now created retroactively via close_session. Use close_session with a summary parameter instead.',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            content: {
-              type: 'string',
-              description: 'The content to save in the session note',
-            },
-            append: {
-              type: 'boolean',
-              description: 'If true, append to existing content; if false, replace. Default: true',
-              default: true,
-            },
-          },
-          required: ['content'],
-        },
-      },
       {
         name: 'search_vault',
         description: 'Search the Obsidian vault for relevant notes and context. Returns ranked results with snippets. Use get_session_context to read full files.',
@@ -1195,91 +1157,6 @@ Check the sessions/ directory for recent conversations.
       .trim();
   }
 
-  private async startSession(args: { topic?: string }) {
-    await this.ensureVaultStructure();
-
-    // Clear file access tracking from previous session
-    this.filesAccessed = [];
-
-    const now = new Date();
-    const dateStr = now.toISOString().split('T')[0];
-    const timeStr = now.toTimeString().split(' ')[0].replace(/:/g, '-');
-    const topicSlug = args.topic ? `_${this.slugify(args.topic)}` : '';
-
-    this.currentSessionId = `${dateStr}_${timeStr}${topicSlug}`;
-
-    // Organize sessions by month: sessions/YYYY-MM/
-    const monthStr = dateStr.substring(0, 7); // YYYY-MM
-    const monthDir = path.join(VAULT_PATH, 'sessions', monthStr);
-    await fs.mkdir(monthDir, { recursive: true });
-    this.currentSessionFile = path.join(monthDir, `${this.currentSessionId}.md`);
-
-    const metadata: SessionMetadata = {
-      date: dateStr,
-      session_id: this.currentSessionId,
-      topics: args.topic ? [args.topic] : [],
-      decisions: [],
-      status: 'ongoing',
-    };
-
-    const content = `---
-date: ${metadata.date}
-session_id: ${metadata.session_id}
-topics: ${JSON.stringify(metadata.topics)}
-decisions: []
-status: ongoing
----
-
-# Session: ${args.topic || 'New Session'}
-
-## Context
-${args.topic ? `Working on: ${args.topic}` : 'New conversation session started.'}
-
-## Key Points
-
-## Outcomes
-
-## Code References
-
-`;
-
-    await fs.writeFile(this.currentSessionFile, content);
-
-    return {
-      content: [
-        {
-          type: 'text',
-          text: `Session started: ${this.currentSessionId}\nSession file: ${this.currentSessionFile}\n\nUse save_session_note to record key information during the conversation.`,
-        },
-      ],
-    };
-  }
-
-  private async saveSessionNote(args: { content: string; append?: boolean }) {
-    if (!this.currentSessionFile) {
-      throw new Error('No active session. Call start_session first.');
-    }
-
-    const append = args.append !== false;
-
-    if (append) {
-      const existing = await fs.readFile(this.currentSessionFile, 'utf-8');
-      const newContent = existing + '\n' + args.content;
-      await fs.writeFile(this.currentSessionFile, newContent);
-    } else {
-      await fs.writeFile(this.currentSessionFile, args.content);
-    }
-
-    return {
-      content: [
-        {
-          type: 'text',
-          text: `Session note ${append ? 'updated' : 'saved'}: ${this.currentSessionFile}`,
-        },
-      ],
-    };
-  }
-
   private async searchVault(args: {
     query: string;
     directories?: string[];
@@ -1682,14 +1559,6 @@ ${args.content}
     // Track topic creation for lazy session creation
     this.topicsCreated.push({ slug, title: args.topic, file: topicFile });
 
-    // Update current session to reference this topic (if session exists)
-    if (this.currentSessionFile) {
-      await this.saveSessionNote({
-        content: `\n- Created topic page: [[topics/${slug}|${args.topic}]]`,
-        append: true,
-      });
-    }
-
     return {
       content: [
         {
@@ -1771,14 +1640,6 @@ ${this.currentSessionId ? `- Session: [[${this.currentSessionId}]]` : ''}
       title: args.title,
       file: decisionFile
     });
-
-    // Update current session (if session exists)
-    if (this.currentSessionFile) {
-      await this.saveSessionNote({
-        content: `\n- [[decisions/${numberStr}-${slug}|Decision ${numberStr}]]: ${args.title}`,
-        append: true,
-      });
-    }
 
     return {
       content: [

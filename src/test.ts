@@ -86,39 +86,11 @@ async function runTests() {
       method: 'tools/list',
     });
 
-    // Test 3: Start a session
-    console.log('\n\n🔧 Test 3: Start a session');
+    // Test 3: Create a topic
+    console.log('\n\n🔧 Test 3: Create a topic page');
     await sendRequest({
       jsonrpc: '2.0',
       id: 3,
-      method: 'tools/call',
-      params: {
-        name: 'start_session',
-        arguments: {
-          topic: 'Testing MCP Server',
-        },
-      },
-    });
-
-    // Test 4: Save a note
-    console.log('\n\n🔧 Test 4: Save a session note');
-    await sendRequest({
-      jsonrpc: '2.0',
-      id: 4,
-      method: 'tools/call',
-      params: {
-        name: 'save_session_note',
-        arguments: {
-          content: '## Test Note\n\nThis is a test note created by the test utility.',
-        },
-      },
-    });
-
-    // Test 5: Create a topic
-    console.log('\n\n🔧 Test 5: Create a topic page');
-    await sendRequest({
-      jsonrpc: '2.0',
-      id: 5,
       method: 'tools/call',
       params: {
         name: 'create_topic_page',
@@ -129,11 +101,11 @@ async function runTests() {
       },
     });
 
-    // Test 6: Search vault
-    console.log('\n\n🔧 Test 6: Search the vault');
+    // Test 4: Search vault
+    console.log('\n\n🔧 Test 4: Search the vault');
     await sendRequest({
       jsonrpc: '2.0',
-      id: 6,
+      id: 4,
       method: 'tools/call',
       params: {
         name: 'search_vault',
@@ -143,15 +115,18 @@ async function runTests() {
       },
     });
 
-    // Test 7: Close session
-    console.log('\n\n🔧 Test 7: Close the session');
+    // Test 5: Close session
+    console.log('\n\n🔧 Test 5: Close the session');
     await sendRequest({
       jsonrpc: '2.0',
-      id: 7,
+      id: 5,
       method: 'tools/call',
       params: {
         name: 'close_session',
-        arguments: {},
+        arguments: {
+          summary: 'Completed testing of MCP server tools including topic creation, vault search, and session management.',
+          topic: 'Testing MCP Server',
+        },
       },
     });
 
