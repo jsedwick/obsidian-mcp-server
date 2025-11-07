@@ -1550,6 +1550,8 @@ ${args.content}
 
 ## Related Sessions
 
+## Related Projects
+
 ## Related Decisions
 
 `;
@@ -1806,100 +1808,9 @@ ${this.currentSessionId ? `- Session: [[${this.currentSessionId}]]` : ''}
     await fs.mkdir(monthDir, { recursive: true });
     const sessionFile = path.join(monthDir, `${sessionId}.md`);
 
-    // Build topics list from created content
-    const topicsList = this.topicsCreated.map(t => t.title);
-    const decisionsList = this.decisionsCreated.map(d => d.title);
-
-    // Build session content
-    let sessionContent = `---
-date: ${dateStr}
-session_id: ${sessionId}
-topics: ${JSON.stringify(args.topic ? [args.topic, ...topicsList] : topicsList)}
-decisions: ${JSON.stringify(decisionsList)}
-status: completed
----
-
-# Session: ${args.topic || 'Work session'}
-
-## Summary
-
-${args.summary}
-
-## Files Accessed
-
-${this.filesAccessed.length > 0 ? this.filesAccessed.map(f => `- [\`${f.action}\`] ${f.path}`).join('\n') : '_No files tracked_'}
-
-## Topics Created
-
-${this.topicsCreated.length > 0 ? this.topicsCreated.map(t => `- [[topics/${t.slug}|${t.title}]]`).join('\n') : '_No topics created_'}
-
-## Decisions Made
-
-${this.decisionsCreated.length > 0 ? this.decisionsCreated.map(d => `- [[decisions/${d.slug}|${d.title}]]`).join('\n') : '_No decisions made_'}
-
-## Projects
-
-${this.projectsCreated.length > 0 ? this.projectsCreated.map(p => `- [[projects/${p.slug}/project|${p.name}]]`).join('\n') : '_No projects created_'}
-`;
-
-    // Write session file
-    await fs.writeFile(sessionFile, sessionContent);
-
-    // Set current session for back-linking
-    this.currentSessionId = sessionId;
-    this.currentSessionFile = sessionFile;
-
-    // Back-link topics to this session
-    for (const topic of this.topicsCreated) {
-      try {
-        const content = await fs.readFile(topic.file, 'utf-8');
-        const sessionLink = `- [[${sessionId}]]`;
-        if (!content.includes(sessionLink)) {
-          const updatedContent = content.replace(
-            /## Related Sessions\n/,
-            `## Related Sessions\n${sessionLink}\n`
-          );
-          await fs.writeFile(topic.file, updatedContent);
-        }
-      } catch (error) {
-        // Continue on error
-      }
-    }
-
-    // Back-link decisions to this session
-    for (const decision of this.decisionsCreated) {
-      try {
-        const content = await fs.readFile(decision.file, 'utf-8');
-        const sessionLink = `- Session: [[${sessionId}]]`;
-        const updatedContent = content.replace(
-          /## Related\n.*\n/,
-          `## Related\n${sessionLink}\n`
-        );
-        await fs.writeFile(decision.file, updatedContent);
-      } catch (error) {
-        // Continue on error
-      }
-    }
-
-    // Back-link projects to this session
-    for (const project of this.projectsCreated) {
-      try {
-        const content = await fs.readFile(project.file, 'utf-8');
-        const sessionLink = `- [[${sessionId}]]`;
-        if (!content.includes(sessionLink)) {
-          const updatedContent = content.replace(
-            /## Related Sessions\n/,
-            `## Related Sessions\n${sessionLink}\n`
-          );
-          await fs.writeFile(project.file, updatedContent);
-        }
-      } catch (error) {
-        // Continue on error
-      }
-    }
-
-    // Auto-detect Git repositories
-    let repoDetectionMessage = '';
+    // Auto-detect Git repositories BEFORE building session content
+    // This allows the project to be included in the session's Projects section
+    let detectedRepoInfo: { path: string; name: string; branch?: string; remote?: string } | null = null;
     if (this.filesAccessed.length > 0) {
       try {
         const cwd = process.env.PWD || process.cwd();
@@ -1962,27 +1873,169 @@ ${this.projectsCreated.length > 0 ? this.projectsCreated.map(p => `- [[projects/
 
           if (candidates.length > 0) {
             const topCandidate = candidates[0];
-            repoDetectionMessage = `\n\n📦 Git Repository Detected:\n`;
-            repoDetectionMessage += `   ${topCandidate.name} (score: ${topCandidate.score})\n`;
-            repoDetectionMessage += `   Path: ${topCandidate.path}\n`;
-            if (topCandidate.branch) repoDetectionMessage += `   Branch: ${topCandidate.branch}\n`;
-            repoDetectionMessage += `   Reasons: ${topCandidate.reasons.join(', ')}\n\n`;
 
+            // High confidence - automatically create project page
             if (candidates.length === 1 || topCandidate.score > (candidates[1]?.score || 0) * 2) {
-              repoDetectionMessage += `💡 Recommendation: Create a commit for this work\n`;
-              repoDetectionMessage += `   To link and commit:\n`;
-              repoDetectionMessage += `   1. link_session_to_repository (path: ${topCandidate.path})\n`;
-              repoDetectionMessage += `   2. Create your git commit\n`;
-              repoDetectionMessage += `   3. record_commit (with the commit hash)`;
-            } else {
-              repoDetectionMessage += `💡 Multiple repositories detected (${candidates.length})\n`;
-              repoDetectionMessage += `   Run detect_session_repositories to see all options`;
+              try {
+                detectedRepoInfo = topCandidate;
+                await this.createProjectPage({ repo_path: topCandidate.path });
+              } catch (error) {
+                // If project creation fails, continue anyway
+              }
             }
           }
         }
       } catch (error) {
         // Silently fail - repo detection is optional
       }
+    }
+
+    // Build topics list from created content
+    const topicsList = this.topicsCreated.map(t => t.title);
+    const decisionsList = this.decisionsCreated.map(d => d.title);
+
+    // Build session content
+    let sessionContent = `---
+date: ${dateStr}
+session_id: ${sessionId}
+topics: ${JSON.stringify(args.topic ? [args.topic, ...topicsList] : topicsList)}
+decisions: ${JSON.stringify(decisionsList)}
+status: completed
+---
+
+# Session: ${args.topic || 'Work session'}
+
+## Summary
+
+${args.summary}
+
+## Files Accessed
+
+${this.filesAccessed.length > 0 ? this.filesAccessed.map(f => `- [\`${f.action}\`] ${f.path}`).join('\n') : '_No files tracked_'}
+
+## Topics Created
+
+${this.topicsCreated.length > 0 ? this.topicsCreated.map(t => `- [[topics/${t.slug}|${t.title}]]`).join('\n') : '_No topics created_'}
+
+## Decisions Made
+
+${this.decisionsCreated.length > 0 ? this.decisionsCreated.map(d => `- [[decisions/${d.slug}|${d.title}]]`).join('\n') : '_No decisions made_'}
+
+## Projects
+
+${this.projectsCreated.length > 0 ? this.projectsCreated.map(p => `- [[projects/${p.slug}/project|${p.name}]]`).join('\n') : '_No projects created_'}
+`;
+
+    // Write session file
+    await fs.writeFile(sessionFile, sessionContent);
+
+    // Set current session for back-linking
+    this.currentSessionId = sessionId;
+    this.currentSessionFile = sessionFile;
+
+    // Back-link topics to this session
+    for (const topic of this.topicsCreated) {
+      try {
+        const content = await fs.readFile(topic.file, 'utf-8');
+        const sessionLink = `- [[${sessionId}]]`;
+        if (!content.includes(sessionLink)) {
+          const updatedContent = content.replace(
+            /## Related Sessions\n/,
+            `## Related Sessions\n${sessionLink}\n`
+          );
+          await fs.writeFile(topic.file, updatedContent);
+        }
+      } catch (error) {
+        // Continue on error
+      }
+    }
+
+    // Back-link topics to projects (if any projects were created/accessed in this session)
+    if (this.topicsCreated.length > 0 && this.projectsCreated.length > 0) {
+      for (const topic of this.topicsCreated) {
+        try {
+          let content = await fs.readFile(topic.file, 'utf-8');
+          for (const project of this.projectsCreated) {
+            const projectLink = `- [[projects/${project.slug}/project|${project.name}]]`;
+            if (!content.includes(projectLink)) {
+              content = content.replace(
+                /## Related Projects\n/,
+                `## Related Projects\n${projectLink}\n`
+              );
+            }
+          }
+          await fs.writeFile(topic.file, content);
+        } catch (error) {
+          // Continue on error
+        }
+      }
+    }
+
+    // Back-link decisions to this session
+    for (const decision of this.decisionsCreated) {
+      try {
+        const content = await fs.readFile(decision.file, 'utf-8');
+        const sessionLink = `- Session: [[${sessionId}]]`;
+        const updatedContent = content.replace(
+          /## Related\n.*\n/,
+          `## Related\n${sessionLink}\n`
+        );
+        await fs.writeFile(decision.file, updatedContent);
+      } catch (error) {
+        // Continue on error
+      }
+    }
+
+    // Back-link projects to this session
+    for (const project of this.projectsCreated) {
+      try {
+        const content = await fs.readFile(project.file, 'utf-8');
+        const sessionLink = `- [[${sessionId}]]`;
+        if (!content.includes(sessionLink)) {
+          const updatedContent = content.replace(
+            /## Related Sessions\n/,
+            `## Related Sessions\n${sessionLink}\n`
+          );
+          await fs.writeFile(project.file, updatedContent);
+        }
+      } catch (error) {
+        // Continue on error
+      }
+    }
+
+    // Back-link projects to topics (if any topics were created in this session)
+    if (this.projectsCreated.length > 0 && this.topicsCreated.length > 0) {
+      for (const project of this.projectsCreated) {
+        try {
+          let content = await fs.readFile(project.file, 'utf-8');
+          for (const topic of this.topicsCreated) {
+            const topicLink = `- [[topics/${topic.slug}|${topic.title}]]`;
+            if (!content.includes(topicLink)) {
+              content = content.replace(
+                /## Topics\n/,
+                `## Topics\n${topicLink}\n`
+              );
+            }
+          }
+          await fs.writeFile(project.file, content);
+        } catch (error) {
+          // Continue on error
+        }
+      }
+    }
+
+    // Build repository detection message
+    let repoDetectionMessage = '';
+    if (detectedRepoInfo) {
+      repoDetectionMessage = `\n\n📦 Git Repository Auto-Linked:\n`;
+      repoDetectionMessage += `   ${detectedRepoInfo.name}\n`;
+      repoDetectionMessage += `   Path: ${detectedRepoInfo.path}\n`;
+      if (detectedRepoInfo.branch) repoDetectionMessage += `   Branch: ${detectedRepoInfo.branch}\n`;
+      repoDetectionMessage += `   ✅ Project page created/updated\n`;
+      if (this.topicsCreated.length > 0) {
+        repoDetectionMessage += `   ✅ ${this.topicsCreated.length} topic(s) linked to project\n`;
+      }
+      repoDetectionMessage += `\n💡 Next step: Create and record your git commit`;
     }
 
     // Build summary message
@@ -3040,6 +3093,41 @@ ${this.currentSessionId ? `- [[${this.currentSessionId}]]` : ''}
 
 `;
       await fs.writeFile(projectFile, content);
+    }
+
+    // Link topics from current session to this project
+    if (this.currentSessionId && this.topicsCreated.length > 0) {
+      // Read the current content again (may have changed)
+      content = await fs.readFile(projectFile, 'utf-8');
+
+      // Add topic links to project
+      for (const topic of this.topicsCreated) {
+        const topicLink = `- [[topics/${topic.slug}|${topic.title}]]`;
+        if (!content.includes(topicLink)) {
+          content = content.replace(
+            /## Topics\n/,
+            `## Topics\n${topicLink}\n`
+          );
+        }
+      }
+      await fs.writeFile(projectFile, content);
+
+      // Add project link to topics
+      for (const topic of this.topicsCreated) {
+        try {
+          let topicContent = await fs.readFile(topic.file, 'utf-8');
+          const projectLink = `- [[projects/${slug}/project|${info.name}]]`;
+          if (!topicContent.includes(projectLink)) {
+            topicContent = topicContent.replace(
+              /## Related Projects\n/,
+              `## Related Projects\n${projectLink}\n`
+            );
+            await fs.writeFile(topic.file, topicContent);
+          }
+        } catch (error) {
+          // Continue on error
+        }
+      }
     }
 
     return {
