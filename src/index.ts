@@ -3327,6 +3327,24 @@ ${diff}
       }
     }
 
+    // Check if it looks like an old-format session file (YYYY-MM-DD-...)
+    const oldSessionPattern = /^(\d{4})-(\d{2})-(\d{2})-/;
+    const oldSessionMatch = filename.match(oldSessionPattern);
+
+    if (oldSessionMatch) {
+      const year = oldSessionMatch[1];
+      const month = oldSessionMatch[2];
+      const sessionPath = path.join(VAULT_PATH, 'sessions', `${year}-${month}`, `${filename}.md`);
+
+      try {
+        await fs.access(sessionPath);
+        return filename; // Return just the filename for wiki-style links
+      } catch {
+        // File doesn't exist
+        return null;
+      }
+    }
+
     // Check topics directory
     const topicPath = path.join(VAULT_PATH, 'topics', `${filename}.md`);
     try {
@@ -3336,13 +3354,25 @@ ${diff}
       // Continue checking
     }
 
-    // Check decisions directory
+    // Check decisions directory (exact match)
     const decisionPath = path.join(VAULT_PATH, 'decisions', `${filename}.md`);
     try {
       await fs.access(decisionPath);
       return filename;
     } catch {
-      // Continue checking
+      // Try fuzzy matching - find file that starts with this name
+      try {
+        const decisionsDir = path.join(VAULT_PATH, 'decisions');
+        const decisionFiles = await fs.readdir(decisionsDir);
+        const match = decisionFiles.find(f =>
+          f.startsWith(filename) && f.endsWith('.md')
+        );
+        if (match) {
+          return match.replace(/\.md$/, '');
+        }
+      } catch {
+        // Continue checking
+      }
     }
 
     // Check for project files (projects/project-name/project.md)
@@ -3558,9 +3588,11 @@ ${content}`;
       }
 
       // Check 4: Validate and fix internal links
+      const decisionsDir = path.join(VAULT_PATH, 'decisions');
       const allFiles = [
         ...await this.findMarkdownFiles(sessionsDir),
         ...await this.findMarkdownFiles(topicsDir),
+        ...await this.findMarkdownFiles(decisionsDir),
         ...await this.findMarkdownFiles(projectsDir),
       ];
 
@@ -3580,6 +3612,34 @@ ${content}`;
           // Skip false positives
           if (this.shouldSkipLinkValidation(linkPath, content, matchIndex)) {
             continue;
+          }
+
+          // Check if link has directory prefix that violates wiki-link standards
+          // Per Decision 002, internal links should not include directory prefixes
+          // Note: projects/ prefix is kept because project files are not uniquely named
+          // (all project pages are "project.md", commit files may have overlapping hashes)
+          const directoryPrefixPattern = /^(sessions|topics|decisions)\//;
+          const prefixMatch = linkPath.match(directoryPrefixPattern);
+
+          if (prefixMatch) {
+            // Strip the directory prefix to get the base filename
+            const strippedPath = linkPath.replace(directoryPrefixPattern, '');
+
+            // Try to find the correct file for this stripped path
+            const correctedPath = await this.findCorrectLinkPath(strippedPath);
+
+            if (correctedPath) {
+              // Found the file, add it to fixes
+              linksToFix.push({
+                original: linkPath,
+                corrected: correctedPath,
+                fullMatch: fullMatch,
+              });
+            } else {
+              // File doesn't exist even after stripping prefix - it's truly broken
+              warnings.push(`Broken link in ${path.relative(VAULT_PATH, file)}: [[${linkPath}]] (file not found even after stripping prefix)`);
+            }
+            continue; // Skip to next link
           }
 
           // Try to resolve the link
