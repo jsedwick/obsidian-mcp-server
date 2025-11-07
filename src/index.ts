@@ -281,7 +281,7 @@ class ObsidianMCPServer {
             return await this.linkToTopic(args as { topic: string });
           
           case 'close_session':
-            return await this.closeSession(args as { summary: string; topic?: string });
+            return await this.closeSession(args as { summary: string; topic?: string; _invoked_by_slash_command?: boolean });
 
           case 'find_stale_topics':
             return await this.findStaleTopics(args as { age_threshold_days?: number; include_never_reviewed?: boolean });
@@ -802,7 +802,7 @@ NOTE: If your title contains implementation keywords (fix, bug, implement, etc.)
       },
       {
         name: 'close_session',
-        description: 'Create a session retroactively to capture the work done in this conversation. Call this at the end of a conversation to persist the session to the vault.',
+        description: 'Create a session retroactively to capture the work done in this conversation. ONLY callable via the /close slash command. Call this at the end of a conversation to persist the session to the vault.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -813,6 +813,11 @@ NOTE: If your title contains implementation keywords (fix, bug, implement, etc.)
             topic: {
               type: 'string',
               description: 'Optional topic or title for this session (will be slugified for the filename)',
+            },
+            _invoked_by_slash_command: {
+              type: 'boolean',
+              description: 'Internal parameter - must be true to invoke this tool. Only set by slash commands.',
+              default: false,
             },
           },
           required: ['summary'],
@@ -1526,6 +1531,30 @@ Check the sessions/ directory for recent conversations.
   }
 
   private async createTopicPage(args: { topic: string; content: string }) {
+    // Validate that this is appropriate for a topic (not session-specific content)
+    const investigationKeywords = [
+      'investigation', 'investigating', 'bug fix', 'fixing', 'debugg',
+      'found issue', 'found problem', 'discovered', 'troubleshooting session',
+      'worked on', 'fixed issue', 'resolved bug'
+    ];
+
+    const titleLower = args.topic.toLowerCase();
+    const matchedKeyword = investigationKeywords.find(keyword => titleLower.includes(keyword));
+
+    if (matchedKeyword) {
+      throw new Error(
+        `❌ Topic title contains "${matchedKeyword}" - this appears to be investigation/debugging details, not a topic.\n\n` +
+        `Topics should be persistent, reusable knowledge:\n` +
+        `  ✅ How-to guides\n` +
+        `  ✅ Architecture explanations\n` +
+        `  ✅ Troubleshooting procedures (generic)\n` +
+        `  ✅ Implementation patterns\n\n` +
+        `Investigation details belong in session notes instead.\n\n` +
+        `If this is genuinely reusable knowledge, rephrase the title to focus on the solution/pattern, not the investigation.\n` +
+        `Example: Instead of "Fixing search bug", use "Search Algorithm Implementation" or "Common Search Issues"`
+      );
+    }
+
     await this.ensureVaultStructure();
 
     const slug = this.slugify(args.topic);
@@ -1574,9 +1603,11 @@ ${args.content}
   private async createDecision(args: { title: string; content: string; context?: string; force?: boolean }) {
     await this.ensureVaultStructure();
 
-    // Keyword detection: warn if title suggests this should be a topic instead
-    const topicKeywords = ['fix', 'bug', 'issue', 'implement', 'how', 'guide', 'setup', 'error', 'crash', 'problem'];
     const titleLower = args.title.toLowerCase();
+    const contentLower = args.content.toLowerCase();
+
+    // Validation 1: Check if title suggests this should be a topic instead
+    const topicKeywords = ['fix', 'bug', 'issue', 'implement', 'how', 'guide', 'setup', 'error', 'crash', 'problem'];
     const matchedTopicKeywords = topicKeywords.filter(kw => titleLower.includes(kw));
 
     if (matchedTopicKeywords.length > 0 && !args.force) {
@@ -1593,6 +1624,39 @@ TOPICS are for implementation details, bug fixes, and how-to guides (e.g., "Fix 
 
 If you still want to create this as a decision, provide context that explains the strategic choice and alternatives.
 Otherwise, use create_topic_page instead.
+
+To proceed anyway, call create_decision again with force: true.`,
+          },
+        ],
+      };
+    }
+
+    // Validation 2: Check if decision indicates alternatives were considered
+    const decisionIndicators = ['vs', 'versus', 'between', 'alternative', 'option', 'approach', 'choice'];
+    const hasDecisionIndicator = decisionIndicators.some(indicator =>
+      titleLower.includes(indicator) || contentLower.includes(indicator)
+    );
+
+    if (!hasDecisionIndicator && !args.force) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `⚠️  This doesn't appear to be a strategic decision with alternatives.
+
+Decisions should document:
+  ✅ Multiple alternatives that were considered
+  ✅ Why one was chosen over others
+  ✅ Trade-offs and consequences
+
+Your title/content doesn't mention alternatives (no "vs", "between", "alternative", "option", etc.)
+
+Examples of proper decisions:
+  ✅ "Use Obsidian vs Notion for Context Management"
+  ✅ "Flat vs Hierarchical Topic Organization"
+  ✅ "CSS-in-JS vs CSS Custom Properties for Theming"
+
+If this documents a single solution/implementation without comparing alternatives, use create_topic_page instead.
 
 To proceed anyway, call create_decision again with force: true.`,
           },
@@ -1668,7 +1732,18 @@ ${this.currentSessionId ? `- Session: [[${this.currentSessionId}]]` : ''}
 
     if (append) {
       const existing = await fs.readFile(topicFile, 'utf-8');
-      const newContent = existing + '\n' + args.content;
+
+      // Extract frontmatter and body from existing content
+      const frontmatterMatch = existing.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
+      const frontmatter = frontmatterMatch ? frontmatterMatch[1] : '';
+      const existingBody = frontmatterMatch ? frontmatterMatch[2] : existing;
+
+      // Strip frontmatter from new content if present
+      const newBodyMatch = args.content.match(/^---\n[\s\S]*?\n---\n([\s\S]*)$/) || args.content.match(/^([\s\S]*)$/);
+      const newBody = newBodyMatch ? newBodyMatch[1] : args.content;
+
+      // Reconstruct file with preserved frontmatter + appended body
+      const newContent = `---\n${frontmatter}\n---\n${existingBody}\n${newBody}`;
       await fs.writeFile(topicFile, newContent);
     } else {
       await fs.writeFile(topicFile, args.content);
@@ -1792,7 +1867,12 @@ ${this.currentSessionId ? `- Session: [[${this.currentSessionId}]]` : ''}
     };
   }
 
-  private async closeSession(args: { summary: string; topic?: string }) {
+  private async closeSession(args: { summary: string; topic?: string; _invoked_by_slash_command?: boolean }) {
+    // Enforce that this tool can only be called via the /close slash command
+    if (args._invoked_by_slash_command !== true) {
+      throw new Error('❌ The close_session tool can ONLY be called via the /close slash command. Please ask the user to run the /close command to close this session.');
+    }
+
     await this.ensureVaultStructure();
 
     // Generate session ID from current timestamp and optional topic
