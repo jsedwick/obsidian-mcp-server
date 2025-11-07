@@ -276,10 +276,13 @@ class ObsidianMCPServer {
           
           case 'update_topic_page':
             return await this.updateTopicPage(args as { topic: string; content: string; append?: boolean });
-          
+
           case 'get_session_context':
             return await this.getSessionContext(args as { session_id?: string });
-          
+
+          case 'get_topic_context':
+            return await this.getTopicContext(args as { topic: string });
+
           case 'link_to_topic':
             return await this.linkToTopic(args as { topic: string });
           
@@ -805,6 +808,20 @@ NOTE: If your title contains implementation keywords (fix, bug, implement, etc.)
               description: 'Optional session ID; if not provided, returns current session',
             },
           },
+        },
+      },
+      {
+        name: 'get_topic_context',
+        description: 'Load full topic content when you need complete, authoritative information. Topics are living documents that represent the gold standard for their subject matter.\n\n**When to use:**\n- You need detailed, comprehensive understanding of a concept\n- Search snippets are insufficient or incomplete\n- User asks for in-depth explanation\n- Multiple follow-up questions are expected\n\n**When NOT to use:**\n- Quick factual lookup (use search snippets instead)\n- Topic would be very large but you only need a small detail\n- One-off questions where snippets suffice\n\n**Best practice:** Search first to identify relevant topics, then load the full topic for authoritative reference.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            topic: {
+              type: 'string',
+              description: 'Topic name or slug to retrieve',
+            },
+          },
+          required: ['topic'],
         },
       },
       {
@@ -1849,6 +1866,40 @@ ${this.currentSessionId ? `- Session: [[${this.currentSessionId}]]` : ''}
         {
           type: 'text',
           text: `Session context for ${sessionId}:\n\n${content}`,
+        },
+      ],
+    };
+  }
+
+  private async getTopicContext(args: { topic: string }) {
+    const slug = this.slugify(args.topic);
+    const topicFile = path.join(VAULT_PATH, 'topics', `${slug}.md`);
+
+    try {
+      await fs.access(topicFile);
+    } catch {
+      throw new Error(`Topic not found: ${args.topic}. Use search_vault to find available topics, or create_topic_page to create a new one.`);
+    }
+
+    const content = await fs.readFile(topicFile, 'utf-8');
+
+    // Parse frontmatter to extract title
+    const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
+    let title = args.topic;
+
+    if (frontmatterMatch) {
+      const frontmatter = frontmatterMatch[1];
+      const titleMatch = frontmatter.match(/title:\s*(.+)/);
+      if (titleMatch) {
+        title = titleMatch[1].trim();
+      }
+    }
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `Topic context for "${title}" (topics/${slug}.md):\n\n${content}`,
         },
       ],
     };

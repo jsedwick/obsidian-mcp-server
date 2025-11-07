@@ -183,6 +183,20 @@ Session ID: "2025-10-28_14-30-00_api-auth"
 Returns: Complete session file content
 ```
 
+**get_topic_context** - Load full authoritative topic content
+```
+Topic: "authentication-system" or "Authentication System"
+Returns: Complete topic file content with frontmatter
+
+Use when:
+  - You need comprehensive understanding of a concept
+  - Search snippets are insufficient
+  - Multiple follow-up questions expected
+  - User asks for in-depth explanation
+
+Best practice: Search first to identify relevant topics, then load full content
+```
+
 ## Advanced Features
 
 ### Semantic Search with Local Embeddings
