@@ -320,7 +320,7 @@ class ObsidianMCPServer {
             return await this.toggleEmbeddings(args as { enabled?: boolean });
 
           case 'vault_custodian':
-            return await this.vaultCustodian();
+            return await this.vaultCustodian(args as { files_to_check?: string[] });
 
           case 'analyze_topic_content':
             return await this.analyzeTopicContent(args as {
@@ -1027,10 +1027,16 @@ NOTE: If your title contains implementation keywords (fix, bug, implement, etc.)
       },
       {
         name: 'vault_custodian',
-        description: 'Verify vault integrity by checking file organization, validating links, and reorganizing/relinking files as necessary. Ensures all files are in logical locations and properly connected.',
+        description: 'Verify vault integrity by checking file organization, validating links, and reorganizing/relinking files as necessary. Ensures all files are in logical locations and properly connected. Can optionally be scoped to only check specific files.',
         inputSchema: {
           type: 'object',
-          properties: {},
+          properties: {
+            files_to_check: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Optional: Array of absolute file paths to check. If not provided, checks all vault files.',
+            },
+          },
         },
       },
       {
@@ -2168,6 +2174,34 @@ ${this.projectsCreated.length > 0 ? this.projectsCreated.map(p => `- [[projects/
       summary += `📁 Files accessed: ${this.filesAccessed.length}\n`;
     }
 
+    // Run vault custodian on files created/updated during this session
+    const editedOrCreatedFiles = this.filesAccessed
+      .filter(f => (f.action === 'edit' || f.action === 'create') && f.path.startsWith(VAULT_PATH))
+      .map(f => f.path);
+
+    const filesToCheck: string[] = [
+      sessionFile,
+      ...this.topicsCreated.map(t => t.file),
+      ...this.decisionsCreated.map(d => d.file),
+      ...this.projectsCreated.map(p => p.file),
+      ...editedOrCreatedFiles,
+    ];
+
+    // Remove duplicates
+    const uniqueFilesToCheck = Array.from(new Set(filesToCheck));
+
+    let vaultCustodianReport = '';
+    if (uniqueFilesToCheck.length > 0) {
+      try {
+        const custodianResult = await this.vaultCustodian({ files_to_check: uniqueFilesToCheck });
+        if (custodianResult.content && custodianResult.content[0]) {
+          vaultCustodianReport = '\n\n' + (custodianResult.content[0] as { text: string }).text;
+        }
+      } catch (error) {
+        vaultCustodianReport = '\n\n⚠️  Vault custodian check failed: ' + (error instanceof Error ? error.message : String(error));
+      }
+    }
+
     // Clear state for next conversation
     this.topicsCreated = [];
     this.decisionsCreated = [];
@@ -2179,7 +2213,7 @@ ${this.projectsCreated.length > 0 ? this.projectsCreated.map(p => `- [[projects/
       content: [
         {
           type: 'text',
-          text: summary + repoDetectionMessage,
+          text: summary + repoDetectionMessage + vaultCustodianReport,
         },
       ],
     };
@@ -3538,17 +3572,23 @@ ${diff}
     return false;
   }
 
-  private async vaultCustodian() {
+  private async vaultCustodian(args?: { files_to_check?: string[] }) {
     await this.ensureVaultStructure();
 
     const issues: string[] = [];
     const fixes: string[] = [];
     const warnings: string[] = [];
+    const filesToCheck = args?.files_to_check;
 
     try {
       // Check 1: Verify sessions are in the correct directory
       const sessionsDir = path.join(VAULT_PATH, 'sessions');
-      const sessionFiles = await this.findMarkdownFiles(sessionsDir);
+      let sessionFiles = await this.findMarkdownFiles(sessionsDir);
+
+      // Filter to only check specified files if provided
+      if (filesToCheck) {
+        sessionFiles = sessionFiles.filter(f => filesToCheck.includes(f));
+      }
 
       for (const file of sessionFiles) {
         const content = await fs.readFile(file, 'utf-8');
@@ -3582,7 +3622,12 @@ ${diff}
 
       // Check 2: Verify topics are properly formatted
       const topicsDir = path.join(VAULT_PATH, 'topics');
-      const topicFiles = await this.findMarkdownFiles(topicsDir);
+      let topicFiles = await this.findMarkdownFiles(topicsDir);
+
+      // Filter to only check specified files if provided
+      if (filesToCheck) {
+        topicFiles = topicFiles.filter(f => filesToCheck.includes(f));
+      }
 
       for (const file of topicFiles) {
         const content = await fs.readFile(file, 'utf-8');
@@ -3618,6 +3663,12 @@ ${content}`;
           if (!stat.isDirectory()) continue;
 
           const projectFile = path.join(projectPath, 'project.md');
+
+          // Skip this project if we're filtering and this project file is not in the list
+          if (filesToCheck && !filesToCheck.includes(projectFile)) {
+            continue;
+          }
+
           try {
             await fs.access(projectFile);
           } catch {
@@ -3645,12 +3696,17 @@ ${content}`;
 
       // Check 4: Validate and fix internal links
       const decisionsDir = path.join(VAULT_PATH, 'decisions');
-      const allFiles = [
+      let allFiles = [
         ...await this.findMarkdownFiles(sessionsDir),
         ...await this.findMarkdownFiles(topicsDir),
         ...await this.findMarkdownFiles(decisionsDir),
         ...await this.findMarkdownFiles(projectsDir),
       ];
+
+      // Filter to only check specified files if provided
+      if (filesToCheck) {
+        allFiles = allFiles.filter(f => filesToCheck.includes(f));
+      }
 
       for (const file of allFiles) {
         let content = await fs.readFile(file, 'utf-8');
