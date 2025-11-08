@@ -158,6 +158,26 @@ interface EmbeddingToggleConfig {
   lastModified: string;
 }
 
+// Response detail levels for tiered responses
+enum ResponseDetail {
+  MINIMAL = 'minimal',    // IDs, titles, counts only
+  SUMMARY = 'summary',    // + brief snippets (default)
+  DETAILED = 'detailed',  // + extended context
+  FULL = 'full'          // Complete content
+}
+
+// Helper to parse detail level with default
+function parseDetailLevel(detail?: string): ResponseDetail {
+  if (!detail) return ResponseDetail.SUMMARY;
+
+  const level = detail.toLowerCase();
+  if (Object.values(ResponseDetail).includes(level as ResponseDetail)) {
+    return level as ResponseDetail;
+  }
+
+  return ResponseDetail.SUMMARY;
+}
+
 class ObsidianMCPServer {
   private server: Server;
   private config: ServerConfig;
@@ -662,6 +682,12 @@ class ObsidianMCPServer {
               description: 'If true, return condensed snippets instead of full matches (default: true)',
               default: true,
             },
+            detail: {
+              type: 'string',
+              enum: ['minimal', 'summary', 'detailed', 'full'],
+              description: 'Response detail level. minimal: files only, summary: + snippets (default), detailed: + extended context, full: complete matches',
+              default: 'summary',
+            },
           },
           required: ['query'],
         },
@@ -912,6 +938,12 @@ NOTE: If your title contains implementation keywords (fix, bug, implement, etc.)
               description: 'Maximum number of sessions to return (default: 5)',
               default: 5,
             },
+            detail: {
+              type: 'string',
+              enum: ['minimal', 'summary', 'detailed', 'full'],
+              description: 'Response detail level. minimal: IDs only, summary: + date/status (default), detailed: + files/commits, full: + summaries',
+              default: 'summary',
+            },
             _invoked_by_slash_command: {
               type: 'boolean',
               description: 'Internal parameter - must be true to invoke this tool. Only set by slash commands.',
@@ -930,6 +962,12 @@ NOTE: If your title contains implementation keywords (fix, bug, implement, etc.)
               type: 'number',
               description: 'Maximum number of projects to return (default: 5)',
               default: 5,
+            },
+            detail: {
+              type: 'string',
+              enum: ['minimal', 'summary', 'detailed', 'full'],
+              description: 'Response detail level. minimal: names only, summary: + paths/dates (default), detailed: + recent commits, full: + full project pages',
+              default: 'summary',
             },
             _invoked_by_slash_command: {
               type: 'boolean',
@@ -1178,19 +1216,54 @@ Check the sessions/ directory for recent conversations.
       .replace(/\[\[([^\]]+)\]\]/g, '$1');
   }
 
+  private smartTruncate(text: string, options: {
+    maxLength: number;
+    preserveContext: boolean;
+    ellipsis: string;
+  }): string {
+    if (text.length <= options.maxLength) return text;
+
+    let truncated = text.substring(0, options.maxLength);
+
+    if (options.preserveContext) {
+      // Find last complete sentence or paragraph
+      const lastPeriod = truncated.lastIndexOf('. ');
+      const lastNewline = truncated.lastIndexOf('\n');
+      const breakPoint = Math.max(lastPeriod, lastNewline);
+
+      // Only use breakpoint if it's not too far back (>70% of max length)
+      if (breakPoint > options.maxLength * 0.7) {
+        truncated = truncated.substring(0, breakPoint + 1);
+      }
+    }
+
+    return truncated + options.ellipsis;
+  }
+
   private async searchVault(args: {
     query: string;
     directories?: string[];
     max_results?: number;
     date_range?: { start?: string; end?: string };
     snippets_only?: boolean;
+    detail?: string;
   }) {
     await this.ensureVaultStructure();
     await this.loadEmbeddingCache(); // Load embedding cache at start of search
 
     const searchDirs = args.directories || ['sessions', 'topics', 'decisions'];
     const maxResults = args.max_results || 10;
-    const snippetsOnly = args.snippets_only !== false; // Default true
+
+    // Determine detail level (backwards compatible)
+    let detailLevel: ResponseDetail;
+    if (args.detail) {
+      detailLevel = parseDetailLevel(args.detail);
+    } else if (args.snippets_only === false) {
+      detailLevel = ResponseDetail.FULL;
+    } else {
+      detailLevel = ResponseDetail.SUMMARY;
+    }
+
     const results: {
       file: string;
       matches: string[];
@@ -1349,64 +1422,155 @@ Check the sessions/ directory for recent conversations.
       }
     }
 
-    if (topResults.length === 0) {
+    // Format and return results using tiered response levels
+    return this.formatSearchResults(
+      topResults,
+      results.length,
+      detailLevel,
+      queryEmbedding !== null,
+      args.query
+    );
+  }
+
+  private formatSearchResults(
+    results: Array<{
+      file: string;
+      matches: string[];
+      date?: string;
+      score: number;
+      semanticScore?: number;
+      vault?: string;
+    }>,
+    totalCount: number,
+    detail: ResponseDetail,
+    hasSemanticSearch: boolean,
+    query: string
+  ): { content: Array<{ type: string; text: string }> } {
+    if (results.length === 0) {
       return {
         content: [
           {
             type: 'text',
-            text: `No results found for "${args.query}".`,
+            text: `No results found for "${query}".`,
           },
         ],
       };
     }
 
-    // Generate response based on snippets_only flag
-    let resultText: string;
+    let resultText = `Search results for "${query}":\n\n`;
 
-    if (snippetsOnly) {
-      // Return condensed results with option to read full files
-      resultText = `Found ${results.length} matches. Top ${topResults.length} results:\n\n`;
+    switch (detail) {
+      case ResponseDetail.MINIMAL:
+        // Just file paths and basic metadata
+        resultText += `Found ${totalCount} matches. Top ${results.length}:\n\n`;
+        results.forEach((r, idx) => {
+          const vaultIndicator = r.vault && r.vault !== this.config.primaryVault.name
+            ? ` [${r.vault}]`
+            : '';
+          resultText += `${idx + 1}. ${r.file}${r.date ? ` (${r.date})` : ''}${vaultIndicator}\n`;
+        });
+        resultText += `\n💡 Use detail: "summary" to see snippets`;
+        break;
 
-      topResults.forEach((r, idx) => {
-        const semanticIndicator = r.semanticScore !== undefined ? ` [semantic: ${(r.semanticScore * 100).toFixed(0)}%]` : '';
-        const vaultIndicator = r.vault && r.vault !== this.config.primaryVault.name ? ` [${r.vault}]` : '';
-        resultText += `${idx + 1}. **${r.file}** ${r.date ? `(${r.date})` : ''}${semanticIndicator}${vaultIndicator}\n`;
-        if (r.matches.length > 0) {
-          resultText += r.matches
-            .map(m => {
-              const cleaned = this.cleanObsidianMarkdown(m.trim());
-              return `   ${cleaned.substring(0, 100)}${cleaned.length > 100 ? '...' : ''}`;
-            })
-            .join('\n') + '\n';
+      case ResponseDetail.SUMMARY:
+        // Current implementation - snippets truncated to 100 chars
+        resultText += `Found ${totalCount} matches. Top ${results.length} results:\n\n`;
+        results.forEach((r, idx) => {
+          const semanticIndicator = r.semanticScore !== undefined
+            ? ` [semantic: ${(r.semanticScore * 100).toFixed(0)}%]`
+            : '';
+          const vaultIndicator = r.vault && r.vault !== this.config.primaryVault.name
+            ? ` [${r.vault}]`
+            : '';
+
+          resultText += `${idx + 1}. **${r.file}** ${r.date ? `(${r.date})` : ''}${semanticIndicator}${vaultIndicator}\n`;
+
+          if (r.matches.length > 0) {
+            const snippets = r.matches
+              .slice(0, 3)  // Max 3 snippets per result
+              .map(m => {
+                const cleaned = this.cleanObsidianMarkdown(m.trim());
+                return `   ${cleaned.substring(0, 100)}${cleaned.length > 100 ? '...' : ''}`;
+              })
+              .join('\n');
+            resultText += snippets + '\n';
+          }
+          resultText += '\n';
+        });
+
+        if (totalCount > results.length) {
+          resultText += `\n_Showing top ${results.length} of ${totalCount} results. Refine your query or increase max_results for more._\n`;
         }
-        resultText += '\n';
-      });
+        resultText += `\n💡 Use get_session_context/get_topic_context for full content`;
+        resultText += `\n💡 Use detail: "detailed" for more context per result`;
+        break;
 
-      if (results.length > maxResults) {
-        resultText += `\n_Showing top ${maxResults} of ${results.length} results. Refine your query or increase max_results for more._`;
-      }
+      case ResponseDetail.DETAILED:
+        // Extended snippets - up to 300 chars, more matches per result
+        resultText += `Found ${totalCount} matches. Showing ${results.length} detailed results:\n\n`;
+        results.forEach((r, idx) => {
+          const semanticIndicator = r.semanticScore !== undefined
+            ? ` [semantic: ${(r.semanticScore * 100).toFixed(0)}%]`
+            : '';
+          const vaultIndicator = r.vault && r.vault !== this.config.primaryVault.name
+            ? ` [${r.vault}]`
+            : '';
 
-      resultText += `\n\n💡 Use get_session_context with a specific session_id to read full files.`;
-      if (this.embeddingConfig.enabled && queryEmbedding) {
-        resultText += `\n✨ Results semantically re-ranked from top ${this.embeddingConfig.keywordCandidatesLimit} keyword matches`;
-      }
-      if (this.config.secondaryVaults.length > 0) {
-        resultText += `\n📚 Searched ${1 + this.config.secondaryVaults.length} vault(s)`;
-      }
-    } else {
-      // Return full matching content (old behavior, for backwards compatibility)
-      resultText = topResults
-        .map(r => `**${r.file}** ${r.date ? `(${r.date})` : ''}:\n${r.matches.map(m => `  - ${this.cleanObsidianMarkdown(m.trim())}`).join('\n')}`)
-        .join('\n\n');
+          resultText += `${idx + 1}. **${r.file}** ${r.date ? `(${r.date})` : ''}${semanticIndicator}${vaultIndicator}\n`;
+
+          if (r.matches.length > 0) {
+            const snippets = r.matches
+              .slice(0, 5)  // Up to 5 snippets
+              .map(m => {
+                const cleaned = this.cleanObsidianMarkdown(m.trim());
+                const truncated = this.smartTruncate(cleaned, {
+                  maxLength: 300,
+                  preserveContext: true,
+                  ellipsis: '...'
+                });
+                return `   ${truncated}`;
+              })
+              .join('\n');
+            resultText += snippets + '\n';
+          }
+          resultText += '\n';
+        });
+
+        if (totalCount > results.length) {
+          resultText += `\n_Showing top ${results.length} of ${totalCount} results._\n`;
+        }
+        resultText += `\n💡 Use get_session_context/get_topic_context for complete files`;
+        resultText += `\n💡 Use detail: "full" for all matches without truncation`;
+        break;
+
+      case ResponseDetail.FULL:
+        // Complete matches - no truncation (backwards compatible)
+        resultText += `Found ${totalCount} matches. Showing ${results.length} complete results:\n\n`;
+        results.forEach((r, idx) => {
+          resultText += `**${r.file}** ${r.date ? `(${r.date})` : ''}:\n`;
+          if (r.matches.length > 0) {
+            resultText += r.matches.map(m => `  - ${this.cleanObsidianMarkdown(m.trim())}`).join('\n') + '\n';
+          }
+          resultText += '\n';
+        });
+        break;
+    }
+
+    // Add footer metadata
+    if (hasSemanticSearch) {
+      resultText += `\n✨ Results semantically re-ranked from top ${this.embeddingConfig.keywordCandidatesLimit} keyword matches`;
+    }
+    if (this.config.secondaryVaults.length > 0) {
+      resultText += `\n📚 Searched ${1 + this.config.secondaryVaults.length} vault(s)`;
     }
 
     return {
       content: [
         {
           type: 'text',
-          text: `Search results for "${args.query}":\n\n${resultText}`,
-        },
-      ],
+          text: resultText
+        }
+      ]
     };
   }
 
@@ -2601,7 +2765,7 @@ Provide a structured analysis with:
     };
   }
 
-  private async listRecentSessions(args: { limit?: number; _invoked_by_slash_command?: boolean }) {
+  private async listRecentSessions(args: { limit?: number; detail?: string; _invoked_by_slash_command?: boolean }) {
     // Enforce that this tool can only be called via the /sessions slash command
     if (!args._invoked_by_slash_command) {
       throw new Error('This tool can only be invoked via the /sessions slash command. Please ask the user to run the /sessions command.');
@@ -2610,6 +2774,7 @@ Provide a structured analysis with:
     await this.ensureVaultStructure();
 
     const limit = args.limit || 5;
+    const detailLevel = parseDetailLevel(args.detail);
     const sessionsDir = path.join(VAULT_PATH, 'sessions');
 
     try {
@@ -2729,34 +2894,129 @@ Provide a structured analysis with:
         };
       }
 
-      // Format the output
-      let resultText = `Found ${recentSessions.length} recent session(s):\n\n`;
-
-      recentSessions.forEach((session, idx) => {
-        const number = idx + 1;
-        const statusIcon = session.status === 'completed' ? '✓' : '○';
-        const topicText = session.topic ? `: ${session.topic}` : '';
-        const dateText = session.date ? ` (${session.date})` : '';
-
-        resultText += `${number}. ${statusIcon} ${session.session_id}${topicText}${dateText}\n`;
-      });
-
-      resultText += `\nTo continue a session, use get_session_context with the session_id.`;
-
-      return {
-        content: [
-          {
-            type: 'text',
-            text: resultText,
-          },
-        ],
-      };
+      // Format using tiered response levels
+      return this.formatSessionList(recentSessions, detailLevel);
     } catch (error) {
       throw new Error(`Failed to list sessions: ${error}`);
     }
   }
 
-  private async listRecentProjects(args: { limit?: number; _invoked_by_slash_command?: boolean }) {
+  private formatSessionList(
+    sessions: Array<{
+      file: string;
+      filePath: string;
+      mtime: Date;
+      session_id: string;
+      topic?: string;
+      date?: string;
+      status?: string;
+    }>,
+    detail: ResponseDetail
+  ): { content: Array<{ type: string; text: string }> } {
+    let resultText = `Found ${sessions.length} recent session(s):\n\n`;
+
+    switch (detail) {
+      case ResponseDetail.MINIMAL:
+        // Just ID and topic
+        sessions.forEach((s, idx) => {
+          const topicText = s.topic ? `: ${s.topic}` : '';
+          resultText += `${idx + 1}. ${s.session_id}${topicText}\n`;
+        });
+        resultText += `\n💡 Use detail: "summary" for dates and status`;
+        break;
+
+      case ResponseDetail.SUMMARY:
+        // ID, topic, date, status (default - current behavior)
+        sessions.forEach((s, idx) => {
+          const statusIcon = s.status === 'completed' ? '✓' : '○';
+          const topicText = s.topic ? `: ${s.topic}` : '';
+          const dateText = s.date ? ` (${s.date})` : '';
+          resultText += `${idx + 1}. ${statusIcon} ${s.session_id}${topicText}${dateText}\n`;
+        });
+        resultText += `\n💡 Use get_session_context(session_id) for full content`;
+        resultText += `\n💡 Use detail: "detailed" for file and commit info`;
+        break;
+
+      case ResponseDetail.DETAILED:
+        // Everything in summary + parse session files for additional metadata
+        sessions.forEach(async (s, idx) => {
+          const statusIcon = s.status === 'completed' ? '✓' : '○';
+          const topicText = s.topic ? `: ${s.topic}` : '';
+          const dateText = s.date ? ` (${s.date})` : '';
+
+          resultText += `${idx + 1}. ${statusIcon} ${s.session_id}${topicText}${dateText}\n`;
+
+          // Try to read session file for additional metadata
+          try {
+            const content = await fs.readFile(s.filePath, 'utf-8');
+            const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
+
+            if (frontmatterMatch) {
+              const frontmatter = frontmatterMatch[1];
+
+              // Extract repository info
+              const repoMatch = frontmatter.match(/repository:\s*\n\s*path:\s*(.+)\n\s*name:\s*(.+)/);
+              if (repoMatch) {
+                resultText += `   Repository: ${repoMatch[2].trim()}\n`;
+              }
+
+              // Count files accessed
+              const filesMatch = frontmatter.match(/files_accessed:/);
+              if (filesMatch) {
+                const filesSection = content.substring(content.indexOf('files_accessed:'));
+                const filesCount = (filesSection.match(/- path:/g) || []).length;
+                if (filesCount > 0) {
+                  resultText += `   Files accessed: ${filesCount}\n`;
+                }
+              }
+            }
+          } catch {
+            // Couldn't read file, skip additional metadata
+          }
+          resultText += '\n';
+        });
+        resultText += `💡 Use get_session_context(session_id) for complete content`;
+        break;
+
+      case ResponseDetail.FULL:
+        // Include summary snippets from each session
+        sessions.forEach(async (s, idx) => {
+          const statusIcon = s.status === 'completed' ? '✓' : '○';
+          const topicText = s.topic ? `: ${s.topic}` : '';
+
+          resultText += `${idx + 1}. ${statusIcon} ${s.session_id}${topicText}\n`;
+          resultText += `   Date: ${s.date || 'Unknown'}\n`;
+
+          // Try to extract summary
+          try {
+            const content = await fs.readFile(s.filePath, 'utf-8');
+            const summaryMatch = content.match(/## Summary\n\n(.+?)(\n\n|$)/s);
+            if (summaryMatch) {
+              const summary = summaryMatch[1].trim();
+              const truncated = summary.substring(0, 200);
+              resultText += `   ${truncated}${summary.length > 200 ? '...' : ''}\n`;
+            }
+          } catch {
+            // Couldn't read file
+          }
+          resultText += '\n';
+        });
+        break;
+    }
+
+    resultText += `\nTo continue a session, use get_session_context with the session_id.`;
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: resultText
+        }
+      ]
+    };
+  }
+
+  private async listRecentProjects(args: { limit?: number; detail?: string; _invoked_by_slash_command?: boolean }) {
     // Enforce that this tool can only be called via the /projects slash command
     if (!args._invoked_by_slash_command) {
       throw new Error('This tool can only be invoked via the /projects slash command. Please ask the user to run the /projects command.');
@@ -2765,6 +3025,7 @@ Provide a structured analysis with:
     await this.ensureVaultStructure();
 
     const limit = args.limit || 5;
+    const detailLevel = parseDetailLevel(args.detail);
     const projectsDir = path.join(VAULT_PATH, 'projects');
 
     try {
@@ -2867,32 +3128,120 @@ Provide a structured analysis with:
       // Limit results
       const recentProjects = projectFiles.slice(0, limit);
 
-      // Format the output
-      let resultText = `Found ${recentProjects.length} recent project(s):\n\n`;
-
-      recentProjects.forEach((project, idx) => {
-        const number = idx + 1;
-        const statusIcon = project.status === 'active' ? '●' : '○';
-        const titleText = project.title || project.file;
-        const repoText = project.repo_path ? `\n   Repository: ${project.repo_path}` : '';
-        const createdText = project.created ? ` (created ${project.created})` : '';
-
-        resultText += `${number}. ${statusIcon} ${titleText}${createdText}${repoText}\n`;
-      });
-
-      resultText += `\nTo view project details, please specify which project number you'd like to see.`;
-
-      return {
-        content: [
-          {
-            type: 'text',
-            text: resultText,
-          },
-        ],
-      };
+      // Format using tiered response levels
+      return this.formatProjectList(recentProjects, detailLevel);
     } catch (error) {
       throw new Error(`Failed to list projects: ${error}`);
     }
+  }
+
+  private formatProjectList(
+    projects: Array<{
+      file: string;
+      filePath: string;
+      mtime: Date;
+      title?: string;
+      project_slug?: string;
+      repo_path?: string;
+      repo_name?: string;
+      created?: string;
+      status?: string;
+    }>,
+    detail: ResponseDetail
+  ): { content: Array<{ type: string; text: string }> } {
+    let resultText = `Found ${projects.length} recent project(s):\n\n`;
+
+    switch (detail) {
+      case ResponseDetail.MINIMAL:
+        // Just project names
+        projects.forEach((p, idx) => {
+          const titleText = p.title || p.file;
+          resultText += `${idx + 1}. ${titleText}\n`;
+        });
+        resultText += `\n💡 Use detail: "summary" for paths and dates`;
+        break;
+
+      case ResponseDetail.SUMMARY:
+        // Name, path, created date, status (default - current behavior)
+        projects.forEach((p, idx) => {
+          const statusIcon = p.status === 'active' ? '●' : '○';
+          const titleText = p.title || p.file;
+          const createdText = p.created ? ` (created ${p.created})` : '';
+          const repoText = p.repo_path ? `\n   Repository: ${p.repo_path}` : '';
+
+          resultText += `${idx + 1}. ${statusIcon} ${titleText}${createdText}${repoText}\n`;
+        });
+        resultText += `\n💡 To view project details, specify which project number you'd like to see`;
+        resultText += `\n💡 Use detail: "detailed" for recent commit info`;
+        break;
+
+      case ResponseDetail.DETAILED:
+        // Everything in summary + recent commits
+        projects.forEach(async (p, idx) => {
+          const statusIcon = p.status === 'active' ? '●' : '○';
+          const titleText = p.title || p.file;
+          const createdText = p.created ? ` (created ${p.created})` : '';
+
+          resultText += `${idx + 1}. ${statusIcon} ${titleText}${createdText}\n`;
+          if (p.repo_path) {
+            resultText += `   Repository: ${p.repo_path}\n`;
+          }
+
+          // Try to read project file for commit info
+          try {
+            const content = await fs.readFile(p.filePath, 'utf-8');
+
+            // Extract recent commits from the Recent Activity section
+            const activityMatch = content.match(/## Recent Activity([\s\S]*?)(?=\n## |$)/);
+            if (activityMatch) {
+              const activitySection = activityMatch[1];
+              const commitMatches = activitySection.match(/- \[\[commits\/([a-f0-9]+)\]\]: (.+)/g);
+              if (commitMatches && commitMatches.length > 0) {
+                resultText += `   Recent commits:\n`;
+                commitMatches.slice(0, 3).forEach(commit => {
+                  const commitMatch = commit.match(/- \[\[commits\/([a-f0-9]+)\]\]: (.+)/);
+                  if (commitMatch) {
+                    const hash = commitMatch[1].substring(0, 7);
+                    const message = commitMatch[2];
+                    resultText += `     ${hash}: ${message}\n`;
+                  }
+                });
+              }
+            }
+          } catch {
+            // Couldn't read file, skip commit info
+          }
+          resultText += '\n';
+        });
+        resultText += `💡 Use detail: "full" to see complete project pages`;
+        break;
+
+      case ResponseDetail.FULL:
+        // Include full project page content
+        projects.forEach(async (p, idx) => {
+          const titleText = p.title || p.file;
+          resultText += `\n---\n\n## ${idx + 1}. ${titleText}\n\n`;
+
+          try {
+            const content = await fs.readFile(p.filePath, 'utf-8');
+            // Strip frontmatter
+            const mainContent = content.replace(/^---\n[\s\S]*?\n---\n\n/, '');
+            resultText += mainContent + '\n';
+          } catch {
+            resultText += `(Could not read project file)\n`;
+          }
+        });
+        break;
+    }
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: resultText
+        }
+      ]
+    };
   }
 
   private async trackFileAccess(args: { path: string; action: 'read' | 'edit' | 'create' }) {
