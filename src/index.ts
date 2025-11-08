@@ -150,7 +150,7 @@ interface EmbeddingConfig {
   enabled: boolean;
   modelName: string;
   cacheDirs: Map<string, string>; // Map of vaultPath -> cacheDir
-  semanticWeight: number; // 0-1, how much weight semantic search gets (rest goes to keyword)
+  keywordCandidatesLimit: number; // Number of top keyword results to re-rank with semantic search
 }
 
 interface EmbeddingToggleConfig {
@@ -212,7 +212,7 @@ class ObsidianMCPServer {
       enabled: this.loadEmbeddingToggleState(),
       modelName: 'Xenova/all-MiniLM-L6-v2',
       cacheDirs: cacheDirs,
-      semanticWeight: 0.6, // 60% semantic, 40% keyword
+      keywordCandidatesLimit: 100, // Re-rank top 100 keyword results with semantic search
     };
 
     this.setupHandlers();
@@ -1182,6 +1182,8 @@ Check the sessions/ directory for recent conversations.
       score: number;
       semanticScore?: number;
       vault?: string;
+      content?: string; // Content for semantic re-ranking
+      fileStats?: any; // File stats for embedding cache
     }[] = [];
     const queryLower = args.query.toLowerCase();
     const queryTerms = queryLower.split(/\s+/).filter(t => t.length > 2);
@@ -1227,7 +1229,6 @@ Check the sessions/ directory for recent conversations.
                   fileStats,
                   queryLower,
                   queryTerms,
-                  queryEmbedding,
                   args.date_range,
                   filePath // Pass absolute path for embedding cache key
                 );
@@ -1258,7 +1259,6 @@ Check the sessions/ directory for recent conversations.
               fileStats,
               queryLower,
               queryTerms,
-              queryEmbedding,
               args.date_range,
               fullPath // Pass absolute path for embedding cache key
             );
@@ -1293,9 +1293,45 @@ Check the sessions/ directory for recent conversations.
     // Save embedding cache after search
     await this.saveEmbeddingCache();
 
-    // Sort by relevance score (descending) and limit results
-    results.sort((a, b) => b.score - a.score);
-    const topResults = results.slice(0, maxResults);
+    // Phase 2: Semantic re-ranking (if embeddings enabled)
+    let topResults: typeof results;
+    if (queryEmbedding && this.embeddingConfig.enabled && results.length > 0) {
+      // Sort by keyword score and take top N candidates for re-ranking
+      results.sort((a, b) => b.score - a.score);
+      const candidates = results.slice(0, this.embeddingConfig.keywordCandidatesLimit);
+
+      // Compute semantic similarity for each candidate
+      for (const result of candidates) {
+        if (result.content && result.fileStats) {
+          try {
+            const docEmbedding = await this.getOrCreateEmbedding(result.file, result.content, result.fileStats);
+            const semanticScore = this.cosineSimilarity(queryEmbedding, docEmbedding);
+            result.semanticScore = semanticScore;
+            result.score = semanticScore; // Use semantic score as final ranking score
+          } catch (error) {
+            console.error(`[Search] Failed to compute semantic score for ${result.file}:`, error);
+            // Keep keyword score if semantic scoring fails
+          }
+        }
+        // Clean up temporary fields
+        delete result.content;
+        delete result.fileStats;
+      }
+
+      // Re-sort by semantic score and take top results
+      candidates.sort((a, b) => b.score - a.score);
+      topResults = candidates.slice(0, maxResults);
+    } else {
+      // No semantic re-ranking: just use keyword scores
+      results.sort((a, b) => b.score - a.score);
+      topResults = results.slice(0, maxResults);
+
+      // Clean up temporary fields
+      for (const result of topResults) {
+        delete result.content;
+        delete result.fileStats;
+      }
+    }
 
     if (topResults.length === 0) {
       return {
@@ -1333,7 +1369,7 @@ Check the sessions/ directory for recent conversations.
 
       resultText += `\n\n💡 Use get_session_context with a specific session_id to read full files.`;
       if (this.embeddingConfig.enabled && queryEmbedding) {
-        resultText += `\n✨ Results include semantic search (${(this.embeddingConfig.semanticWeight * 100).toFixed(0)}% weight)`;
+        resultText += `\n✨ Results semantically re-ranked from top ${this.embeddingConfig.keywordCandidatesLimit} keyword matches`;
       }
       if (this.config.secondaryVaults.length > 0) {
         resultText += `\n📚 Searched ${1 + this.config.secondaryVaults.length} vault(s)`;
@@ -1363,7 +1399,6 @@ Check the sessions/ directory for recent conversations.
     fileStats: any,
     queryLower: string,
     queryTerms: string[],
-    queryEmbedding: number[] | null,
     dateRange?: { start?: string; end?: string },
     absolutePath?: string // Absolute file path for embedding cache key
   ) {
@@ -1486,31 +1521,9 @@ Check the sessions/ directory for recent conversations.
       }
     }
 
-    // Calculate semantic score if embeddings enabled
-    let semanticScore = 0;
-    if (queryEmbedding && hasMatch) {
-      try {
-        // Use absolute path if available for proper cache key, otherwise use relative path
-        const cacheKey = absolutePath || relPath;
-        const docEmbedding = await this.getOrCreateEmbedding(cacheKey, content, fileStats);
-        semanticScore = this.cosineSimilarity(queryEmbedding, docEmbedding);
-      } catch (error) {
-        console.error(`[Search] Failed to get embedding for ${relPath}:`, error);
-      }
-    }
-
-    // Combine keyword and semantic scores
-    let finalScore: number;
-    if (queryEmbedding && semanticScore > 0) {
-      const keywordWeight = 1 - this.embeddingConfig.semanticWeight;
-      // Normalize keyword score to 0-1 range (rough approximation)
-      const normalizedKeywordScore = Math.min(keywordScore / 30, 1);
-      finalScore = (normalizedKeywordScore * keywordWeight) + (semanticScore * this.embeddingConfig.semanticWeight);
-    } else {
-      finalScore = keywordScore;
-    }
-
-    if (hasMatch || (queryEmbedding && semanticScore > 0.3)) {
+    // Return keyword-based results only
+    // Semantic re-ranking will happen in a separate phase in searchVault
+    if (hasMatch) {
       const matchingLines = lines
         .filter(line => {
           const lineLower = line.toLowerCase();
@@ -1522,8 +1535,9 @@ Check the sessions/ directory for recent conversations.
         file: absolutePath || path.join(dir, relPath), // Use absolute path when available
         matches: matchingLines,
         date: fileDate,
-        score: finalScore,
-        semanticScore: queryEmbedding ? semanticScore : undefined,
+        score: keywordScore,
+        content: content, // Include content for later semantic scoring
+        fileStats: fileStats, // Include file stats for embedding cache
       };
     }
 
