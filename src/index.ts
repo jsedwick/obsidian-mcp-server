@@ -1162,6 +1162,16 @@ Check the sessions/ directory for recent conversations.
       .trim();
   }
 
+  /**
+   * Strip Obsidian-specific markdown syntax from text for cleaner CLI output
+   */
+  private cleanObsidianMarkdown(text: string): string {
+    return text
+      // Convert wiki links: [[link|display]] -> display, [[link]] -> link
+      .replace(/\[\[([^\]|]+)\|([^\]]+)\]\]/g, '$2')
+      .replace(/\[\[([^\]]+)\]\]/g, '$1');
+  }
+
   private async searchVault(args: {
     query: string;
     directories?: string[];
@@ -1357,7 +1367,10 @@ Check the sessions/ directory for recent conversations.
         resultText += `${idx + 1}. **${r.file}** ${r.date ? `(${r.date})` : ''}${semanticIndicator}${vaultIndicator}\n`;
         if (r.matches.length > 0) {
           resultText += r.matches
-            .map(m => `   ${m.trim().substring(0, 100)}${m.length > 100 ? '...' : ''}`)
+            .map(m => {
+              const cleaned = this.cleanObsidianMarkdown(m.trim());
+              return `   ${cleaned.substring(0, 100)}${cleaned.length > 100 ? '...' : ''}`;
+            })
             .join('\n') + '\n';
         }
         resultText += '\n';
@@ -1377,7 +1390,7 @@ Check the sessions/ directory for recent conversations.
     } else {
       // Return full matching content (old behavior, for backwards compatibility)
       resultText = topResults
-        .map(r => `**${r.file}** ${r.date ? `(${r.date})` : ''}:\n${r.matches.map(m => `  - ${m.trim()}`).join('\n')}`)
+        .map(r => `**${r.file}** ${r.date ? `(${r.date})` : ''}:\n${r.matches.map(m => `  - ${this.cleanObsidianMarkdown(m.trim())}`).join('\n')}`)
         .join('\n\n');
     }
 
