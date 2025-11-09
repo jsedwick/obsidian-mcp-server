@@ -274,34 +274,43 @@ Vault path: /path/to/your/vault
    ```
 
 3. **Test with Claude Code**:
-   
-   Start Claude Code and ask:
-   ```
-   Can you start a new session about testing?
-   ```
-   
-   Claude should respond that it's creating a session file.
 
-4. **Check session was created**:
+   Start Claude Code and have a conversation:
+   ```
+   Can you create a topic page about testing the Obsidian integration?
+   ```
+
+   Claude should create the topic page.
+
+4. **Close the session**:
+   ```
+   /close
+   ```
+
+   Claude will create a session file retroactively with a summary.
+
+5. **Check session was created**:
    ```bash
-   ls ~/obsidian-vault/sessions/
+   ls ~/obsidian-vault/sessions/$(date +%Y-%m)/
    ```
 
 ### Verify in Claude Code
 
 Ask Claude Code these test questions:
 
-1. **"Start a new session about authentication"**
-   - Should create a new session file
-   - Should search for related context
+1. **"Create a topic page about JWT authentication"**
+   - Should create topics/jwt-authentication.md
+   - Topic will be linked when you run /close
 
 2. **"Search my vault for past discussions about databases"**
    - Should use the search_vault tool
    - Should return relevant results (or none if vault is new)
 
-3. **"Create a topic page about JWT authentication"**
-   - Should create topics/jwt-authentication.md
-   - Should link it in the current session
+3. **Run "/close" to end the session**
+   - Should create a session file in sessions/YYYY-MM/
+   - Should link all topics created during conversation
+   - Should run vault custodian to validate files
+   - Should detect any Git repositories you worked with
 
 ## Troubleshooting
 
@@ -510,7 +519,7 @@ npm start
 
 If you're still having issues:
 
-1. Check the [README.md](README.md) for usage examples
+1. Check the [README.md](Use-case.md) for usage examples
 2. Review the [QUICKSTART.md](QUICKSTART.md) guide
 3. Run the test utility: `npm test`
 4. Check Claude Code logs for error messages
@@ -525,7 +534,7 @@ If you're still having issues:
 Once installed and verified:
 
 1. Read [QUICKSTART.md](QUICKSTART.md) for usage examples
-2. Review [README.md](README.md) for complete documentation
+2. Review [README.md](Use-case.md) for complete documentation
 3. Open your vault in Obsidian to see the knowledge graph
 4. Start a conversation with Claude Code!
 

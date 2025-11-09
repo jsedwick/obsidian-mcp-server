@@ -4,19 +4,21 @@ An MCP (Model Context Protocol) server that enables Claude Code to automatically
 
 ## Features
 
-- **Automatic Session Management**: Creates session notes for each conversation, organized by month
+- **Lazy Session Management**: Creates session notes retroactively when you run `/close`, organized by month
 - **Intelligent Search with Semantic Understanding**: Hybrid keyword + embedding-based search using local AI models (no API calls)
+- **Tiered Response Levels**: Control verbosity with minimal/summary/detailed/full response modes for efficient token usage
 - **Enhanced Search with Query Understanding**: AI-powered query expansion for improved discovery and contextual refinement
 - **AI-Powered Analysis**: Sub-agent integration for topic analysis, auto-tagging, and decision extraction
 - **Git Commit Impact Analysis**: Automatic analysis of commits to identify documentation updates and architectural implications
 - **Topic Pages**: Create and maintain pages for technical concepts
 - **Topic Review System**: Find stale topics, review them, and keep knowledge fresh
 - **Decision Records**: Track architectural decisions with ADR format, with automated extraction from sessions
-- **Vault Maintenance**: Automatic integrity checking and file organization with vault custodian
+- **Vault Maintenance**: Automatic integrity checking and file organization with vault custodian (runs automatically on session close)
 - **Git Integration**: Automatically detect repos, track commits, link code changes to sessions with smart repository detection
 - **Project Tracking**: Create project pages for repositories with commit history
 - **Smart Linking**: Automatic Obsidian-style wiki links between content
-- **Recent Sessions Command**: List the 5 most recent sessions for quick context access
+- **Recent Sessions Command**: List recent sessions via `/sessions` slash command with configurable detail levels
+- **Recent Projects Command**: List recent projects via `/projects` slash command with configurable detail levels
 - **Zero Storage Overhead**: Text-based storage uses minimal disk space
 
 ## Installation
@@ -142,27 +144,29 @@ Once configured, Claude Code will automatically have access to these tools:
 
 ### Session Management
 
-**start_session** - Start a new conversation session
+**close_session** - Create a session retroactively to capture work done in this conversation
 ```
-Topic: "API Authentication Implementation"
-Creates: sessions/2025-10-28_14-30-00_api-authentication-implementation.md
-```
+Summary: "Implemented JWT authentication with refresh token rotation"
+Topic: "API Authentication" (optional)
+Creates: sessions/2025-11/2025-11-09_api-authentication.md
+Links: All topics, decisions, and projects created during conversation
+Runs: Vault custodian to validate created/edited files
+Detects: Git repositories based on files accessed
 
-**save_session_note** - Save context during conversation
-```
-Content: "Decided to use JWT with refresh tokens"
-Updates: Current session file with key information
-```
-
-**close_session** - Mark session as completed
-```
-Updates session status to 'completed'
+Note: ONLY callable via /close slash command
+Sessions are created lazily - no session file until you explicitly run /close
 ```
 
 **list_recent_sessions** - List recent conversation sessions
 ```
 Limit: 5 (default)
+Detail: 'summary' (default) | 'minimal' | 'detailed' | 'full'
 Returns: Session metadata including ID, topic, date, and status
+  - minimal: IDs only
+  - summary: + date/status (default)
+  - detailed: + files/commits
+  - full: + summaries
+
 Note: Available via /sessions slash command in Claude Code
 ```
 
@@ -171,10 +175,17 @@ Note: Available via /sessions slash command in Claude Code
 **search_vault** - Find relevant past context
 ```
 Query: "authentication database schema"
-Directories: ["sessions", "topics", "decisions"]
+Directories: ["sessions", "topics", "decisions"] (optional)
 Max results: 10 (default)
-Snippets only: true (default)
+Detail: 'summary' (default) | 'minimal' | 'detailed' | 'full'
+Snippets only: true (default, legacy parameter)
 Returns: Matching notes with context snippets and relevance scores
+  - minimal: Files only
+  - summary: + snippets (default)
+  - detailed: + extended context
+  - full: Complete matches
+
+Note: Uses hybrid keyword + semantic search with local embeddings
 ```
 
 **get_session_context** - Retrieve full session content
@@ -297,9 +308,21 @@ The detection algorithm considers:
 The MCP server supports Claude Code slash commands for quick access to common features:
 
 **Available slash commands:**
-- `/sessions` - List the 5 most recent conversation sessions
+- `/sessions` - List recent conversation sessions (calls list_recent_sessions)
   - Returns session metadata including topic, date, and status
   - Quick way to jump back into previous conversations
+  - Only available within Claude Code, not directly as an MCP tool
+
+- `/projects` - List recent projects (calls list_recent_projects)
+  - Returns project metadata including name, repo path, and activity
+  - Quick way to see tracked repositories
+  - Only available within Claude Code, not directly as an MCP tool
+
+- `/close` - Close current session (calls close_session)
+  - Creates session file retroactively with summary of work done
+  - Automatically links all topics, decisions, and projects created
+  - Runs vault custodian to validate files
+  - Detects and links relevant Git repositories
   - Only available within Claude Code, not directly as an MCP tool
 
 ### Knowledge Management
@@ -333,6 +356,19 @@ Creates topic page if it doesn't exist
 ```
 
 ### Topic Review & Maintenance
+
+**list_recent_projects** - List recent projects tracked in vault
+```
+Limit: 5 (default)
+Detail: 'summary' (default) | 'minimal' | 'detailed' | 'full'
+Returns: Project metadata including name, repository path, creation date, and activity
+  - minimal: Names only
+  - summary: + paths/dates (default)
+  - detailed: + recent commits
+  - full: + full project pages
+
+Note: Available via /projects slash command in Claude Code
+```
 
 **find_stale_topics** - Find topics that need review
 ```
@@ -374,6 +410,10 @@ Saves: Configuration to .embedding-toggle.json in vault
 
 **vault_custodian** - Verify and maintain vault integrity
 ```
+Files to check: (optional) Array of absolute file paths
+  - If not provided: Checks all vault files
+  - If provided: Only checks specified files
+
 Checks:
   - Sessions are in date-organized subdirectories (sessions/YYYY-MM/)
   - Session files have proper frontmatter
@@ -387,9 +427,11 @@ Actions:
   - Reports broken links for manual review
 
 Returns: Detailed report showing issues found, fixes applied, and warnings
+
+Auto-run: Automatically runs during close_session to validate files created/edited in the session
 ```
 
-The vault custodian runs comprehensive integrity checks and automatically fixes organizational issues. It's recommended to run this periodically to keep your vault well-organized, especially after bulk imports or manual file operations.
+The vault custodian runs comprehensive integrity checks and automatically fixes organizational issues. It's automatically invoked when you run `/close` to validate files created or edited during the session, ensuring your vault stays well-organized.
 
 ### AI-Powered Analysis
 
@@ -570,33 +612,37 @@ obsidian-vault/
 
 ## Example Session Workflow
 
-When you start a conversation with Claude Code:
+When you have a conversation with Claude Code:
 
-1. **Automatic Context Loading**:
-   - Claude Code calls `start_session` with your topic
-   - Creates a timestamped session file in `sessions/YYYY-MM/` directory
-   - Searches vault for related past context using semantic + keyword search
-   - Automatically detects projects you're working on
-
-2. **During Conversation**:
-   - Claude automatically saves key points with `save_session_note`
-   - Creates topic pages for new concepts with `create_topic_page`
+1. **During Conversation**:
+   - Work on your task naturally without worrying about sessions
+   - Claude creates topic pages for new concepts with `create_topic_page`
    - Records decisions with `create_decision`
    - Links related concepts together
    - Tracks file access for repository detection
+   - All content is tracked but no session file created yet
 
-3. **Context Retrieval**:
+2. **Context Retrieval**:
    - When you ask "what did we discuss about X?"
    - Claude uses `search_vault` with semantic understanding to find relevant notes
    - Hybrid search combines keyword matching with AI-powered concept matching
    - Cites specific sessions and topics with relevance scores
+   - Uses tiered response levels for efficient token usage
 
-4. **Session Close**:
-   - At conversation end, `close_session` is called
-   - Session marked as completed
-   - Automatically detects Git repositories you accessed
+3. **Session Close** (via `/close` command):
+   - When conversation ends, run `/close` to persist the session
+   - Claude creates a timestamped session file in `sessions/YYYY-MM/` directory
+   - Automatically links all topics, decisions, and projects created during conversation
+   - Runs vault custodian to validate files created/edited
+   - Automatically detects Git repositories you accessed based on tracked files
    - Optionally links session to relevant project pages
    - All context preserved for future reference
+
+4. **Lazy Session Creation Benefits**:
+   - No upfront session overhead for quick questions
+   - Only create sessions for conversations worth saving
+   - Vault stays clean without dozens of trivial session files
+   - Session file includes complete summary of what was accomplished
 
 ## Example Session File
 
@@ -604,47 +650,82 @@ When you start a conversation with Claude Code:
 ---
 date: 2025-11-01
 session_id: 2025-11-01_14-30-00_api-authentication
-topics: ["authentication", "jwt", "security"]
-decisions: [[002-api-structure]]
+topics:
+  - [[topics/jwt-authentication]]
+  - [[topics/token-rotation]]
+decisions:
+  - [[decisions/002-use-jwt-with-refresh-tokens]]
 status: completed
 repository:
   path: /home/user/projects/my-api
   name: my-api
   commits: [abc123, def456]
+files_accessed:
+  - path: /home/user/projects/my-api/src/auth/jwt.ts
+    action: edit
+    timestamp: 2025-11-01T14:45:00Z
+  - path: /home/user/projects/my-api/tests/auth.test.ts
+    action: create
+    timestamp: 2025-11-01T15:00:00Z
 ---
 
 # Session: API Authentication Implementation
 
-## Context
-Working on implementing user authentication system for the API.
+Created via /close command on 2025-11-01 at 14:30
 
-## Key Points
-- Decided to use JWT tokens with refresh token rotation
-- Need to implement token blacklisting for logout
-- Related to [[topics/authentication-system|Authentication System]]
-- Semantic search found 3 related past sessions
+## Summary
 
-## Outcomes
-- [[decisions/002-api-structure|Decision 002]]: REST API structure finalized
-- Created topic page: [[topics/jwt-tokens|JWT Tokens]]
-- Linked session to [[projects/my-api|my-api]] project
-- Recorded 2 commits to project
-- Next session: Implement token refresh logic
+Implemented JWT authentication with refresh token rotation for the API.
+Created a secure token management system with automatic token blacklisting
+for logout functionality.
 
-## Code References
-- File: `src/auth/jwt.ts`
-- Changes: Added token validation and refresh logic
-- Related commits: [[projects/my-api/commits/abc123|abc123]], [[projects/my-api/commits/def456|def456]]
+## Topics Created
+
+- [[topics/jwt-authentication|JWT Authentication]] - Overview of JWT implementation
+- [[topics/token-rotation|Token Rotation]] - Refresh token rotation strategy
+
+## Decisions Made
+
+- [[decisions/002-use-jwt-with-refresh-tokens|Decision 002]]: Use JWT with refresh tokens
+  - Considered: Session-based auth vs JWT vs OAuth
+  - Chose JWT for scalability and stateless architecture
+  - Implemented refresh token rotation for security
+
+## Work Completed
+
+- Implemented JWT token generation and validation
+- Added refresh token rotation mechanism
+- Created token blacklist for logout
+- Wrote comprehensive tests for auth flow
+- Documented authentication flow in topics
+
+## Repository Activity
+
+Linked to [[projects/my-api|my-api]] project:
+- Commits: [[projects/my-api/commits/abc123|abc123]], [[projects/my-api/commits/def456|def456]]
+- Files edited: `src/auth/jwt.ts`, `tests/auth.test.ts`
+- Repository auto-detected based on file access patterns
+
+## Vault Maintenance
+
+Vault custodian ran automatically:
+- Validated 2 topic pages created
+- Validated 1 decision record
+- All files properly organized
+- No broken links detected
 ```
 
 **File location:** `sessions/2025-11/2025-11-01_14-30-00_api-authentication.md`
 
 **Notable features in this session file:**
+- Created retroactively via `/close` command with a summary
 - Sessions are stored in monthly subdirectories (`sessions/YYYY-MM/`)
-- Repository information automatically populated at session close
+- Repository information automatically detected from tracked file access
 - Git commits linked and tracked
-- Semantic search results referenced
-- Cross-references to projects and commits
+- All topics and decisions created during conversation are linked
+- Files accessed during session are tracked
+- Vault custodian validation results included
+- Cross-references use Obsidian wiki-link format
 
 ## Configuration
 

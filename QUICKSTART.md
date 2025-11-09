@@ -36,37 +36,57 @@ If Claude Code is running, restart it to load the new MCP server.
 Start a conversation with Claude Code and try:
 
 ```
-Start a new session about testing the Obsidian integration
+Create a topic page about testing the Obsidian integration
 ```
 
 Claude will automatically:
-- Create a session file
-- Search for relevant context
-- Save key information
-- Create topic pages and decision records as needed
+- Create the topic page
+- Track the content created
+- Link related concepts
+
+When you're done, run `/close` to create the session file:
+```
+/close
+```
+
+This will:
+- Create a session file with a summary of your work
+- Link all topics and decisions created
+- Run vault custodian to validate files
+- Detect relevant Git repositories
 
 ## Example Conversation
 
-**You:** "Start a new session about building an authentication system"
+**You:** "Create a topic page about JWT authentication"
 
-**Claude:** *Automatically calls `start_session` with topic "authentication system"*
-- Creates `sessions/2025-11/2025-11-01_authentication-system.md` (organized by month)
-- Searches for past sessions about authentication using semantic search
-- References relevant topic pages and decisions
+**Claude:** *Calls `create_topic_page`*
+- Creates `topics/jwt-authentication.md`
+- Tracks that this topic was created in the conversation
+- Topic will be linked when session is closed
 
-**You:** "I think we should use JWT tokens with refresh token rotation"
+**You:** "I think we should use JWT tokens with refresh token rotation. Let's make this a decision."
 
-**Claude:** *Automatically calls `save_session_note`*
-- Records this decision in the session file
-- May create a topic page for JWT tokens
-- Links related concepts
+**Claude:** *Calls `create_decision`*
+- Creates decision record in `decisions/`
+- Documents the decision with context and rationale
+- Decision will be linked when session is closed
 
 **You:** "What have we discussed about database schemas in the past?"
 
-**Claude:** *Automatically calls `search_vault`*
+**Claude:** *Calls `search_vault`*
 - Searches all sessions, topics, and decisions
+- Uses hybrid keyword + semantic search
 - Returns relevant context with citations
 - Shows you exactly where the information came from
+
+**You:** "/close"
+
+**Claude:** *Calls `close_session`*
+- Creates `sessions/2025-11/2025-11-09_jwt-authentication.md`
+- Links all topics and decisions created during conversation
+- Runs vault custodian to validate files
+- Detects relevant Git repositories from file access
+- Session is now saved for future reference
 
 ## Manual Configuration (Alternative to setup.sh)
 
@@ -106,9 +126,11 @@ To verify the server is working:
 
 1. Check Claude Code logs for MCP server connection messages
 2. Ask Claude Code: "Can you search my Obsidian vault?"
-3. If Claude responds with tool information, it's working!
-4. Start a conversation and check `sessions/2025-11/` (or current month) for a new session file
-5. Ask Claude: "What sessions have we worked on?" to test the `/sessions` slash command
+3. If Claude responds with search results, it's working!
+4. Create some content: "Create a topic page about testing"
+5. Close the session: `/close`
+6. Check `sessions/YYYY-MM/` (current month) for a new session file
+7. List sessions: `/sessions` to see your closed session
 
 ## Troubleshooting
 

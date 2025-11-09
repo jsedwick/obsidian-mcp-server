@@ -4,15 +4,16 @@ Welcome! This is your complete MCP server implementation for managing Claude Cod
 
 ## What This Does
 
-Enables Claude Code to automatically:
-- 📝 Save every conversation as structured notes
-- 🔍 Search past discussions instantly with relevance scoring
+Enables Claude Code to:
+- 📝 Save conversations retroactively as structured notes (via `/close`)
+- 🔍 Search past discussions instantly with semantic understanding
 - 📚 Build a knowledge base of technical topics
 - 🔄 Review and maintain topic freshness
-- 🎯 Track architectural decisions
-- 🔗 Link related concepts together
+- 🎯 Track architectural decisions with ADR format
+- 🔗 Link related concepts together automatically
 - 🐙 Integrate with Git repositories and track commits
 - 📦 Create project pages for code repositories
+- 🎛️ Control response verbosity with tiered detail levels
 
 All stored locally in plain Markdown files you can view in Obsidian.
 
@@ -77,9 +78,10 @@ Choose your path:
 
 1. **Right now**: Run `./setup.sh`
 2. **2 minutes later**: Restart Claude Code
-3. **Start a conversation**: "Start a new session about testing the Obsidian integration"
-4. **Verify**: Check `~/obsidian-vault/sessions/` for a new file
-5. **Celebrate**: You have automatic context management! 🎉
+3. **Have a conversation**: "Create a topic page about testing the Obsidian integration"
+4. **Close the session**: Run `/close` command
+5. **Verify**: Check `~/obsidian-vault/sessions/YYYY-MM/` for a new session file
+6. **Celebrate**: You have automatic context management! 🎉
 
 ## 📁 Project Structure
 
@@ -172,11 +174,13 @@ A: Yes! Configure multiple MCP servers in Claude Code config.
 
 You'll know it's working when:
 
-✅ Session files appear in `vault/sessions/`
+✅ Session files appear in `vault/sessions/YYYY-MM/` after running `/close`
 ✅ Claude cites past conversations when relevant
 ✅ Topic pages build up over time
-✅ Searching finds your past discussions
+✅ Searching finds your past discussions with semantic understanding
 ✅ Knowledge base grows automatically
+✅ Git repositories are detected and linked
+✅ Vault custodian keeps everything organized
 
 ## 🚨 Troubleshooting Quick Reference
 
@@ -209,21 +213,23 @@ You'll know it's working when:
 
 ### In 5 Minutes
 - Restart Claude Code
-- Start a conversation
-- Ask Claude to create a session
+- Have a conversation
+- Create topics and decisions
+- Run `/close` to save the session
 
 ### Tomorrow
-- Review your first session files
+- Review your first session file
 - Open vault in Obsidian (optional)
-- See how context is saved
+- See how context is linked together
 
 ### This Week
-- Let it accumulate some conversations
-- Try searching for past topics
+- Let it accumulate some sessions
+- Try searching for past topics with `/sessions`
 - Explore the knowledge graph
+- Use tiered detail levels for efficient searching
 
 ### This Month
-- Review all your sessions
+- Review all your sessions with `/sessions`
 - See patterns emerge
 - Appreciate never losing context again!
 
