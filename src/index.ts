@@ -2088,83 +2088,83 @@ ${this.currentSessionId ? `- Session: [[${this.currentSessionId}]]` : ''}
     // Auto-detect Git repositories BEFORE building session content
     // This allows the project to be included in the session's Projects section
     let detectedRepoInfo: { path: string; name: string; branch?: string; remote?: string } | null = null;
-    if (this.filesAccessed.length > 0) {
-      try {
-        const cwd = process.env.PWD || process.cwd();
-        const repoPaths = await this.findGitRepos(cwd);
 
-        if (repoPaths.length > 0) {
-          const candidates: RepoCandidate[] = [];
+    // Always attempt repo detection - either from tracked files or from CWD
+    try {
+      const cwd = process.env.PWD || process.cwd();
+      const repoPaths = await this.findGitRepos(cwd);
 
-          for (const repoPath of repoPaths) {
-            let score = 0;
-            const reasons: string[] = [];
+      if (repoPaths.length > 0) {
+        const candidates: RepoCandidate[] = [];
 
-            const filesInRepo = this.filesAccessed.filter(f => f.path.startsWith(repoPath));
-            const editedFiles = filesInRepo.filter(f => f.action === 'edit' || f.action === 'create');
-            const readFiles = filesInRepo.filter(f => f.action === 'read');
+        for (const repoPath of repoPaths) {
+          let score = 0;
+          const reasons: string[] = [];
 
-            if (editedFiles.length > 0) {
-              score += editedFiles.length * 10;
-              reasons.push(`${editedFiles.length} file(s) modified`);
-            }
+          const filesInRepo = this.filesAccessed.filter(f => f.path.startsWith(repoPath));
+          const editedFiles = filesInRepo.filter(f => f.action === 'edit' || f.action === 'create');
+          const readFiles = filesInRepo.filter(f => f.action === 'read');
 
-            if (readFiles.length > 0) {
-              score += readFiles.length * 5;
-              reasons.push(`${readFiles.length} file(s) read`);
-            }
+          if (editedFiles.length > 0) {
+            score += editedFiles.length * 10;
+            reasons.push(`${editedFiles.length} file(s) modified`);
+          }
 
-            if (sessionId) {
-              const repoName = path.basename(repoPath);
-              if (sessionId.toLowerCase().includes(repoName.toLowerCase())) {
-                score += 20;
-                reasons.push('Session topic matches repo name');
-              }
-            }
+          if (readFiles.length > 0) {
+            score += readFiles.length * 5;
+            reasons.push(`${readFiles.length} file(s) read`);
+          }
 
-            if (repoPath === cwd) {
-              score += 15;
-              reasons.push('Repo is current working directory');
-            } else if (cwd.startsWith(repoPath)) {
-              score += 8;
-              reasons.push('CWD is within this repo');
-            } else if (repoPath.startsWith(cwd)) {
-              score += 5;
-              reasons.push('Repo is subdirectory of CWD');
-            }
-
-            if (score > 0 || repoPaths.length === 1) {
-              const info = await this.getRepoInfo(repoPath);
-              candidates.push({
-                path: repoPath,
-                name: info.name,
-                score,
-                reasons,
-                branch: info.branch,
-                remote: info.remote,
-              });
+          if (sessionId) {
+            const repoName = path.basename(repoPath);
+            if (sessionId.toLowerCase().includes(repoName.toLowerCase())) {
+              score += 20;
+              reasons.push('Session topic matches repo name');
             }
           }
 
-          candidates.sort((a, b) => b.score - a.score);
+          if (repoPath === cwd) {
+            score += 15;
+            reasons.push('Repo is current working directory');
+          } else if (cwd.startsWith(repoPath)) {
+            score += 8;
+            reasons.push('CWD is within this repo');
+          } else if (repoPath.startsWith(cwd)) {
+            score += 5;
+            reasons.push('Repo is subdirectory of CWD');
+          }
 
-          if (candidates.length > 0) {
-            const topCandidate = candidates[0];
+          if (score > 0 || repoPaths.length === 1) {
+            const info = await this.getRepoInfo(repoPath);
+            candidates.push({
+              path: repoPath,
+              name: info.name,
+              score,
+              reasons,
+              branch: info.branch,
+              remote: info.remote,
+            });
+          }
+        }
 
-            // High confidence - automatically create project page
-            if (candidates.length === 1 || topCandidate.score > (candidates[1]?.score || 0) * 2) {
-              try {
-                detectedRepoInfo = topCandidate;
-                await this.createProjectPage({ repo_path: topCandidate.path });
-              } catch (error) {
-                // If project creation fails, continue anyway
-              }
+        candidates.sort((a, b) => b.score - a.score);
+
+        if (candidates.length > 0) {
+          const topCandidate = candidates[0];
+
+          // High confidence - automatically create project page
+          if (candidates.length === 1 || topCandidate.score > (candidates[1]?.score || 0) * 2) {
+            try {
+              detectedRepoInfo = topCandidate;
+              await this.createProjectPage({ repo_path: topCandidate.path });
+            } catch (error) {
+              // If project creation fails, continue anyway
             }
           }
         }
-      } catch (error) {
-        // Silently fail - repo detection is optional
       }
+    } catch (error) {
+      // Silently fail - repo detection is optional
     }
 
     // Build topics list from created content
@@ -2210,96 +2210,8 @@ ${this.projectsCreated.length > 0 ? this.projectsCreated.map(p => `- [[projects/
     this.currentSessionId = sessionId;
     this.currentSessionFile = sessionFile;
 
-    // Back-link topics to this session
-    for (const topic of this.topicsCreated) {
-      try {
-        const content = await fs.readFile(topic.file, 'utf-8');
-        const sessionLink = `- [[${sessionId}]]`;
-        if (!content.includes(sessionLink)) {
-          const updatedContent = content.replace(
-            /## Related Sessions\n/,
-            `## Related Sessions\n${sessionLink}\n`
-          );
-          await fs.writeFile(topic.file, updatedContent);
-        }
-      } catch (error) {
-        // Continue on error
-      }
-    }
-
-    // Back-link topics to projects (if any projects were created/accessed in this session)
-    if (this.topicsCreated.length > 0 && this.projectsCreated.length > 0) {
-      for (const topic of this.topicsCreated) {
-        try {
-          let content = await fs.readFile(topic.file, 'utf-8');
-          for (const project of this.projectsCreated) {
-            const projectLink = `- [[projects/${project.slug}/project|${project.name}]]`;
-            if (!content.includes(projectLink)) {
-              content = content.replace(
-                /## Related Projects\n/,
-                `## Related Projects\n${projectLink}\n`
-              );
-            }
-          }
-          await fs.writeFile(topic.file, content);
-        } catch (error) {
-          // Continue on error
-        }
-      }
-    }
-
-    // Back-link decisions to this session
-    for (const decision of this.decisionsCreated) {
-      try {
-        const content = await fs.readFile(decision.file, 'utf-8');
-        const sessionLink = `- Session: [[${sessionId}]]`;
-        const updatedContent = content.replace(
-          /## Related\n.*\n/,
-          `## Related\n${sessionLink}\n`
-        );
-        await fs.writeFile(decision.file, updatedContent);
-      } catch (error) {
-        // Continue on error
-      }
-    }
-
-    // Back-link projects to this session
-    for (const project of this.projectsCreated) {
-      try {
-        const content = await fs.readFile(project.file, 'utf-8');
-        const sessionLink = `- [[${sessionId}]]`;
-        if (!content.includes(sessionLink)) {
-          const updatedContent = content.replace(
-            /## Related Sessions\n/,
-            `## Related Sessions\n${sessionLink}\n`
-          );
-          await fs.writeFile(project.file, updatedContent);
-        }
-      } catch (error) {
-        // Continue on error
-      }
-    }
-
-    // Back-link projects to topics (if any topics were created in this session)
-    if (this.projectsCreated.length > 0 && this.topicsCreated.length > 0) {
-      for (const project of this.projectsCreated) {
-        try {
-          let content = await fs.readFile(project.file, 'utf-8');
-          for (const topic of this.topicsCreated) {
-            const topicLink = `- [[topics/${topic.slug}|${topic.title}]]`;
-            if (!content.includes(topicLink)) {
-              content = content.replace(
-                /## Topics\n/,
-                `## Topics\n${topicLink}\n`
-              );
-            }
-          }
-          await fs.writeFile(project.file, content);
-        } catch (error) {
-          // Continue on error
-        }
-      }
-    }
+    // Note: Reciprocal linking is now handled automatically by vault_custodian
+    // which runs at the end of this method. No need for manual back-linking here.
 
     // Build repository detection message
     let repoDetectionMessage = '';
@@ -3585,40 +3497,8 @@ ${this.currentSessionId ? `- [[${this.currentSessionId}]]` : ''}
       await fs.writeFile(projectFile, content);
     }
 
-    // Link topics from current session to this project
-    if (this.currentSessionId && this.topicsCreated.length > 0) {
-      // Read the current content again (may have changed)
-      content = await fs.readFile(projectFile, 'utf-8');
-
-      // Add topic links to project
-      for (const topic of this.topicsCreated) {
-        const topicLink = `- [[topics/${topic.slug}|${topic.title}]]`;
-        if (!content.includes(topicLink)) {
-          content = content.replace(
-            /## Topics\n/,
-            `## Topics\n${topicLink}\n`
-          );
-        }
-      }
-      await fs.writeFile(projectFile, content);
-
-      // Add project link to topics
-      for (const topic of this.topicsCreated) {
-        try {
-          let topicContent = await fs.readFile(topic.file, 'utf-8');
-          const projectLink = `- [[projects/${slug}/project|${info.name}]]`;
-          if (!topicContent.includes(projectLink)) {
-            topicContent = topicContent.replace(
-              /## Related Projects\n/,
-              `## Related Projects\n${projectLink}\n`
-            );
-            await fs.writeFile(topic.file, topicContent);
-          }
-        } catch (error) {
-          // Continue on error
-        }
-      }
-    }
+    // Note: Topic-project bidirectional linking is now handled automatically
+    // by vault_custodian during close_session. No need for manual linking here.
 
     return {
       content: [
@@ -3731,11 +3611,27 @@ ${diff}
       await fs.writeFile(this.currentSessionFile, sessionContent + appendContent);
     }
 
+    // Run vault custodian on all files created/updated by record_commit
+    const filesToCheck = [commitFile, projectFile];
+    if (this.currentSessionFile) {
+      filesToCheck.push(this.currentSessionFile);
+    }
+
+    let custodianReport = '';
+    try {
+      const custodianResult = await this.vaultCustodian({ files_to_check: filesToCheck });
+      if (custodianResult.content && custodianResult.content[0]) {
+        custodianReport = '\n\n' + (custodianResult.content[0] as { text: string }).text;
+      }
+    } catch (error) {
+      custodianReport = '\n\n⚠️  Vault custodian check failed: ' + (error instanceof Error ? error.message : String(error));
+    }
+
     return {
       content: [
         {
           type: 'text',
-          text: `Commit recorded: ${shortHash}\nCommit page: projects/${slug}/commits/${shortHash}.md\nLinked to session and project.`,
+          text: `Commit recorded: ${shortHash}\nCommit page: projects/${slug}/commits/${shortHash}.md\nLinked to session and project.${custodianReport}`,
         },
       ],
     };
@@ -3919,6 +3815,250 @@ ${diff}
     }
 
     return false;
+  }
+
+  /**
+   * Extract all wiki links from markdown content
+   */
+  private extractWikiLinks(content: string): Array<{ link: string; display?: string }> {
+    const links: Array<{ link: string; display?: string }> = [];
+    const linkRegex = /\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g;
+    let match;
+
+    while ((match = linkRegex.exec(content)) !== null) {
+      links.push({
+        link: match[1],
+        display: match[2],
+      });
+    }
+
+    return links;
+  }
+
+  /**
+   * Resolve a wiki link to an absolute file path
+   */
+  private async resolveWikiLink(link: string, contextFile?: string): Promise<string | null> {
+    // Remove .md extension if present
+    const linkWithoutExt = link.endsWith('.md') ? link.slice(0, -3) : link;
+
+    // Try various possible paths
+    const possiblePaths = [
+      // Direct path in vault
+      path.join(VAULT_PATH, `${linkWithoutExt}.md`),
+      path.join(VAULT_PATH, link),
+
+      // In topics directory
+      path.join(VAULT_PATH, 'topics', `${linkWithoutExt}.md`),
+
+      // In decisions directory
+      path.join(VAULT_PATH, 'decisions', `${linkWithoutExt}.md`),
+
+      // In projects directory (project.md files)
+      path.join(VAULT_PATH, 'projects', linkWithoutExt, 'project.md'),
+    ];
+
+    // Check for session file in monthly subdirectories
+    const sessionFile = await this.findSessionFile(linkWithoutExt);
+    if (sessionFile) {
+      possiblePaths.push(sessionFile);
+    }
+
+    // If context file is provided, also try relative to that file
+    if (contextFile) {
+      const contextDir = path.dirname(contextFile);
+      possiblePaths.push(
+        path.join(contextDir, `${linkWithoutExt}.md`),
+        path.join(contextDir, link)
+      );
+    }
+
+    for (const p of possiblePaths) {
+      try {
+        await fs.access(p);
+        return p;
+      } catch {
+        // Continue checking other paths
+      }
+    }
+
+    return null;
+  }
+
+
+  /**
+   * Determine reciprocal link format and section based on file types
+   */
+  private getReciprocalLinkInfo(sourceFile: string, targetFile: string): {
+    section: string;
+    link: string;
+  } | null {
+    const sourcePath = path.relative(VAULT_PATH, sourceFile);
+    const targetPath = path.relative(VAULT_PATH, targetFile);
+
+    // Determine source type
+    const sourceType = this.getFileType(sourceFile);
+    const targetType = this.getFileType(targetFile);
+
+    // Determine appropriate section and link format
+    if (targetType === 'session') {
+      // Source file should link to session in "Related Sessions"
+      const sessionId = path.basename(targetFile, '.md');
+      return {
+        section: '## Related Sessions',
+        link: `- [[${sessionId}]]`,
+      };
+    } else if (targetType === 'topic') {
+      // Source file should link to topic
+      const topicSlug = path.basename(targetFile, '.md');
+      const topicTitle = this.extractTitleFromFile(targetPath);
+
+      if (sourceType === 'project') {
+        return {
+          section: '## Topics',
+          link: `- [[topics/${topicSlug}|${topicTitle}]]`,
+        };
+      } else {
+        return {
+          section: '## Related Topics',
+          link: `- [[topics/${topicSlug}|${topicTitle}]]`,
+        };
+      }
+    } else if (targetType === 'decision') {
+      // Source file should link to decision in "Related Decisions"
+      const decisionSlug = path.basename(targetFile, '.md');
+      const decisionTitle = this.extractTitleFromFile(targetPath);
+      return {
+        section: '## Related Decisions',
+        link: `- [[decisions/${decisionSlug}|${decisionTitle}]]`,
+      };
+    } else if (targetType === 'project') {
+      // Source file should link to project in "Related Projects"
+      const projectSlug = path.basename(path.dirname(targetFile));
+      const projectTitle = this.extractTitleFromFile(targetPath);
+      return {
+        section: '## Related Projects',
+        link: `- [[projects/${projectSlug}/project|${projectTitle}]]`,
+      };
+    }
+
+    return null;
+  }
+
+  /**
+   * Get file type based on path
+   */
+  private getFileType(filePath: string): 'session' | 'topic' | 'decision' | 'project' | 'unknown' {
+    const relativePath = path.relative(VAULT_PATH, filePath);
+
+    if (relativePath.startsWith('sessions/')) return 'session';
+    if (relativePath.startsWith('topics/')) return 'topic';
+    if (relativePath.startsWith('decisions/')) return 'decision';
+    if (relativePath.startsWith('projects/') && filePath.endsWith('project.md')) return 'project';
+
+    return 'unknown';
+  }
+
+  /**
+   * Extract title from file (from frontmatter or first heading)
+   */
+  private extractTitleFromFile(relativePath: string): string {
+    // For now, use the filename as title
+    // TODO: Parse frontmatter or first heading for actual title
+    const filename = path.basename(relativePath, '.md');
+    return filename
+      .split('-')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ');
+  }
+
+  /**
+   * Add reciprocal link to target file
+   */
+  private async addReciprocalLink(
+    targetFile: string,
+    sourceFile: string
+  ): Promise<boolean> {
+    const linkInfo = this.getReciprocalLinkInfo(targetFile, sourceFile);
+    if (!linkInfo) return false;
+
+    let content = await fs.readFile(targetFile, 'utf-8');
+
+    // Check if link already exists
+    if (content.includes(linkInfo.link)) {
+      return false; // Link already exists
+    }
+
+    // Check if section exists
+    const sectionRegex = new RegExp(`^${linkInfo.section.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'm');
+
+    if (sectionRegex.test(content)) {
+      // Section exists, add link after it
+      content = content.replace(
+        sectionRegex,
+        `${linkInfo.section}\n${linkInfo.link}`
+      );
+    } else {
+      // Section doesn't exist, add it at the end
+      if (!content.endsWith('\n')) content += '\n';
+      content += `\n${linkInfo.section}\n${linkInfo.link}\n`;
+    }
+
+    await fs.writeFile(targetFile, content);
+    return true;
+  }
+
+  /**
+   * Validate and repair reciprocal links for given files
+   */
+  private async validateReciprocalLinks(files: string[]): Promise<string[]> {
+    const fixes: string[] = [];
+
+    for (const file of files) {
+      try {
+        const content = await fs.readFile(file, 'utf-8');
+        const links = this.extractWikiLinks(content);
+
+        for (const { link } of links) {
+          // Skip if link looks like it should be skipped
+          if (this.shouldSkipLinkValidation(link, content, 0)) {
+            continue;
+          }
+
+          const linkedFile = await this.resolveWikiLink(link, file);
+          if (!linkedFile) continue; // Can't resolve link
+
+          // Check if it's a vault file (not external)
+          if (!linkedFile.startsWith(VAULT_PATH)) continue;
+
+          // Check if linked file has reciprocal link back to source
+          const reciprocalLinkInfo = this.getReciprocalLinkInfo(linkedFile, file);
+          if (!reciprocalLinkInfo) continue; // No reciprocal relationship expected
+
+          const linkedContent = await fs.readFile(linkedFile, 'utf-8');
+
+          // Check if reciprocal link exists
+          const sourceFileName = path.basename(file, '.md');
+          const hasReciprocalLink = linkedContent.includes(sourceFileName) ||
+                                   linkedContent.includes(path.relative(VAULT_PATH, file));
+
+          if (!hasReciprocalLink) {
+            // Add reciprocal link
+            const added = await this.addReciprocalLink(linkedFile, file);
+            if (added) {
+              const relativeSource = path.relative(VAULT_PATH, file);
+              const relativeTarget = path.relative(VAULT_PATH, linkedFile);
+              fixes.push(`Added reciprocal link: ${relativeTarget} ← ${relativeSource}`);
+            }
+          }
+        }
+      } catch (error) {
+        // Continue on error for individual files
+        console.error(`Error validating reciprocal links for ${file}:`, error);
+      }
+    }
+
+    return fixes;
   }
 
   private async vaultCustodian(args?: { files_to_check?: string[] }) {
@@ -4154,6 +4294,10 @@ ${content}`;
           await fs.writeFile(file, content);
         }
       }
+
+      // Check 5: Validate reciprocal links
+      const reciprocalFixes = await this.validateReciprocalLinks(allFiles);
+      fixes.push(...reciprocalFixes);
 
       // Generate report
       let report = '# Vault Custodian Report\n\n';
