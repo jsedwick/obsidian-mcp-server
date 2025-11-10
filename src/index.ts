@@ -2807,13 +2807,13 @@ Provide a structured analysis with:
       }
 
       // Format using tiered response levels
-      return this.formatSessionList(recentSessions, detailLevel);
+      return await this.formatSessionList(recentSessions, detailLevel);
     } catch (error) {
       throw new Error(`Failed to list sessions: ${error}`);
     }
   }
 
-  private formatSessionList(
+  private async formatSessionList(
     sessions: Array<{
       file: string;
       filePath: string;
@@ -2824,7 +2824,7 @@ Provide a structured analysis with:
       status?: string;
     }>,
     detail: ResponseDetail
-  ): { content: Array<{ type: string; text: string }> } {
+  ): Promise<{ content: Array<{ type: string; text: string }> }> {
     let resultText = `Found ${sessions.length} recent session(s):\n\n`;
 
     switch (detail) {
@@ -2851,7 +2851,8 @@ Provide a structured analysis with:
 
       case ResponseDetail.DETAILED:
         // Everything in summary + parse session files for additional metadata
-        sessions.forEach(async (s, idx) => {
+        for (let idx = 0; idx < sessions.length; idx++) {
+          const s = sessions[idx];
           const statusIcon = s.status === 'completed' ? '✓' : '○';
           const topicText = s.topic ? `: ${s.topic}` : '';
           const dateText = s.date ? ` (${s.date})` : '';
@@ -2886,13 +2887,14 @@ Provide a structured analysis with:
             // Couldn't read file, skip additional metadata
           }
           resultText += '\n';
-        });
+        }
         resultText += `💡 Use get_session_context(session_id) for complete content`;
         break;
 
       case ResponseDetail.FULL:
         // Include summary snippets from each session
-        sessions.forEach(async (s, idx) => {
+        for (let idx = 0; idx < sessions.length; idx++) {
+          const s = sessions[idx];
           const statusIcon = s.status === 'completed' ? '✓' : '○';
           const topicText = s.topic ? `: ${s.topic}` : '';
 
@@ -2912,7 +2914,7 @@ Provide a structured analysis with:
             // Couldn't read file
           }
           resultText += '\n';
-        });
+        }
         break;
     }
 
@@ -3041,13 +3043,13 @@ Provide a structured analysis with:
       const recentProjects = projectFiles.slice(0, limit);
 
       // Format using tiered response levels
-      return this.formatProjectList(recentProjects, detailLevel);
+      return await this.formatProjectList(recentProjects, detailLevel);
     } catch (error) {
       throw new Error(`Failed to list projects: ${error}`);
     }
   }
 
-  private formatProjectList(
+  private async formatProjectList(
     projects: Array<{
       file: string;
       filePath: string;
@@ -3060,7 +3062,7 @@ Provide a structured analysis with:
       status?: string;
     }>,
     detail: ResponseDetail
-  ): { content: Array<{ type: string; text: string }> } {
+  ): Promise<{ content: Array<{ type: string; text: string }> }> {
     let resultText = `Found ${projects.length} recent project(s):\n\n`;
 
     switch (detail) {
@@ -3089,7 +3091,8 @@ Provide a structured analysis with:
 
       case ResponseDetail.DETAILED:
         // Everything in summary + recent commits
-        projects.forEach(async (p, idx) => {
+        for (let idx = 0; idx < projects.length; idx++) {
+          const p = projects[idx];
           const statusIcon = p.status === 'active' ? '●' : '○';
           const titleText = p.title || p.file;
           const createdText = p.created ? ` (created ${p.created})` : '';
@@ -3124,13 +3127,14 @@ Provide a structured analysis with:
             // Couldn't read file, skip commit info
           }
           resultText += '\n';
-        });
+        }
         resultText += `💡 Use detail: "full" to see complete project pages`;
         break;
 
       case ResponseDetail.FULL:
         // Include full project page content
-        projects.forEach(async (p, idx) => {
+        for (let idx = 0; idx < projects.length; idx++) {
+          const p = projects[idx];
           const titleText = p.title || p.file;
           resultText += `\n---\n\n## ${idx + 1}. ${titleText}\n\n`;
 
@@ -3142,7 +3146,7 @@ Provide a structured analysis with:
           } catch {
             resultText += `(Could not read project file)\n`;
           }
-        });
+        }
         break;
     }
 
