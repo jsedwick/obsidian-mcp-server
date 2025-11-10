@@ -1727,6 +1727,80 @@ Check the sessions/ directory for recent conversations.
     return null;
   }
 
+  /**
+   * Find projects related to a topic by searching for repo URLs and semantic matches
+   */
+  private async findRelatedProjects(
+    topicContent: string,
+    topicTitle: string
+  ): Promise<Array<{ link: string; name: string }>> {
+    const relatedProjects: Array<{ link: string; name: string }> = [];
+    const projectsDir = path.join(VAULT_PATH, 'projects');
+
+    try {
+      // Get all project directories
+      const entries = await fs.readdir(projectsDir, { withFileTypes: true });
+      const projectDirs = entries.filter(e => e.isDirectory());
+
+      for (const dir of projectDirs) {
+        const projectFile = path.join(projectsDir, dir.name, 'project.md');
+
+        try {
+          await fs.access(projectFile);
+          const projectContent = await fs.readFile(projectFile, 'utf-8');
+          const frontmatterMatch = projectContent.match(/^---\n([\s\S]*?)\n---/);
+
+          if (frontmatterMatch) {
+            const frontmatter = frontmatterMatch[1];
+
+            // Extract repo URL and name from project frontmatter
+            const repoUrlMatch = frontmatter.match(/repo_url:\s*(.+)/);
+            const projectNameMatch = frontmatter.match(/project_name:\s*(.+)/);
+            const repoPathMatch = frontmatter.match(/repo_path:\s*(.+)/);
+
+            const repoUrl = repoUrlMatch ? repoUrlMatch[1].trim() : null;
+            const projectName = projectNameMatch ? projectNameMatch[1].trim() : dir.name;
+            const repoPath = repoPathMatch ? repoPathMatch[1].trim() : null;
+
+            // Strategy 1: Check if topic content mentions the repo URL
+            if (repoUrl && repoUrl !== 'N/A' && topicContent.includes(repoUrl)) {
+              relatedProjects.push({
+                link: `projects/${dir.name}/project`,
+                name: projectName,
+              });
+              continue;
+            }
+
+            // Strategy 2: Check if topic content mentions the repo path
+            if (repoPath && topicContent.includes(repoPath)) {
+              relatedProjects.push({
+                link: `projects/${dir.name}/project`,
+                name: projectName,
+              });
+              continue;
+            }
+
+            // Strategy 3: Check if project name is mentioned in topic
+            if (projectName && topicContent.toLowerCase().includes(projectName.toLowerCase())) {
+              relatedProjects.push({
+                link: `projects/${dir.name}/project`,
+                name: projectName,
+              });
+              continue;
+            }
+          }
+        } catch (error) {
+          // Skip projects that can't be read
+          continue;
+        }
+      }
+    } catch (error) {
+      // If projects directory doesn't exist or can't be read, return empty array
+    }
+
+    return relatedProjects;
+  }
+
   private async createTopicPage(args: { topic: string; content: string }) {
     // Validate that this is appropriate for a topic (not session-specific content)
     const investigationKeywords = [
@@ -1787,11 +1861,27 @@ ${args.content}
     // Track topic creation for lazy session creation
     this.topicsCreated.push({ slug, title: args.topic, file: topicFile });
 
+    // Proactively search for related projects based on topic content
+    const relatedProjects = await this.findRelatedProjects(args.content, args.topic);
+
+    // Add related projects to topic page if found
+    if (relatedProjects.length > 0) {
+      let updatedContent = await fs.readFile(topicFile, 'utf-8');
+      const projectLinks = relatedProjects.map(p => `- [[${p.link}|${p.name}]]`).join('\n');
+
+      updatedContent = updatedContent.replace(
+        '## Related Projects\n',
+        `## Related Projects\n${projectLinks}\n`
+      );
+
+      await fs.writeFile(topicFile, updatedContent);
+    }
+
     return {
       content: [
         {
           type: 'text',
-          text: `Topic page created: ${topicFile}\nObsidian link: [[topics/${slug}|${args.topic}]]`,
+          text: `Topic page created: ${topicFile}\nObsidian link: [[topics/${slug}|${args.topic}]]${relatedProjects.length > 0 ? `\n\nFound ${relatedProjects.length} related project(s):` + relatedProjects.map(p => `\n- ${p.name}`).join('') : ''}`,
         },
       ],
     };
@@ -1890,8 +1980,14 @@ ${args.content}
 
 ## Consequences
 
-## Related
-${this.currentSessionId ? `- Session: [[${this.currentSessionId}]]` : ''}
+## Related Topics
+
+
+## Related Projects
+
+
+## Related Sessions
+${this.currentSessionId ? `- [[${this.currentSessionId}]]` : ''}
 
 `;
 
@@ -1904,11 +2000,38 @@ ${this.currentSessionId ? `- Session: [[${this.currentSessionId}]]` : ''}
       file: decisionFile
     });
 
+    // Proactively search for related content based on decision title and content
+    const searchText = `${args.title} ${args.content} ${args.context || ''}`;
+    const relatedContent = await this.findRelatedContentInText(searchText);
+
+    // Add related topics and projects to decision page if found
+    if (relatedContent.topics.length > 0 || relatedContent.projects.length > 0) {
+      let updatedContent = await fs.readFile(decisionFile, 'utf-8');
+
+      if (relatedContent.topics.length > 0) {
+        const topicLinks = relatedContent.topics.map(t => `- [[${t.link}|${t.title}]]`).join('\n');
+        updatedContent = updatedContent.replace(
+          '## Related Topics\n',
+          `## Related Topics\n${topicLinks}\n`
+        );
+      }
+
+      if (relatedContent.projects.length > 0) {
+        const projectLinks = relatedContent.projects.map(p => `- [[${p.link}|${p.name}]]`).join('\n');
+        updatedContent = updatedContent.replace(
+          '## Related Projects\n',
+          `## Related Projects\n${projectLinks}\n`
+        );
+      }
+
+      await fs.writeFile(decisionFile, updatedContent);
+    }
+
     return {
       content: [
         {
           type: 'text',
-          text: `Decision record created: ${decisionFile}\nDecision number: ${numberStr}`,
+          text: `Decision record created: ${decisionFile}\nDecision number: ${numberStr}${relatedContent.topics.length > 0 ? `\n\nFound ${relatedContent.topics.length} related topic(s):` + relatedContent.topics.map(t => `\n- ${t.title}`).join('') : ''}${relatedContent.projects.length > 0 ? `\n\nFound ${relatedContent.projects.length} related project(s):` + relatedContent.projects.map(p => `\n- ${p.name}`).join('') : ''}`,
         },
       ],
     };
@@ -2064,6 +2187,112 @@ ${this.currentSessionId ? `- Session: [[${this.currentSessionId}]]` : ''}
     };
   }
 
+  /**
+   * Find topics, decisions, and projects mentioned in text content
+   */
+  private async findRelatedContentInText(
+    text: string,
+    excludeSessionId?: string
+  ): Promise<{
+    topics: Array<{ link: string; title: string }>;
+    decisions: Array<{ link: string; title: string }>;
+    projects: Array<{ link: string; name: string }>;
+  }> {
+    const result = {
+      topics: [] as Array<{ link: string; title: string }>,
+      decisions: [] as Array<{ link: string; title: string }>,
+      projects: [] as Array<{ link: string; name: string }>,
+    };
+
+    try {
+      const topicsDir = path.join(VAULT_PATH, 'topics');
+      const decisionsDir = path.join(VAULT_PATH, 'decisions');
+      const projectsDir = path.join(VAULT_PATH, 'projects');
+
+      // Search topics
+      try {
+        const topicFiles = await this.findMarkdownFiles(topicsDir);
+        for (const topicFile of topicFiles) {
+          const content = await fs.readFile(topicFile, 'utf-8');
+          const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
+          if (frontmatterMatch) {
+            const titleMatch = frontmatterMatch[1].match(/title:\s*(.+)/);
+            const title = titleMatch ? titleMatch[1].trim() : path.basename(topicFile, '.md');
+
+            // Check if title is mentioned in text
+            if (text.toLowerCase().includes(title.toLowerCase())) {
+              const relativePath = path.relative(VAULT_PATH, topicFile);
+              result.topics.push({
+                link: relativePath.replace(/\.md$/, ''),
+                title,
+              });
+            }
+          }
+        }
+      } catch (error) {
+        // Skip if topics directory doesn't exist
+      }
+
+      // Search decisions
+      try {
+        const decisionFiles = await this.findMarkdownFiles(decisionsDir);
+        for (const decisionFile of decisionFiles) {
+          const content = await fs.readFile(decisionFile, 'utf-8');
+          const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
+          if (frontmatterMatch) {
+            const titleMatch = frontmatterMatch[1].match(/title:\s*(.+)/);
+            const title = titleMatch ? titleMatch[1].trim() : path.basename(decisionFile, '.md');
+
+            // Check if title is mentioned in text
+            if (text.toLowerCase().includes(title.toLowerCase())) {
+              const relativePath = path.relative(VAULT_PATH, decisionFile);
+              result.decisions.push({
+                link: relativePath.replace(/\.md$/, ''),
+                title,
+              });
+            }
+          }
+        }
+      } catch (error) {
+        // Skip if decisions directory doesn't exist
+      }
+
+      // Search projects
+      try {
+        const entries = await fs.readdir(projectsDir, { withFileTypes: true });
+        const projectDirEntries = entries.filter(e => e.isDirectory());
+
+        for (const dir of projectDirEntries) {
+          const projectFile = path.join(projectsDir, dir.name, 'project.md');
+          try {
+            const content = await fs.readFile(projectFile, 'utf-8');
+            const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
+            if (frontmatterMatch) {
+              const projectNameMatch = frontmatterMatch[1].match(/project_name:\s*(.+)/);
+              const projectName = projectNameMatch ? projectNameMatch[1].trim() : dir.name;
+
+              // Check if project name is mentioned in text
+              if (text.toLowerCase().includes(projectName.toLowerCase())) {
+                result.projects.push({
+                  link: `projects/${dir.name}/project`,
+                  name: projectName,
+                });
+              }
+            }
+          } catch (error) {
+            continue;
+          }
+        }
+      } catch (error) {
+        // Skip if projects directory doesn't exist
+      }
+    } catch (error) {
+      // Return empty results on error
+    }
+
+    return result;
+  }
+
   private async closeSession(args: { summary: string; topic?: string; _invoked_by_slash_command?: boolean }) {
     // Enforce that this tool can only be called via the /close slash command
     if (args._invoked_by_slash_command !== true) {
@@ -2171,6 +2400,9 @@ ${this.currentSessionId ? `- Session: [[${this.currentSessionId}]]` : ''}
     const topicsList = this.topicsCreated.map(t => t.title);
     const decisionsList = this.decisionsCreated.map(d => d.title);
 
+    // Proactively search for related existing content mentioned in the summary
+    const relatedContent = await this.findRelatedContentInText(args.summary, sessionId);
+
     // Build session content
     let sessionContent = `---
 date: ${dateStr}
@@ -2201,6 +2433,18 @@ ${this.decisionsCreated.length > 0 ? this.decisionsCreated.map(d => `- [[decisio
 ## Projects
 
 ${this.projectsCreated.length > 0 ? this.projectsCreated.map(p => `- [[projects/${p.slug}/project|${p.name}]]`).join('\n') : '_No projects created_'}
+
+## Related Topics
+
+${relatedContent.topics.length > 0 ? relatedContent.topics.map(t => `- [[${t.link}|${t.title}]]`).join('\n') : '_None found_'}
+
+## Related Decisions
+
+${relatedContent.decisions.length > 0 ? relatedContent.decisions.map(d => `- [[${d.link}|${d.title}]]`).join('\n') : '_None found_'}
+
+## Related Projects
+
+${relatedContent.projects.length > 0 ? relatedContent.projects.map(p => `- [[${p.link}|${p.name}]]`).join('\n') : '_None found_'}
 `;
 
     // Write session file
@@ -3434,6 +3678,172 @@ Provide a structured analysis with:
     };
   }
 
+  /**
+   * Extract repository slug from various URL formats
+   */
+  private extractRepoSlug(url: string): string | null {
+    if (!url || url === 'N/A') return null;
+
+    // Handle various Git URL formats:
+    // - ssh://git@git.uoregon.edu/jsdev/claude-code-hooks.git
+    // - https://git.uoregon.edu/projects/JSDEV/repos/claude-code-hooks/browse
+    // - git@github.com:user/repo.git
+    // - https://github.com/user/repo
+
+    // Remove .git suffix if present
+    url = url.replace(/\.git$/, '');
+
+    // Try to extract the repository name (last path component)
+    const patterns = [
+      /\/repos\/([^\/]+)/,           // Bitbucket/Stash style: /repos/claude-code-hooks
+      /\/([^\/]+)\.git$/,             // Git clone URLs ending in .git
+      /\/([^\/]+)$/,                  // Last path component
+      /:([^\/]+\/[^\/]+)$/,           // SSH style: git@host:user/repo
+    ];
+
+    for (const pattern of patterns) {
+      const match = url.match(pattern);
+      if (match) {
+        return match[1].toLowerCase();
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Find topics related to a project by searching for repo URL and semantic similarity
+   */
+  private async findRelatedTopics(
+    repoUrl: string,
+    projectName: string,
+    repoPath: string
+  ): Promise<Array<{ link: string; title: string }>> {
+    const relatedTopics: Array<{ link: string; title: string; source: string }> = [];
+    const topicsDir = path.join(VAULT_PATH, 'topics');
+
+    // Extract repository slug from project URL for fuzzy matching
+    const projectRepoSlug = this.extractRepoSlug(repoUrl);
+
+    try {
+      // Strategy 1: Search for topics with matching repository URL in frontmatter
+      if (repoUrl && repoUrl !== 'N/A') {
+        const topicFiles = await this.findMarkdownFiles(topicsDir);
+
+        for (const topicFile of topicFiles) {
+          try {
+            const content = await fs.readFile(topicFile, 'utf-8');
+            const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
+
+            if (frontmatterMatch) {
+              const frontmatter = frontmatterMatch[1];
+
+              // Check for repository field in frontmatter
+              const repoMatch = frontmatter.match(/repository:\s*(.+)/);
+              if (repoMatch) {
+                const topicRepoUrl = repoMatch[1].trim();
+
+                // Strategy 1a: Exact URL match
+                if (topicRepoUrl === repoUrl) {
+                  const titleMatch = frontmatter.match(/title:\s*(.+)/);
+                  const title = titleMatch ? titleMatch[1].trim() : path.basename(topicFile, '.md');
+                  const relativePath = path.relative(VAULT_PATH, topicFile);
+
+                  relatedTopics.push({
+                    link: relativePath.replace(/\.md$/, ''),
+                    title,
+                    source: 'url-exact-match',
+                  });
+                  continue;
+                }
+
+                // Strategy 1b: Fuzzy match by repository slug
+                if (projectRepoSlug) {
+                  const topicRepoSlug = this.extractRepoSlug(topicRepoUrl);
+                  if (topicRepoSlug && topicRepoSlug === projectRepoSlug) {
+                    const titleMatch = frontmatter.match(/title:\s*(.+)/);
+                    const title = titleMatch ? titleMatch[1].trim() : path.basename(topicFile, '.md');
+                    const relativePath = path.relative(VAULT_PATH, topicFile);
+
+                    relatedTopics.push({
+                      link: relativePath.replace(/\.md$/, ''),
+                      title,
+                      source: 'url-slug-match',
+                    });
+                    continue;
+                  }
+                }
+              }
+            }
+          } catch (error) {
+            // Skip files that can't be read
+            continue;
+          }
+        }
+      }
+
+      // Strategy 2: Semantic search for topics related to project name
+      if (this.embeddingConfig.enabled) {
+        try {
+          // Search for project name and repo path components
+          const searchQuery = `${projectName} ${path.basename(repoPath)}`;
+          const searchResults = await this.searchVault({
+            query: searchQuery,
+            directories: ['topics'],
+            max_results: 5,
+            snippets_only: false,
+          });
+
+          // Parse search results to extract topic links
+          if (searchResults.content && searchResults.content[0]) {
+            const resultText = (searchResults.content[0] as { text: string }).text;
+            // Extract file paths from search results (format: **path**)
+            const pathMatches = resultText.matchAll(/\*\*([^*]+topics\/[^*]+\.md)\*\*/g);
+
+            for (const match of pathMatches) {
+              const topicPath = match[1];
+              const topicFile = path.join(VAULT_PATH, topicPath);
+
+              try {
+                const content = await fs.readFile(topicFile, 'utf-8');
+                const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
+                const titleMatch = frontmatterMatch?.[1].match(/title:\s*(.+)/);
+                const title = titleMatch ? titleMatch[1].trim() : path.basename(topicFile, '.md');
+                const relativePath = path.relative(VAULT_PATH, topicFile);
+                const link = relativePath.replace(/\.md$/, '');
+
+                // Don't add duplicates
+                if (!relatedTopics.some(t => t.link === link)) {
+                  relatedTopics.push({
+                    link,
+                    title,
+                    source: 'semantic-search',
+                  });
+                }
+              } catch (error) {
+                continue;
+              }
+            }
+          }
+        } catch (error) {
+          // Semantic search failed, continue without it
+        }
+      }
+    } catch (error) {
+      // If topic search fails entirely, just return empty array
+    }
+
+    // Return deduplicated topics (prefer URL matches over semantic matches)
+    const uniqueTopics = new Map<string, { link: string; title: string }>();
+    for (const topic of relatedTopics) {
+      if (!uniqueTopics.has(topic.link)) {
+        uniqueTopics.set(topic.link, { link: topic.link, title: topic.title });
+      }
+    }
+
+    return Array.from(uniqueTopics.values());
+  }
+
   private async createProjectPage(args: { repo_path: string }) {
     await this.ensureVaultStructure();
 
@@ -3501,14 +3911,41 @@ ${this.currentSessionId ? `- [[${this.currentSessionId}]]` : ''}
       await fs.writeFile(projectFile, content);
     }
 
-    // Note: Topic-project bidirectional linking is now handled automatically
-    // by vault_custodian during close_session. No need for manual linking here.
+    // Proactively search for related topics
+    const relatedTopics = await this.findRelatedTopics(info.remote || '', info.name, args.repo_path);
+
+    // Add related topics to project page if found
+    if (relatedTopics.length > 0) {
+      content = await fs.readFile(projectFile, 'utf-8');
+      const topicLinks = relatedTopics.map(t => `- [[${t.link}|${t.title}]]`).join('\n');
+
+      // Check if Topics section has content already
+      if (content.includes('## Topics\n\n')) {
+        // Empty Topics section - add links
+        content = content.replace('## Topics\n\n', `## Topics\n${topicLinks}\n\n`);
+      } else if (content.includes('## Topics\n')) {
+        // Empty Topics section without extra newline - add links
+        content = content.replace('## Topics\n', `## Topics\n${topicLinks}\n`);
+      } else {
+        // Topics section has content - only add if not already present
+        for (const topic of relatedTopics) {
+          if (!content.includes(topic.link)) {
+            content = content.replace(
+              /## Topics\n/,
+              `## Topics\n- [[${topic.link}|${topic.title}]]\n`
+            );
+          }
+        }
+      }
+
+      await fs.writeFile(projectFile, content);
+    }
 
     return {
       content: [
         {
           type: 'text',
-          text: `Project page created/updated: projects/${slug}/project.md`,
+          text: `Project page created/updated: projects/${slug}/project.md${relatedTopics.length > 0 ? `\n\nFound ${relatedTopics.length} related topic(s):` + relatedTopics.map(t => `\n- ${t.title}`).join('') : ''}`,
         },
       ],
     };
