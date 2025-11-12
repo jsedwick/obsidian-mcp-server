@@ -3925,7 +3925,7 @@ Git repository tracked via Claude Code sessions.
 ## Related Sessions
 ${this.currentSessionId ? `- [[${this.currentSessionId}]]` : ''}
 
-## Topics
+## Related Topics
 
 `;
       await fs.writeFile(projectFile, content);
@@ -3939,20 +3939,20 @@ ${this.currentSessionId ? `- [[${this.currentSessionId}]]` : ''}
       content = await fs.readFile(projectFile, 'utf-8');
       const topicLinks = relatedTopics.map(t => `- [[${t.link}|${t.title}]]`).join('\n');
 
-      // Check if Topics section has content already
-      if (content.includes('## Topics\n\n')) {
-        // Empty Topics section - add links
-        content = content.replace('## Topics\n\n', `## Topics\n${topicLinks}\n\n`);
-      } else if (content.includes('## Topics\n')) {
-        // Empty Topics section without extra newline - add links
-        content = content.replace('## Topics\n', `## Topics\n${topicLinks}\n`);
+      // Check if Related Topics section has content already
+      if (content.includes('## Related Topics\n\n')) {
+        // Empty Related Topics section - add links
+        content = content.replace('## Related Topics\n\n', `## Related Topics\n${topicLinks}\n\n`);
+      } else if (content.includes('## Related Topics\n')) {
+        // Empty Related Topics section without extra newline - add links
+        content = content.replace('## Related Topics\n', `## Related Topics\n${topicLinks}\n`);
       } else {
-        // Topics section has content - only add if not already present
+        // Related Topics section has content - only add if not already present
         for (const topic of relatedTopics) {
           if (!content.includes(topic.link)) {
             content = content.replace(
-              /## Topics\n/,
-              `## Topics\n- [[${topic.link}|${topic.title}]]\n`
+              /## Related Topics\n/,
+              `## Related Topics\n- [[${topic.link}|${topic.title}]]\n`
             );
           }
         }
@@ -4075,9 +4075,11 @@ ${stats}
 ${diff}
 \`\`\`
 
-## Related
-- **Session:** [[${this.currentSessionId}]]
-- **Project:** [[projects/${slug}/project|${info.name}]]
+## Related Sessions
+- [[${this.currentSessionId}]]
+
+## Related Projects
+- [[projects/${slug}/project|${info.name}]]
 `;
 
     await fs.writeFile(commitFile, content);
@@ -4580,17 +4582,10 @@ ${diff}
       const topicSlug = path.basename(targetFile, '.md');
       const topicTitle = this.extractTitleFromFile(targetPath);
 
-      if (sourceType === 'project') {
-        return {
-          section: '## Topics',
-          link: `- [[topics/${topicSlug}|${topicTitle}]]`,
-        };
-      } else {
-        return {
-          section: '## Related Topics',
-          link: `- [[topics/${topicSlug}|${topicTitle}]]`,
-        };
-      }
+      return {
+        section: '## Related Topics',
+        link: `- [[topics/${topicSlug}|${topicTitle}]]`,
+      };
     } else if (targetType === 'decision') {
       // Source file should link to decision in "Related Decisions"
       const decisionSlug = path.basename(targetFile, '.md');
