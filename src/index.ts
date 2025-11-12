@@ -4723,6 +4723,101 @@ ${diff}
     return fixes;
   }
 
+  /**
+   * Deduplicate headers in a file, especially Related sections
+   */
+  private async deduplicateHeaders(file: string): Promise<string[]> {
+    const fixes: string[] = [];
+    const content = await fs.readFile(file, 'utf-8');
+    const lines = content.split('\n');
+
+    // Track seen headers and their content
+    const headerSections = new Map<string, { indices: number[], content: string[] }>();
+    const relatedHeaders = [
+      '## Related Sessions',
+      '## Related Projects',
+      '## Related Topics',
+      '## Related Decisions'
+    ];
+
+    // First pass: identify all headers and their positions
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+
+      // Check for Related headers
+      if (relatedHeaders.includes(line)) {
+        if (!headerSections.has(line)) {
+          headerSections.set(line, { indices: [], content: [] });
+        }
+        headerSections.get(line)!.indices.push(i);
+
+        // Collect content under this header until next header or end
+        const sectionContent: string[] = [];
+        let j = i + 1;
+        while (j < lines.length && !lines[j].trim().startsWith('#')) {
+          if (lines[j].trim()) { // Only collect non-empty lines
+            sectionContent.push(lines[j].trim());
+          }
+          j++;
+        }
+        headerSections.get(line)!.content.push(...sectionContent);
+      }
+    }
+
+    // Second pass: check for duplicates and consecutive duplicate headers
+    const linesToRemove = new Set<number>();
+    let modified = false;
+
+    // Check for consecutive duplicate headers (any header, not just Related)
+    for (let i = 0; i < lines.length - 1; i++) {
+      const currentLine = lines[i].trim();
+      const nextLine = lines[i + 1].trim();
+
+      if (currentLine.startsWith('#') && currentLine === nextLine) {
+        linesToRemove.add(i + 1);
+        fixes.push(`Removed consecutive duplicate header at line ${i + 2}: ${currentLine}`);
+        modified = true;
+      }
+    }
+
+    // Check for duplicate Related sections
+    for (const [header, data] of headerSections.entries()) {
+      if (data.indices.length > 1) {
+        // Keep the first occurrence, remove others
+        // But first merge unique content
+        const uniqueContent = new Set(data.content);
+        const firstIndex = data.indices[0];
+
+        // Mark duplicate headers for removal
+        for (let i = 1; i < data.indices.length; i++) {
+          const dupIndex = data.indices[i];
+          linesToRemove.add(dupIndex);
+
+          // Also remove content lines after duplicate header (until next header)
+          let j = dupIndex + 1;
+          while (j < lines.length && !lines[j].trim().startsWith('#')) {
+            if (lines[j].trim()) {
+              linesToRemove.add(j);
+            }
+            j++;
+          }
+        }
+
+        fixes.push(`Removed ${data.indices.length - 1} duplicate "${header}" section(s)`);
+        modified = true;
+      }
+    }
+
+    // Third pass: rebuild content without removed lines
+    if (modified) {
+      const newLines = lines.filter((_, index) => !linesToRemove.has(index));
+      const newContent = newLines.join('\n');
+      await fs.writeFile(file, newContent);
+    }
+
+    return fixes;
+  }
+
   private async vaultCustodian(args?: { files_to_check?: string[] }) {
     await this.ensureVaultStructure();
 
@@ -4960,6 +5055,21 @@ ${content}`;
       // Check 5: Validate reciprocal links
       const reciprocalFixes = await this.validateReciprocalLinks(allFiles);
       fixes.push(...reciprocalFixes);
+
+      // Check 6: Deduplicate headers
+      for (const file of allFiles) {
+        try {
+          const headerFixes = await this.deduplicateHeaders(file);
+          if (headerFixes.length > 0) {
+            const relativeFile = path.relative(VAULT_PATH, file);
+            for (const fix of headerFixes) {
+              fixes.push(`${relativeFile}: ${fix}`);
+            }
+          }
+        } catch (error) {
+          console.error(`Error deduplicating headers in ${file}:`, error);
+        }
+      }
 
       // Generate report
       let report = '# Vault Custodian Report\n\n';
