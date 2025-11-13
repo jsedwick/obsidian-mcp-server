@@ -753,7 +753,9 @@ DO NOT USE FOR:
 
 A decision should have: context, multiple alternatives considered, rationale for choice, and consequences.
 
-NOTE: If your title contains implementation keywords (fix, bug, implement, etc.), the tool will suggest using create_topic_page instead. Use force: true if the decision is genuinely strategic despite the keywords (e.g., decision to fix architecture that also includes implementation guide).`,
+NOTE: If your title contains implementation keywords (fix, bug, implement, etc.), the tool will suggest using create_topic_page instead. Use force: true if the decision is genuinely strategic despite the keywords (e.g., decision to fix architecture that also includes implementation guide).
+
+SCOPE: Decisions can be vault-level (affecting the MCP system itself) or project-specific (affecting a particular codebase). If project is not specified, decision is created as vault-level.`,
         inputSchema: {
           type: 'object',
           properties: {
@@ -768,6 +770,10 @@ NOTE: If your title contains implementation keywords (fix, bug, implement, etc.)
             context: {
               type: 'string',
               description: 'Optional context for the decision',
+            },
+            project: {
+              type: 'string',
+              description: 'Optional project slug (e.g., "obsidian-mcp-server", "accessibility-automatic-testing"). If provided, decision is created in decisions/{project}/. If omitted, decision is vault-level and created in decisions/vault/.',
             },
             force: {
               type: 'boolean',
@@ -1931,7 +1937,7 @@ Check the sessions/ directory for recent conversations.
     };
   }
 
-  private async createDecision(args: { title: string; content: string; context?: string; force?: boolean }) {
+  private async createDecision(args: { title: string; content: string; context?: string; project?: string; force?: boolean }) {
     await this.ensureVaultStructure();
 
     const titleLower = args.title.toLowerCase();
@@ -1995,13 +2001,24 @@ To proceed anyway, call create_decision again with force: true.`,
       };
     }
 
-    const decisionsDir = path.join(VAULT_PATH, 'decisions');
+    // Determine decision scope: project-specific or vault-level
+    const scope = args.project || 'vault';
+    const decisionsDir = path.join(VAULT_PATH, 'decisions', scope);
+
+    // Ensure the project-specific or vault directory exists
+    try {
+      await fs.mkdir(decisionsDir, { recursive: true });
+    } catch (error) {
+      // Directory might already exist, that's fine
+    }
+
+    // Read existing decision files to determine next number
     const files = await fs.readdir(decisionsDir);
     const decisionNumbers = files
       .filter(f => f.match(/^\d{3}-/))
       .map(f => parseInt(f.split('-')[0]))
       .filter(n => !isNaN(n));
-    
+
     const nextNumber = decisionNumbers.length > 0 ? Math.max(...decisionNumbers) + 1 : 1;
     const numberStr = String(nextNumber).padStart(3, '0');
     const slug = this.slugify(args.title);
@@ -2053,11 +2070,12 @@ To proceed anyway, call create_decision again with force: true.`,
       await fs.writeFile(decisionFile, updatedContent);
     }
 
+    const scopeMsg = scope === 'vault' ? ' (vault-level)' : ` (project: ${scope})`;
     return {
       content: [
         {
           type: 'text',
-          text: `Decision record created: ${decisionFile}\nDecision number: ${numberStr}${relatedContent.topics.length > 0 ? `\n\nFound ${relatedContent.topics.length} related topic(s):` + relatedContent.topics.map(t => `\n- ${t.title}`).join('') : ''}${relatedContent.projects.length > 0 ? `\n\nFound ${relatedContent.projects.length} related project(s):` + relatedContent.projects.map(p => `\n- ${p.name}`).join('') : ''}`,
+          text: `Decision record created${scopeMsg}: ${decisionFile}\nDecision number: ${numberStr}${relatedContent.topics.length > 0 ? `\n\nFound ${relatedContent.topics.length} related topic(s):` + relatedContent.topics.map(t => `\n- ${t.title}`).join('') : ''}${relatedContent.projects.length > 0 ? `\n\nFound ${relatedContent.projects.length} related project(s):` + relatedContent.projects.map(p => `\n- ${p.name}`).join('') : ''}`,
         },
       ],
     };
@@ -5284,6 +5302,7 @@ ${potentialDuplicates.length > 0
     try {
       let sessionContent = args.content;
       let sessionId = args.session_id;
+      let detectedProject: string | null = null;
 
       // If no content provided, read from session file
       if (!sessionContent) {
@@ -5315,6 +5334,20 @@ ${potentialDuplicates.length > 0
         }
 
         sessionContent = await fs.readFile(sessionFile, 'utf-8');
+
+        // Extract project context from session frontmatter
+        const frontmatterMatch = sessionContent.match(/^---\n([\s\S]*?)\n---/);
+        if (frontmatterMatch) {
+          const frontmatter = frontmatterMatch[1];
+
+          // Try to find repository name from frontmatter
+          const repoNameMatch = frontmatter.match(/repository:\s*\n\s*path:.*\n\s*name:\s*(.+)/);
+          if (repoNameMatch) {
+            const repoName = repoNameMatch[1].trim();
+            // Convert repository name to project slug (e.g., "accessibility-automatic-testing")
+            detectedProject = this.slugify(repoName);
+          }
+        }
       }
 
       // Build decision extraction prompt
@@ -5354,6 +5387,10 @@ Respond in JSON format:
 
 If no significant decisions are found, return { "decisions": [] }`;
 
+      const projectContext = detectedProject
+        ? `\n- **Detected Project**: ${detectedProject}\n  → Consider using \`project: "${detectedProject}"\` when creating project-specific decisions`
+        : '\n- **No project detected** → Decisions will be vault-level by default';
+
       return {
         content: [
           {
@@ -5362,7 +5399,7 @@ If no significant decisions are found, return { "decisions": [] }`;
 
 ## Session Information
 - Session ID: ${sessionId || 'Current session'}
-- Content length: ${sessionContent?.length || 0} characters
+- Content length: ${sessionContent?.length || 0} characters${projectContext}
 
 ## Extraction Prompt for Sub-Agent
 To complete this extraction, use a sub-agent with the following prompt:
@@ -5375,7 +5412,7 @@ ${extractionPrompt}
 1. Run the extraction prompt through a sub-agent to identify decisions
 2. For each decision found with strategic_level >= 3:
    - Review the extracted information for accuracy
-   - Use \`create_decision\` tool to generate an ADR
+   - Use \`create_decision\` tool to generate an ADR${detectedProject ? `\n   - **Recommended**: Use \`project: "${detectedProject}"\` for project-specific decisions` : ''}
    - Link the ADR back to this session
 3. If no significant decisions found, no action needed
 
