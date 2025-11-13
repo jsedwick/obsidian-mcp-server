@@ -356,10 +356,6 @@ ${args.topicsCreated.length > 0 ? args.topicsCreated.map(t => `- [[topics/${t.sl
 
 ${args.decisionsCreated.length > 0 ? args.decisionsCreated.map(d => `- [[decisions/${d.slug}|${d.title}]]`).join('\n') : '_No decisions made_'}
 
-## Projects
-
-${args.projectsCreated.length > 0 ? args.projectsCreated.map(p => `- [[projects/${p.slug}/project|${p.name}]]`).join('\n') : '_No projects created_'}
-
 ## Related Topics
 
 ${args.relatedTopics.length > 0 ? args.relatedTopics.map(t => `- [[${t.link}|${t.title}]]`).join('\n') : '_None found_'}

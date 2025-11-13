@@ -654,7 +654,7 @@ topics:
   - [[topics/jwt-authentication]]
   - [[topics/token-rotation]]
 decisions:
-  - [[decisions/002-use-jwt-with-refresh-tokens]]
+  - [[decisions/vault/002-use-jwt-with-refresh-tokens]]
 status: completed
 repository:
   path: /home/user/projects/my-api
@@ -686,7 +686,7 @@ for logout functionality.
 
 ## Decisions Made
 
-- [[decisions/002-use-jwt-with-refresh-tokens|Decision 002]]: Use JWT with refresh tokens
+- [[decisions/vault/002-use-jwt-with-refresh-tokens|Decision 002]]: Use JWT with refresh tokens
   - Considered: Session-based auth vs JWT vs OAuth
   - Chose JWT for scalability and stateless architecture
   - Implemented refresh token rotation for security
