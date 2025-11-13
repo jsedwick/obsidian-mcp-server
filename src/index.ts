@@ -290,7 +290,7 @@ class ObsidianMCPServer {
             });
           
           case 'create_topic_page':
-            return await this.createTopicPage(args as { topic: string; content: string });
+            return await this.createTopicPage(args as { topic: string; content: string; auto_analyze?: boolean | 'true' | 'smart' });
           
           case 'create_decision':
             return await this.createDecision(args as { title: string; content: string; context?: string; force?: boolean });
@@ -726,6 +726,11 @@ DO NOT USE FOR:
             content: {
               type: 'string',
               description: 'Content for the topic page',
+            },
+            auto_analyze: {
+              type: ['boolean', 'string'],
+              description: 'Auto-analyze content for tags and metadata. false (default): generic tags, true: always analyze, "smart": analyze if content >500 words and no existing tags',
+              enum: [false, true, 'smart'],
             },
           },
           required: ['topic', 'content'],
@@ -1828,7 +1833,7 @@ Check the sessions/ directory for recent conversations.
     return relatedProjects;
   }
 
-  private async createTopicPage(args: { topic: string; content: string }) {
+  private async createTopicPage(args: { topic: string; content: string; auto_analyze?: boolean | 'true' | 'smart' }) {
     // Validate that this is appropriate for a topic (not session-specific content)
     const investigationKeywords = [
       'investigation', 'investigating', 'bug fix', 'fixing', 'debugg',
@@ -1859,11 +1864,40 @@ Check the sessions/ directory for recent conversations.
     const topicFile = path.join(VAULT_PATH, 'topics', `${slug}.md`);
     const today = new Date().toISOString().split('T')[0];
 
+    // Determine if we should analyze content
+    let shouldAnalyze = false;
+    let tags: string[] | undefined = undefined;
+
+    // Handle both boolean true and string "true" (MCP SDK may convert)
+    if (args.auto_analyze === true || args.auto_analyze === 'true') {
+      shouldAnalyze = true;
+    } else if (args.auto_analyze === 'smart') {
+      // Smart mode: analyze if content is substantial (>500 words ~2500 chars) and no existing tags
+      const wordCount = args.content.split(/\s+/).length;
+      const hasExistingTags = args.content.toLowerCase().includes('tags:');
+      shouldAnalyze = wordCount >= 500 && !hasExistingTags;
+    }
+
+    // Perform analysis if needed
+    if (shouldAnalyze) {
+      try {
+        const analysis = await this.analyzeTopicContentInternal({
+          content: args.content,
+          topic_name: args.topic,
+        });
+        tags = analysis.tags;
+      } catch (error) {
+        // If analysis fails, fall back to default tags
+        console.error('Topic analysis failed:', error);
+      }
+    }
+
     const content = generateTopicTemplate({
       title: args.topic,
       content: args.content,
       created: today,
-      currentSessionId: this.currentSessionId || undefined
+      currentSessionId: this.currentSessionId || undefined,
+      tags: tags,
     });
 
     await fs.writeFile(topicFile, content);
@@ -5143,6 +5177,104 @@ ${potentialDuplicates.length > 0
         ],
       };
     }
+  }
+
+  /**
+   * Internal method to analyze topic content using heuristic tag extraction.
+   * Extracts meaningful keywords from title and content without LLM calls.
+   * Used by auto_analyze feature in createTopicPage.
+   */
+  private async analyzeTopicContentInternal(args: {
+    content: string;
+    topic_name?: string;
+    context?: string;
+  }): Promise<{
+    tags: string[];
+    summary: string;
+    key_concepts: string[];
+    related_topics: string[];
+    content_type: string;
+  }> {
+    // Common words to filter out (expanded stop words list)
+    const commonWords = new Set([
+      'the', 'be', 'to', 'of', 'and', 'a', 'in', 'that', 'have', 'i',
+      'it', 'for', 'not', 'on', 'with', 'he', 'as', 'you', 'do', 'at',
+      'this', 'but', 'his', 'by', 'from', 'they', 'we', 'say', 'her', 'she',
+      'or', 'an', 'will', 'my', 'one', 'all', 'would', 'there', 'their',
+      'what', 'so', 'up', 'out', 'if', 'about', 'who', 'get', 'which', 'go',
+      'me', 'when', 'make', 'can', 'like', 'time', 'no', 'just', 'him', 'know',
+      'take', 'people', 'into', 'year', 'your', 'good', 'some', 'could', 'them',
+      'see', 'other', 'than', 'then', 'now', 'look', 'only', 'come', 'its',
+      'over', 'think', 'also', 'back', 'after', 'use', 'two', 'how', 'our',
+      'work', 'first', 'well', 'way', 'even', 'new', 'want', 'because', 'any',
+      'these', 'give', 'day', 'most', 'us', 'is', 'was', 'are', 'been', 'has',
+      'had', 'were', 'said', 'did', 'having', 'may', 'should', 'does', 'done'
+    ]);
+
+    // Extract words from title and content
+    const text = `${args.topic_name || ''} ${args.content}`.toLowerCase();
+
+    // Extract all words (3+ characters, alphanumeric and hyphens)
+    const words = text.match(/\b[a-z0-9]+(?:-[a-z0-9]+)*\b/g) || [];
+
+    // Count word frequency
+    const wordFreq = new Map<string, number>();
+    for (const word of words) {
+      if (word.length >= 3 && !commonWords.has(word)) {
+        wordFreq.set(word, (wordFreq.get(word) || 0) + 1);
+      }
+    }
+
+    // Extract technical terms and acronyms from original text (preserve case)
+    const technicalTerms = new Set<string>();
+
+    // Find acronyms (2+ uppercase letters)
+    const acronyms = args.content.match(/\b[A-Z]{2,}\b/g) || [];
+    acronyms.forEach(term => technicalTerms.add(term.toLowerCase()));
+
+    // Find capitalized technical terms (but not sentence starts)
+    const capitalizedWords = args.content.match(/(?<!^|\. )\b[A-Z][a-z]+(?:[A-Z][a-z]+)*\b/g) || [];
+    capitalizedWords.forEach(term => technicalTerms.add(term.toLowerCase()));
+
+    // Find hyphenated terms
+    const hyphenatedTerms = args.content.match(/\b[a-z]+-[a-z]+(?:-[a-z]+)*\b/gi) || [];
+    hyphenatedTerms.forEach(term => technicalTerms.add(term.toLowerCase()));
+
+    // Combine technical terms with high-frequency words
+    const candidateTags = new Set<string>();
+
+    // Add technical terms first (higher priority)
+    technicalTerms.forEach(term => candidateTags.add(term));
+
+    // Add high-frequency words (appearing 2+ times)
+    Array.from(wordFreq.entries())
+      .filter(([_, count]) => count >= 2)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10)
+      .forEach(([word, _]) => candidateTags.add(word));
+
+    // Convert to array and limit to 7 tags
+    const tags = Array.from(candidateTags).slice(0, 7);
+
+    // If we have too few tags, add single-occurrence technical terms
+    if (tags.length < 3) {
+      Array.from(wordFreq.entries())
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 7)
+        .forEach(([word, _]) => {
+          if (tags.length < 7 && !tags.includes(word)) {
+            tags.push(word);
+          }
+        });
+    }
+
+    return {
+      tags: tags.length > 0 ? tags : ['topic'],
+      summary: '',
+      key_concepts: [],
+      related_topics: [],
+      content_type: 'reference',
+    };
   }
 
   private async extractDecisionsFromSession(args: {

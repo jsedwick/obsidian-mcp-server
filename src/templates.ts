@@ -95,6 +95,7 @@ export interface TopicTemplateArgs {
   content: string;
   created: string;
   currentSessionId?: string;
+  tags?: string[];
 }
 
 export function generateTopicTemplate(args: TopicTemplateArgs): string {
@@ -103,7 +104,7 @@ export function generateTopicTemplate(args: TopicTemplateArgs): string {
     created: args.created,
     last_reviewed: args.created,
     review_count: 0,
-    tags: ['topic'],
+    tags: args.tags || ['topic'],
     review_history: [
       {
         date: args.created,
