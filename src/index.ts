@@ -13,6 +13,13 @@ import { fileURLToPath } from 'url';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import { pipeline } from '@xenova/transformers';
+import {
+  generateTopicTemplate,
+  generateDecisionTemplate,
+  generateProjectTemplate,
+  generateCommitTemplate,
+  generateSessionTemplate,
+} from './templates.js';
 
 const execAsync = promisify(exec);
 
@@ -1852,29 +1859,12 @@ Check the sessions/ directory for recent conversations.
     const topicFile = path.join(VAULT_PATH, 'topics', `${slug}.md`);
     const today = new Date().toISOString().split('T')[0];
 
-    const content = `---
-title: ${args.topic}
-created: ${today}
-last_reviewed: ${today}
-review_count: 0
-tags: [topic]
-review_history:
-  - date: ${today}
-    action: created
-    notes: "Topic created"
----
-
-# ${args.topic}
-
-${args.content}
-
-## Related Sessions
-
-## Related Projects
-
-## Related Decisions
-
-`;
+    const content = generateTopicTemplate({
+      title: args.topic,
+      content: args.content,
+      created: today,
+      currentSessionId: this.currentSessionId || undefined
+    });
 
     await fs.writeFile(topicFile, content);
 
@@ -1982,34 +1972,16 @@ To proceed anyway, call create_decision again with force: true.`,
     const numberStr = String(nextNumber).padStart(3, '0');
     const slug = this.slugify(args.title);
     const decisionFile = path.join(decisionsDir, `${numberStr}-${slug}.md`);
+    const today = new Date().toISOString().split('T')[0];
 
-    const content = `---
-number: ${numberStr}
-title: ${args.title}
-date: ${new Date().toISOString().split('T')[0]}
-status: accepted
----
-
-# Decision ${numberStr}: ${args.title}
-
-## Context
-${args.context || 'Decision made during development.'}
-
-## Decision
-${args.content}
-
-## Consequences
-
-## Related Topics
-
-
-## Related Projects
-
-
-## Related Sessions
-${this.currentSessionId ? `- [[${this.currentSessionId}]]` : ''}
-
-`;
+    const content = generateDecisionTemplate({
+      number: numberStr,
+      title: args.title,
+      date: today,
+      context: args.context,
+      content: args.content,
+      currentSessionId: this.currentSessionId || undefined
+    });
 
     await fs.writeFile(decisionFile, content);
 
@@ -2423,49 +2395,22 @@ ${this.currentSessionId ? `- [[${this.currentSessionId}]]` : ''}
     // Proactively search for related existing content mentioned in the summary
     const relatedContent = await this.findRelatedContentInText(args.summary, sessionId);
 
-    // Build session content
-    let sessionContent = `---
-date: ${dateStr}
-session_id: ${sessionId}
-topics: ${JSON.stringify(args.topic ? [args.topic, ...topicsList] : topicsList)}
-decisions: ${JSON.stringify(decisionsList)}
-status: completed
----
-
-# Session: ${args.topic || 'Work session'}
-
-## Summary
-
-${args.summary}
-
-## Files Accessed
-
-${this.filesAccessed.length > 0 ? this.filesAccessed.map(f => `- [\`${f.action}\`] ${f.path}`).join('\n') : '_No files tracked_'}
-
-## Topics Created
-
-${this.topicsCreated.length > 0 ? this.topicsCreated.map(t => `- [[topics/${t.slug}|${t.title}]]`).join('\n') : '_No topics created_'}
-
-## Decisions Made
-
-${this.decisionsCreated.length > 0 ? this.decisionsCreated.map(d => `- [[decisions/${d.slug}|${d.title}]]`).join('\n') : '_No decisions made_'}
-
-## Projects
-
-${this.projectsCreated.length > 0 ? this.projectsCreated.map(p => `- [[projects/${p.slug}/project|${p.name}]]`).join('\n') : '_No projects created_'}
-
-## Related Topics
-
-${relatedContent.topics.length > 0 ? relatedContent.topics.map(t => `- [[${t.link}|${t.title}]]`).join('\n') : '_None found_'}
-
-## Related Decisions
-
-${relatedContent.decisions.length > 0 ? relatedContent.decisions.map(d => `- [[${d.link}|${d.title}]]`).join('\n') : '_None found_'}
-
-## Related Projects
-
-${relatedContent.projects.length > 0 ? relatedContent.projects.map(p => `- [[${p.link}|${p.name}]]`).join('\n') : '_None found_'}
-`;
+    // Build session content using template
+    const sessionContent = generateSessionTemplate({
+      sessionId,
+      date: dateStr,
+      topic: args.topic,
+      topicsList,
+      decisionsList,
+      summary: args.summary,
+      filesAccessed: this.filesAccessed,
+      topicsCreated: this.topicsCreated,
+      decisionsCreated: this.decisionsCreated,
+      projectsCreated: this.projectsCreated,
+      relatedTopics: relatedContent.topics,
+      relatedDecisions: relatedContent.decisions,
+      relatedProjects: relatedContent.projects
+    });
 
     // Write session file
     await fs.writeFile(sessionFile, sessionContent);
@@ -3899,35 +3844,14 @@ Provide a structured analysis with:
       }
     } catch {
       // Create new project page
-      content = `---
-project_name: ${info.name}
-repo_path: ${args.repo_path}
-repo_url: ${info.remote || 'N/A'}
-created: ${today}
-last_commit_tracked: ${today}
-total_sessions: 1
-total_commits_tracked: 0
-tags: [project]
----
-
-# Project: ${info.name}
-
-## Overview
-Git repository tracked via Claude Code sessions.
-
-## Repository Info
-- **Path:** \`${args.repo_path}\`
-- **Current Branch:** ${info.branch || 'unknown'}
-- **Remote:** ${info.remote || 'N/A'}
-
-## Recent Activity
-
-## Related Sessions
-${this.currentSessionId ? `- [[${this.currentSessionId}]]` : ''}
-
-## Related Topics
-
-`;
+      content = generateProjectTemplate({
+        projectName: info.name,
+        repoPath: args.repo_path,
+        repoUrl: info.remote || 'N/A',
+        branch: info.branch || 'unknown',
+        created: today,
+        currentSessionId: this.currentSessionId || undefined
+      });
       await fs.writeFile(projectFile, content);
     }
 
@@ -4042,45 +3966,21 @@ ${this.currentSessionId ? `- [[${this.currentSessionId}]]` : ''}
     const commitFile = path.join(commitsDir, `${shortHash}.md`);
     const today = new Date().toISOString().split('T')[0];
 
-    const content = `---
-commit_hash: ${fullHash}
-short_hash: ${shortHash}
-author: ${authorName} <${authorEmail}>
-date: ${date}
-branch: ${branch}
-session_id: ${this.currentSessionId}
-project: ${info.name}
----
-
-# Commit: ${subject}
-
-**Session:** [[${this.currentSessionId}]]
-**Project:** [[projects/${slug}/project|${info.name}]]
-**Branch:** \`${branch}\`
-**Date:** ${date}
-**Author:** ${authorName}
-
-## Summary
-${subject}
-
-${body}
-
-## Changes Overview
-\`\`\`
-${stats}
-\`\`\`
-
-## Full Diff
-\`\`\`diff
-${diff}
-\`\`\`
-
-## Related Sessions
-- [[${this.currentSessionId}]]
-
-## Related Projects
-- [[projects/${slug}/project|${info.name}]]
-`;
+    const content = generateCommitTemplate({
+      commitHash: fullHash,
+      shortHash,
+      authorName,
+      authorEmail,
+      date,
+      branch,
+      subject,
+      body,
+      stats,
+      diff,
+      sessionId: this.currentSessionId,
+      projectName: info.name,
+      projectSlug: slug
+    });
 
     await fs.writeFile(commitFile, content);
 
