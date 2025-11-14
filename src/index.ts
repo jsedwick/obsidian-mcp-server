@@ -4676,6 +4676,128 @@ Provide a structured analysis with:
   }
 
   /**
+   * Move Related sections to the bottom of the document
+   * Ensures Related Sessions, Related Topics, Related Projects, and Related Decisions
+   * are always at the end, in that order
+   */
+  private async moveRelatedSectionsToBottom(file: string): Promise<string[]> {
+    const fixes: string[] = [];
+    const content = await fs.readFile(file, 'utf-8');
+    const lines = content.split('\n');
+
+    const relatedHeaders = [
+      '## Related Topics',
+      '## Related Sessions',
+      '## Related Projects',
+      '## Related Decisions'
+    ];
+
+    // Find all Related sections and their content
+    const sections = new Map<string, { startIndex: number, endIndex: number, content: string[] }>();
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+
+      if (relatedHeaders.includes(line)) {
+        const startIndex = i;
+        const sectionContent: string[] = [lines[i]]; // Include the header
+
+        // Collect content until next header or end
+        let j = i + 1;
+        while (j < lines.length && !lines[j].trim().startsWith('#')) {
+          sectionContent.push(lines[j]);
+          j++;
+        }
+
+        sections.set(line, {
+          startIndex,
+          endIndex: j - 1,
+          content: sectionContent
+        });
+      }
+    }
+
+    if (sections.size === 0) {
+      return fixes; // No Related sections found
+    }
+
+    // Check if Related sections are already at the bottom in correct order
+    const sectionIndices = Array.from(sections.values()).map(s => s.startIndex).sort((a, b) => a - b);
+    const lastNonRelatedIndex = lines.length - 1;
+
+    // Find the index of the last non-Related, non-empty line
+    let lastContentIndex = lines.length - 1;
+    for (let i = lines.length - 1; i >= 0; i--) {
+      const line = lines[i].trim();
+      if (line && !relatedHeaders.includes(line) && !sections.has(line)) {
+        // Check if this line is part of a Related section
+        let isPartOfRelated = false;
+        for (const section of sections.values()) {
+          if (i > section.startIndex && i <= section.endIndex) {
+            isPartOfRelated = true;
+            break;
+          }
+        }
+        if (!isPartOfRelated) {
+          lastContentIndex = i;
+          break;
+        }
+      }
+    }
+
+    // Check if all Related sections are already after the last content
+    const firstRelatedIndex = Math.min(...sectionIndices);
+    if (firstRelatedIndex > lastContentIndex && sections.size > 0) {
+      // Check if they're in the correct order
+      const expectedOrder = relatedHeaders.filter(h => sections.has(h));
+      const actualOrder = Array.from(sections.keys()).sort((a, b) => {
+        return sections.get(a)!.startIndex - sections.get(b)!.startIndex;
+      });
+
+      if (JSON.stringify(expectedOrder) === JSON.stringify(actualOrder)) {
+        return fixes; // Already at bottom in correct order
+      }
+    }
+
+    // Remove Related sections from their current positions
+    const linesToKeep: string[] = [];
+    for (let i = 0; i < lines.length; i++) {
+      let shouldKeep = true;
+
+      for (const section of sections.values()) {
+        if (i >= section.startIndex && i <= section.endIndex) {
+          shouldKeep = false;
+          break;
+        }
+      }
+
+      if (shouldKeep) {
+        linesToKeep.push(lines[i]);
+      }
+    }
+
+    // Remove trailing empty lines from main content
+    while (linesToKeep.length > 0 && linesToKeep[linesToKeep.length - 1].trim() === '') {
+      linesToKeep.pop();
+    }
+
+    // Add Related sections at the bottom in the correct order
+    for (const header of relatedHeaders) {
+      if (sections.has(header)) {
+        linesToKeep.push(''); // Add blank line before section
+        linesToKeep.push(...sections.get(header)!.content);
+        fixes.push(`Moved "${header}" to bottom of document`);
+      }
+    }
+
+    // Write the updated content
+    const newContent = linesToKeep.join('\n');
+    await fs.writeFile(file, newContent);
+
+    return fixes;
+  }
+
+  /**
    * Deduplicate headers in a file, especially Related sections
    */
   private async deduplicateHeaders(file: string): Promise<string[]> {
@@ -5020,6 +5142,21 @@ ${content}`;
           }
         } catch (error) {
           console.error(`Error deduplicating headers in ${file}:`, error);
+        }
+      }
+
+      // Check 7: Move Related sections to bottom
+      for (const file of allFiles) {
+        try {
+          const relatedFixes = await this.moveRelatedSectionsToBottom(file);
+          if (relatedFixes.length > 0) {
+            const relativeFile = path.relative(VAULT_PATH, file);
+            for (const fix of relatedFixes) {
+              fixes.push(`${relativeFile}: ${fix}`);
+            }
+          }
+        } catch (error) {
+          console.error(`Error moving Related sections in ${file}:`, error);
         }
       }
 
