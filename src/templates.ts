@@ -115,14 +115,14 @@ export function generateTopicTemplate(args: TopicTemplateArgs): string {
   };
 
   return `---
-title: ${frontmatter.title}
-created: ${frontmatter.created}
-last_reviewed: ${frontmatter.last_reviewed}
+title: "${frontmatter.title}"
+created: "${frontmatter.created}"
+last_reviewed: "${frontmatter.last_reviewed}"
 review_count: ${frontmatter.review_count}
 tags: ${JSON.stringify(frontmatter.tags)}
 review_history:
-  - date: ${frontmatter.review_history[0].date}
-    action: ${frontmatter.review_history[0].action}
+  - date: "${frontmatter.review_history[0].date}"
+    action: "${frontmatter.review_history[0].action}"
     notes: "${frontmatter.review_history[0].notes}"
 ---
 
@@ -237,11 +237,11 @@ export function generateProjectTemplate(args: ProjectTemplateArgs): string {
   };
 
   return `---
-project_name: ${frontmatter.project_name}
-repo_path: ${frontmatter.repo_path}
-repo_url: ${frontmatter.repo_url}
-created: ${frontmatter.created}
-last_commit_tracked: ${frontmatter.last_commit_tracked}
+project_name: "${frontmatter.project_name}"
+repo_path: "${frontmatter.repo_path}"
+repo_url: "${frontmatter.repo_url}"
+created: "${frontmatter.created}"
+last_commit_tracked: "${frontmatter.last_commit_tracked}"
 total_sessions: ${frontmatter.total_sessions}
 total_commits_tracked: ${frontmatter.total_commits_tracked}
 tags: ${JSON.stringify(frontmatter.tags)}
@@ -295,13 +295,13 @@ export function generateCommitTemplate(args: CommitTemplateArgs): string {
   };
 
   return `---
-commit_hash: ${frontmatter.commit_hash}
-short_hash: ${frontmatter.short_hash}
-author: ${frontmatter.author}
-date: ${frontmatter.date}
-branch: ${frontmatter.branch}
-session_id: ${frontmatter.session_id}
-project: ${frontmatter.project}
+commit_hash: "${frontmatter.commit_hash}"
+short_hash: "${frontmatter.short_hash}"
+author: "${frontmatter.author}"
+date: "${frontmatter.date}"
+branch: "${frontmatter.branch}"
+session_id: "${frontmatter.session_id}"
+project: "${frontmatter.project}"
 ---
 
 # Commit: ${args.subject}
@@ -361,11 +361,11 @@ export function generateSessionTemplate(args: SessionTemplateArgs): string {
   };
 
   return `---
-date: ${frontmatter.date}
-session_id: ${frontmatter.session_id}
+date: "${frontmatter.date}"
+session_id: "${frontmatter.session_id}"
 topics: ${JSON.stringify(frontmatter.topics)}
 decisions: ${JSON.stringify(frontmatter.decisions)}
-status: ${frontmatter.status}
+status: "${frontmatter.status}"
 ---
 
 # Session: ${args.topic || 'Work session'}
