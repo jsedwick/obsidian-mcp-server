@@ -156,11 +156,40 @@ export function generateDecisionTemplate(args: DecisionTemplateArgs): string {
     status: 'accepted'
   };
 
-  return `---
-number: ${frontmatter.number}
-title: ${frontmatter.title}
-date: ${frontmatter.date}
-status: ${frontmatter.status}
+  // Check if content is already pre-formatted with markdown headers
+  // If it contains ## headers, treat it as complete ADR content
+  const isPreFormatted = /^##\s+/m.test(args.content);
+
+  if (isPreFormatted) {
+    // Content already includes structure (Context, Decision, Alternatives, Consequences, etc.)
+    return `---
+number: "${frontmatter.number}"
+title: "${frontmatter.title}"
+date: "${frontmatter.date}"
+status: "${frontmatter.status}"
+---
+
+# Decision ${args.number}: ${args.title}
+
+${args.content}
+
+## Related Topics
+
+
+## Related Projects
+
+
+## Related Sessions
+${args.currentSessionId ? `- [[${args.currentSessionId}]]` : ''}
+
+`;
+  } else {
+    // Simple content - wrap with template structure
+    return `---
+number: "${frontmatter.number}"
+title: "${frontmatter.title}"
+date: "${frontmatter.date}"
+status: "${frontmatter.status}"
 ---
 
 # Decision ${args.number}: ${args.title}
@@ -183,6 +212,7 @@ ${args.content}
 ${args.currentSessionId ? `- [[${args.currentSessionId}]]` : ''}
 
 `;
+  }
 }
 
 export interface ProjectTemplateArgs {
