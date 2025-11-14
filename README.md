@@ -442,15 +442,18 @@ Topic name: (optional) "Authentication System"
 Context: (optional) "Additional context about the topic"
 
 Returns:
-  - Structured analysis prompt for sub-agent execution
-  - Potential duplicate topics found in vault
-  - Suggestions for tags, summary, key concepts, related topics
-  - Content type categorization
+  - Structured analysis including:
+    * Suggested tags based on content
+    * Content summary
+    * Key concepts identified
+    * Related topics found in vault
+    * Potential duplicate topics
+    * Content type categorization
 
 Usage:
-  1. Call analyze_topic_content with your content
-  2. Execute the returned analysis prompt via Claude Code sub-agent
-  3. Use the JSON analysis to enhance topic creation
+  - Called automatically by create_topic_page when auto_analyze is enabled
+  - Can be called manually to analyze content before creating a topic
+  - Helps maintain consistent tagging and discover existing related content
 ```
 
 **extract_decisions_from_session** - Extract architectural decisions from sessions
@@ -459,18 +462,21 @@ Session ID: (optional) "2025-11-05_14-30-00_..." or uses current session
 Content: (optional) Direct content to analyze
 
 Returns:
-  - Structured extraction prompt for sub-agent execution
-  - Instructions for creating ADRs from results
-  - Template for converting decisions to proper ADR format
+  - List of identified strategic decisions with:
+    * Decision title and context
+    * Alternatives that were considered
+    * Rationale for the choice made
+    * Consequences and tradeoffs
+    * Strategic level score (1-5)
 
 Workflow:
   1. Call extract_decisions_from_session on a completed session
-  2. Execute the returned extraction prompt via Claude Code sub-agent
+  2. Review the extracted decisions
   3. For each decision found with strategic_level >= 3:
      - Use create_decision tool to generate ADR
      - Link back to original session
 
-Only extracts strategic decisions (level 3-5), ignoring tactical details.
+Only extracts strategic decisions (level 3-5), ignoring tactical implementation details.
 ```
 
 **enhanced_search** - Intelligent search with query understanding and expansion
@@ -481,17 +487,17 @@ Current session ID: (optional) "2025-11-05_14-30-00_..."
 Max results per query: (optional) 5
 
 Returns:
-  - Query expansion prompt for sub-agent execution
-  - Preliminary search results for the original query
-  - Workflow instructions for multi-query search
-  - Deduplication and synthesis guidance
+  - Multiple expanded query variations
+  - Search results from each variation
+  - Deduplicated and ranked results
+  - Synthesized findings across all searches
 
 Workflow:
-  1. Call enhanced_search with your query
-  2. Execute the query expansion prompt via sub-agent to get 4-5 variations
-  3. Search with each variation using search_vault
-  4. Deduplicate results (using Map with file paths as keys)
-  5. Present synthesized findings
+  - Automatically understands user intent from natural language queries
+  - Expands queries into multiple semantic variations
+  - Searches vault with each variation
+  - Deduplicates and ranks results by relevance
+  - Returns unified, comprehensive search results
 
 Benefits:
   - Improved recall through multiple query perspectives
@@ -500,7 +506,7 @@ Benefits:
   - Automatic embedding cache reuse for performance
 ```
 
-These tools leverage Claude Code's sub-agent capabilities for deep content analysis. They generate structured prompts that can be executed via sub-agents to produce AI-powered insights, auto-tagging, decision extraction, and intelligent search.
+These AI-powered tools enhance the vault's intelligence by providing automatic content analysis, decision extraction, and semantic search expansion.
 
 ### Git Integration
 
@@ -548,13 +554,17 @@ Returns:
   - Commit summary (hash, author, date, message)
   - Files changed with statistics
   - Related topics/decisions found in vault (automatic search)
-  - Impact analysis prompt for sub-agent execution
-  - Suggestions for documentation updates
+  - Impact analysis including:
+    * Documentation impact level (1-5)
+    * Affected topics that should be updated
+    * New topics that should be created
+    * Architectural implications
+    * Suggested actions for maintaining documentation
 
 Workflow:
   1. Call analyze_commit_impact after making a commit
   2. Review related content automatically found in vault
-  3. Execute the analysis prompt via sub-agent
+  3. Review the suggested documentation updates
   4. Follow suggested actions:
      - Update affected topics with new implementation details
      - Create new topics for significant features
@@ -569,11 +579,23 @@ Benefits:
   - Builds knowledge graph between commits and topics
 
 Impact Levels:
-  1 = Minor fix/tweak
-  2 = Small feature/bug fix
-  3 = Notable feature/refactoring
-  4 = Major feature/architectural change
-  5 = Fundamental system redesign
+  1 = Minor fix/tweak (no docs needed)
+  2 = Small feature/bug fix (update existing docs)
+  3 = Notable feature/refactoring (update multiple docs)
+  4 = Major feature/architectural change (create new docs)
+  5 = Fundamental system redesign (major doc overhaul)
+```
+
+**migrate_commit_branches** - Migrate existing commit files to add branch information
+```
+Project slug: (optional) "obsidian-mcp-server"
+Dry run: (optional) false
+
+Adds branch information to commit frontmatter for existing recorded commits.
+If project slug is provided, only migrates that project.
+If omitted, migrates all projects.
+
+Use dry_run: true to see what would be changed without making changes.
 ```
 
 ## Vault Structure

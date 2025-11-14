@@ -40,7 +40,12 @@ That's it! Claude will now automatically manage your conversation context.
 
 Choose your path:
 
-### 🏃‍♂️ I want to get started NOW
+### 🏃‍♂️ I want to get started NOW (macOS)
+→ Read **MACOS_QUICKSTART.md** (10 minutes)
+→ Step-by-step guide specifically for Mac users
+→ Includes troubleshooting and verification
+
+### 🏃‍♂️ I want to get started NOW (Any Platform)
 → Read **QUICKSTART.md** (5 minutes)
 → Run `./setup.sh`
 → Start using Claude Code
