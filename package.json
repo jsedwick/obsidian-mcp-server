@@ -12,9 +12,26 @@
     "watch": "tsc --watch",
     "start": "node dist/index.js",
     "dev": "tsc && cp .obsidian-mcp.json dist/ 2>/dev/null || true && node dist/index.js",
-    "test": "npm run build && node dist/test.js",
+    "test": "vitest run",
+    "test:watch": "vitest watch",
+    "test:ui": "vitest --ui",
+    "test:coverage": "vitest run --coverage",
+    "lint": "eslint \"src/**/*.ts\"",
+    "lint:fix": "eslint \"src/**/*.ts\" --fix",
+    "format": "prettier --write \"src/**/*.ts\"",
+    "format:check": "prettier --check \"src/**/*.ts\"",
+    "typecheck": "tsc --noEmit",
+    "quality": "npm run lint && npm run format:check && npm run typecheck && npm run test",
+    "prepare": "husky",
     "clean": "rm -rf dist",
     "setup": "./setup.sh"
+  },
+  "lint-staged": {
+    "*.ts": [
+      "eslint --fix",
+      "prettier --write",
+      "vitest related --run"
+    ]
   },
   "keywords": [
     "mcp",
@@ -30,8 +47,20 @@
     "@xenova/transformers": "^2.17.2"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.1",
     "@types/node": "^20.10.0",
-    "typescript": "^5.3.3"
+    "@typescript-eslint/eslint-plugin": "^8.46.4",
+    "@typescript-eslint/parser": "^8.46.4",
+    "@vitest/coverage-v8": "^4.0.9",
+    "@vitest/ui": "^4.0.9",
+    "eslint": "^9.39.1",
+    "eslint-config-prettier": "^10.1.8",
+    "globals": "^16.5.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.2.6",
+    "prettier": "^3.6.2",
+    "typescript": "^5.3.3",
+    "vitest": "^4.0.9"
   },
   "engines": {
     "node": ">=18.0.0"
