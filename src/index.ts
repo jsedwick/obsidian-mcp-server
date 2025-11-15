@@ -12,13 +12,9 @@ import path from 'path';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import { pipeline } from '@xenova/transformers';
-import {
-  generateTopicTemplate,
-  generateDecisionTemplate,
-  generateProjectTemplate,
-  generateCommitTemplate,
-  generateSessionTemplate,
-} from './templates.js';
+import * as tools from './tools/index.js';
+import { GitService } from './services/git/GitService.js';
+import { validateToolArgs, ValidationError } from './validation/index.js';
 
 const execAsync = promisify(exec);
 
@@ -102,15 +98,6 @@ interface PendingReview {
   timestamp: number;
 }
 
-interface RepoCandidate {
-  path: string;
-  name: string;
-  score: number;
-  reasons: string[];
-  branch?: string;
-  remote?: string;
-}
-
 interface EmbeddingCacheEntry {
   file: string;
   embedding: number[];
@@ -138,18 +125,6 @@ enum ResponseDetail {
   FULL = 'full'          // Complete content
 }
 
-// Helper to parse detail level with default
-function parseDetailLevel(detail?: string): ResponseDetail {
-  if (!detail) return ResponseDetail.SUMMARY;
-
-  const level = detail.toLowerCase();
-  if (Object.values(ResponseDetail).includes(level as ResponseDetail)) {
-    return level as ResponseDetail;
-  }
-
-  return ResponseDetail.SUMMARY;
-}
-
 class ObsidianMCPServer {
   private server: Server;
   private config: ServerConfig;
@@ -170,6 +145,7 @@ class ObsidianMCPServer {
   private extractor: any = null;
   private embeddingInitPromise: Promise<void> | null = null;
   private embeddingToggleFile: string = '';
+  private gitService: GitService;
 
   constructor() {
     this.config = CONFIG;
@@ -207,6 +183,9 @@ class ObsidianMCPServer {
       keywordCandidatesLimit: 100, // Re-rank top 100 keyword results with semantic search
     };
 
+    // Initialize GitService
+    this.gitService = new GitService();
+
     this.setupHandlers();
     this.setupErrorHandling();
   }
@@ -240,121 +219,244 @@ class ObsidianMCPServer {
     }));
 
     // Handle tool calls
-    this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
+    this.server.setRequestHandler(CallToolRequestSchema, async (request): Promise<any> => {
       const { name, arguments: args } = request.params;
 
       try {
+        // Validate tool arguments using Zod schemas
+        // This provides runtime type safety and helpful error messages
+        const validatedArgs = validateToolArgs(name as any, args);
+
         switch (name) {
           case 'search_vault':
-            return await this.searchVault(args as {
-              query: string;
-              directories?: string[];
-              max_results?: number;
-              date_range?: { start?: string; end?: string };
-              snippets_only?: boolean;
+            return await tools.searchVault(validatedArgs as tools.SearchVaultArgs, {
+              vaultPath: this.config.primaryVault.path,
+              config: this.config,
+              embeddingConfig: this.embeddingConfig,
+              ensureVaultStructure: this.ensureVaultStructure.bind(this),
+              loadEmbeddingCache: this.loadEmbeddingCache.bind(this),
+              saveEmbeddingCache: this.saveEmbeddingCache.bind(this),
+              generateEmbedding: this.generateEmbedding.bind(this),
+              getOrCreateEmbedding: this.getOrCreateEmbedding.bind(this),
+              cosineSimilarity: this.cosineSimilarity.bind(this),
+              scoreSearchResult: this.scoreSearchResult.bind(this),
+              formatSearchResults: this.formatSearchResults.bind(this),
+              getAllVaults: this.getAllVaults.bind(this),
             });
-          
+
           case 'create_topic_page':
-            return await this.createTopicPage(args as { topic: string; content: string; auto_analyze?: boolean | 'true' | 'smart' });
-          
+            return await tools.createTopicPage(validatedArgs as tools.CreateTopicPageArgs, {
+              vaultPath: this.config.primaryVault.path,
+              currentSessionId: this.currentSessionId,
+              slugify: this.slugify.bind(this),
+              ensureVaultStructure: this.ensureVaultStructure.bind(this),
+              analyzeTopicContentInternal: this.analyzeTopicContentInternal.bind(this),
+              findRelatedProjects: this.findRelatedProjects.bind(this),
+              trackTopicCreation: (topic) => this.topicsCreated.push(topic),
+            });
+
           case 'create_decision':
-            return await this.createDecision(args as { title: string; content: string; context?: string; force?: boolean });
-          
+            return await tools.createDecision(validatedArgs as tools.CreateDecisionArgs, {
+              vaultPath: this.config.primaryVault.path,
+              currentSessionId: this.currentSessionId,
+              slugify: this.slugify.bind(this),
+              ensureVaultStructure: this.ensureVaultStructure.bind(this),
+              findRelatedContentInText: this.findRelatedContentInText.bind(this),
+              trackDecisionCreation: (decision) => this.decisionsCreated.push(decision),
+            });
+
           case 'update_topic_page':
-            return await this.updateTopicPage(args as { topic: string; content: string; append?: boolean });
+            return await tools.updateTopicPage(validatedArgs as tools.UpdateTopicPageArgs, {
+              vaultPath: this.config.primaryVault.path,
+              slugify: this.slugify.bind(this),
+              createTopicPage: this.createTopicPageWrapper.bind(this),
+            });
 
           case 'get_session_context':
-            return await this.getSessionContext(args as { session_id?: string });
+            return await tools.getSessionContext(validatedArgs as tools.GetSessionContextArgs, {
+              vaultPath: this.config.primaryVault.path,
+              currentSessionId: this.currentSessionId,
+              currentSessionFile: this.currentSessionFile,
+            });
 
           case 'get_topic_context':
-            return await this.getTopicContext(args as { topic: string });
+            return await tools.getTopicContext(validatedArgs as tools.GetTopicContextArgs, {
+              vaultPath: this.config.primaryVault.path,
+              slugify: this.slugify.bind(this),
+            });
 
           case 'link_to_topic':
-            return await this.linkToTopic(args as { topic: string });
-          
+            return await tools.linkToTopic(validatedArgs as tools.LinkToTopicArgs, {
+              vaultPath: this.config.primaryVault.path,
+              slugify: this.slugify.bind(this),
+              createTopicPage: this.createTopicPageWrapper.bind(this),
+            });
+
           case 'close_session':
-            return await this.closeSession(args as { summary: string; topic?: string; _invoked_by_slash_command?: boolean });
+            return await tools.closeSession(validatedArgs as tools.CloseSessionArgs, {
+              vaultPath: this.config.primaryVault.path,
+              currentSessionId: this.currentSessionId,
+              filesAccessed: this.filesAccessed,
+              topicsCreated: this.topicsCreated,
+              decisionsCreated: this.decisionsCreated,
+              projectsCreated: this.projectsCreated,
+              ensureVaultStructure: this.ensureVaultStructure.bind(this),
+              findGitRepos: this.findGitRepos.bind(this),
+              getRepoInfo: this.getRepoInfo.bind(this),
+              createProjectPage: this.createProjectPageWrapper.bind(this),
+              findRelatedContentInText: this.findRelatedContentInText.bind(this),
+              vaultCustodian: this.vaultCustodianWrapper.bind(this),
+              slugify: this.slugify.bind(this),
+              setCurrentSession: this.setCurrentSession.bind(this),
+              clearSessionState: this.clearSessionState.bind(this),
+            });
 
           case 'find_stale_topics':
-            return await this.findStaleTopics(args as { age_threshold_days?: number; include_never_reviewed?: boolean });
+            return await tools.findStaleTopics(validatedArgs as tools.FindStaleTopicsArgs, {
+              vaultPath: this.config.primaryVault.path,
+              ensureVaultStructure: this.ensureVaultStructure.bind(this),
+              getFileAgeDays: this.getFileAgeDays.bind(this),
+            });
 
           case 'review_topic':
-            return await this.reviewTopic(args as { topic: string; analysis_prompt?: string });
+            return await tools.reviewTopic(validatedArgs as tools.ReviewTopicArgs, {
+              vaultPath: this.config.primaryVault.path,
+              slugify: this.slugify.bind(this),
+              pendingReviews: this.pendingReviews,
+            });
 
           case 'approve_topic_update':
-            return await this.approveTopicUpdate(args as { review_id: string; action: string; modified_content?: string });
+            return await tools.approveTopicUpdate(validatedArgs as tools.ApproveTopicUpdateArgs, {
+              vaultPath: this.config.primaryVault.path,
+              pendingReviews: this.pendingReviews,
+              archiveTopic: this.archiveTopicWrapper.bind(this),
+            });
 
           case 'archive_topic':
-            return await this.archiveTopic(args as { topic: string; reason?: string });
+            return await tools.archiveTopic(validatedArgs as tools.ArchiveTopicArgs, {
+              vaultPath: this.config.primaryVault.path,
+              slugify: this.slugify.bind(this),
+              ensureVaultStructure: this.ensureVaultStructure.bind(this),
+            });
 
           case 'list_recent_sessions':
-            return await this.listRecentSessions(args as { limit?: number; _invoked_by_slash_command?: boolean });
+            return await tools.listRecentSessions(validatedArgs as tools.ListRecentSessionsArgs, {
+              vaultPath: this.config.primaryVault.path,
+              ensureVaultStructure: this.ensureVaultStructure.bind(this),
+            });
 
           case 'list_recent_projects':
-            return await this.listRecentProjects(args as { limit?: number; _invoked_by_slash_command?: boolean });
+            return await tools.listRecentProjects(validatedArgs as tools.ListRecentProjectsArgs, {
+              vaultPath: this.config.primaryVault.path,
+            });
 
           case 'track_file_access':
-            return await this.trackFileAccess(args as { path: string; action: 'read' | 'edit' | 'create' });
+            return await tools.trackFileAccess(validatedArgs as tools.TrackFileAccessArgs, {
+              filesAccessed: this.filesAccessed,
+            });
 
           case 'detect_session_repositories':
-            return await this.detectSessionRepositories();
+            return await tools.detectSessionRepositories(validatedArgs as tools.DetectSessionRepositoriesArgs, {
+              currentSessionId: this.currentSessionId,
+              filesAccessed: this.filesAccessed,
+              findGitRepos: this.findGitRepos.bind(this),
+              getRepoInfo: this.getRepoInfo.bind(this),
+            });
 
           case 'link_session_to_repository':
-            return await this.linkSessionToRepository(args as { repo_path: string });
+            return await tools.linkSessionToRepository(validatedArgs as tools.LinkSessionToRepositoryArgs, {
+              currentSessionFile: this.currentSessionFile,
+              filesAccessed: this.filesAccessed,
+              gitService: this.gitService,
+              createProjectPage: this.createProjectPageWrapper.bind(this),
+            });
 
           case 'create_project_page':
-            return await this.createProjectPage(args as { repo_path: string });
+            return await tools.createProjectPage(validatedArgs as tools.CreateProjectPageArgs, {
+              vaultPath: this.config.primaryVault.path,
+              gitService: this.gitService,
+              trackProjectCreation: (project) => this.projectsCreated.push(project),
+            });
 
           case 'record_commit':
-            return await this.recordCommit(args as { repo_path: string; commit_hash: string });
+            return await tools.recordCommit(validatedArgs as tools.RecordCommitArgs, {
+              vaultPath: this.config.primaryVault.path,
+              gitService: this.gitService,
+              currentSessionId: this.currentSessionId,
+              currentSessionFile: this.currentSessionFile,
+              vaultCustodian: this.vaultCustodianWrapper.bind(this),
+            });
 
           case 'toggle_embeddings':
-            return await this.toggleEmbeddings(args as { enabled?: boolean });
+            return await tools.toggleEmbeddings(validatedArgs as tools.ToggleEmbeddingsArgs, {
+              embeddingConfig: this.embeddingConfig,
+              embeddingToggleFile: this.embeddingToggleFile,
+              embeddingCache: this.embeddingCache,
+              setExtractor: (extractor) => { this.extractor = extractor; },
+              setEmbeddingInitPromise: (promise) => { this.embeddingInitPromise = promise; },
+            });
 
           case 'vault_custodian':
-            return await this.vaultCustodian(args as { files_to_check?: string[] });
+            return await tools.vaultCustodian(validatedArgs as tools.VaultCustodianArgs, {
+              vaultPath: this.config.primaryVault.path,
+              ensureVaultStructure: this.ensureVaultStructure.bind(this),
+              findSessionFile: this.findSessionFile.bind(this),
+            });
 
           case 'migrate_commit_branches':
-            return await this.migrateCommitBranches(args as { project_slug?: string; dry_run?: boolean });
+            return await tools.migrateCommitBranches(validatedArgs as tools.MigrateCommitBranchesArgs, {
+              vaultPath: this.config.primaryVault.path,
+              gitService: this.gitService,
+            });
 
           case 'analyze_topic_content':
-            return await this.analyzeTopicContent(args as {
-              content: string;
-              topic_name?: string;
-              context?: string;
+            return await tools.analyzeTopicContent(validatedArgs as tools.AnalyzeTopicContentArgs, {
+              searchVault: this.searchVaultWrapper.bind(this),
             });
 
           case 'extract_decisions_from_session':
-            return await this.extractDecisionsFromSession(args as {
-              session_id?: string;
-              content?: string;
+            return await tools.extractDecisionsFromSession(validatedArgs as tools.ExtractDecisionsFromSessionArgs, {
+              vaultPath: this.config.primaryVault.path,
+              currentSessionFile: this.currentSessionFile,
+              currentSessionId: this.currentSessionId,
+              slugify: this.slugify.bind(this),
+              findSessionFile: this.findSessionFile.bind(this),
             });
 
           case 'enhanced_search':
-            return await this.enhancedSearch(args as {
-              query: string;
-              context?: string;
-              current_session_id?: string;
-              max_results_per_query?: number;
+            return await tools.enhancedSearch(validatedArgs as tools.EnhancedSearchArgs, {
+              findSessionFile: this.findSessionFile.bind(this),
+              searchVault: this.searchVaultWrapper.bind(this),
             });
 
           case 'analyze_commit_impact':
-            return await this.analyzeCommitImpact(args as {
-              repo_path: string;
-              commit_hash: string;
-              include_diff?: boolean;
+            return await tools.analyzeCommitImpact(validatedArgs as tools.AnalyzeCommitImpactArgs, {
+              vaultPath: this.config.primaryVault.path,
+              gitService: this.gitService,
+              searchVault: this.searchVaultWrapper.bind(this),
             });
 
           default:
             throw new Error(`Unknown tool: ${name}`);
         }
       } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
+        // Enhanced error handling with special formatting for validation errors
+        let errorMessage: string;
+
+        if (error instanceof ValidationError) {
+          // Validation errors already have well-formatted messages
+          errorMessage = error.message;
+        } else if (error instanceof Error) {
+          errorMessage = `Error executing ${name}: ${error.message}`;
+        } else {
+          errorMessage = `Error executing ${name}: ${String(error)}`;
+        }
+
         return {
           content: [
             {
               type: 'text',
-              text: `Error executing ${name}: ${errorMessage}`,
+              text: errorMessage,
             },
           ],
         };
@@ -573,51 +675,6 @@ class ObsidianMCPServer {
 
     // Fall back to environment variable (default: enabled)
     return process.env.ENABLE_EMBEDDINGS !== 'false';
-  }
-
-  private async saveEmbeddingToggleState(enabled: boolean): Promise<void> {
-    const config: EmbeddingToggleConfig = {
-      enabled,
-      lastModified: new Date().toISOString(),
-    };
-
-    try {
-      await fs.writeFile(this.embeddingToggleFile, JSON.stringify(config, null, 2));
-    } catch (error) {
-      console.error('[Embedding] Failed to save toggle state:', error);
-      throw new Error(`Failed to save embedding toggle state: ${error}`);
-    }
-  }
-
-  private async toggleEmbeddings(args: { enabled?: boolean }): Promise<any> {
-    // If no explicit state provided, toggle current state
-    const newState = args.enabled !== undefined ? args.enabled : !this.embeddingConfig.enabled;
-
-    // Update in-memory config
-    this.embeddingConfig.enabled = newState;
-
-    // Save to file
-    await this.saveEmbeddingToggleState(newState);
-
-    // If disabling, reset the extractor
-    if (!newState) {
-      this.extractor = null;
-      this.embeddingInitPromise = null;
-      // Clear cache to prevent stale embeddings
-      this.embeddingCache.clear();
-    }
-
-    const status = newState ? 'enabled' : 'disabled';
-    const action = newState ? 'enabled (will generate on next search)' : 'disabled (using keyword search only)';
-
-    return {
-      content: [
-        {
-          type: 'text',
-          text: `Embeddings ${action}\n\nConfiguration saved to: ${this.embeddingToggleFile}\n\nCurrent state: ${status}`,
-        },
-      ],
-    };
   }
 
   // ==================== End Embedding Methods ====================
@@ -1209,6 +1266,81 @@ Check the sessions/ directory for recent conversations.
       .trim();
   }
 
+  // ==================== Tool Wrapper Methods ====================
+  // These wrappers allow modular tools to call other tools without circular dependencies
+
+  private async createTopicPageWrapper(args: { topic: string; content: string; auto_analyze?: boolean | 'true' | 'smart' }): Promise<any> {
+    return tools.createTopicPage(args as unknown as tools.CreateTopicPageArgs, {
+      vaultPath: this.config.primaryVault.path,
+      currentSessionId: this.currentSessionId,
+      slugify: this.slugify.bind(this),
+      ensureVaultStructure: this.ensureVaultStructure.bind(this),
+      analyzeTopicContentInternal: this.analyzeTopicContentInternal.bind(this),
+      findRelatedProjects: this.findRelatedProjects.bind(this),
+      trackTopicCreation: (topic) => this.topicsCreated.push(topic),
+    });
+  }
+
+  private async createProjectPageWrapper(args: { repo_path: string }): Promise<any> {
+    return tools.createProjectPage(args as unknown as tools.CreateProjectPageArgs, {
+      vaultPath: this.config.primaryVault.path,
+      gitService: this.gitService,
+      trackProjectCreation: (project) => this.projectsCreated.push(project),
+    });
+  }
+
+  private async vaultCustodianWrapper(args: { files_to_check?: string[] }): Promise<any> {
+    return tools.vaultCustodian(args as unknown as tools.VaultCustodianArgs, {
+      vaultPath: this.config.primaryVault.path,
+      ensureVaultStructure: this.ensureVaultStructure.bind(this),
+      findSessionFile: this.findSessionFile.bind(this),
+    });
+  }
+
+  private async archiveTopicWrapper(args: { topic: string; reason?: string }): Promise<any> {
+    return tools.archiveTopic(args as unknown as tools.ArchiveTopicArgs, {
+      vaultPath: this.config.primaryVault.path,
+      slugify: this.slugify.bind(this),
+      ensureVaultStructure: this.ensureVaultStructure.bind(this),
+    });
+  }
+
+  private async searchVaultWrapper(args: {
+    query: string;
+    directories?: string[];
+    max_results?: number;
+    snippets_only?: boolean;
+  }): Promise<any> {
+    return tools.searchVault(args as unknown as tools.SearchVaultArgs, {
+      vaultPath: this.config.primaryVault.path,
+      config: this.config,
+      embeddingConfig: this.embeddingConfig,
+      ensureVaultStructure: this.ensureVaultStructure.bind(this),
+      loadEmbeddingCache: this.loadEmbeddingCache.bind(this),
+      saveEmbeddingCache: this.saveEmbeddingCache.bind(this),
+      generateEmbedding: this.generateEmbedding.bind(this),
+      getOrCreateEmbedding: this.getOrCreateEmbedding.bind(this),
+      cosineSimilarity: this.cosineSimilarity.bind(this),
+      scoreSearchResult: this.scoreSearchResult.bind(this),
+      formatSearchResults: this.formatSearchResults.bind(this),
+      getAllVaults: this.getAllVaults.bind(this),
+    });
+  }
+
+  private setCurrentSession(sessionId: string, sessionFile: string): void {
+    this.currentSessionId = sessionId;
+    this.currentSessionFile = sessionFile;
+  }
+
+  private clearSessionState(): void {
+    this.filesAccessed = [];
+    this.topicsCreated = [];
+    this.decisionsCreated = [];
+    this.projectsCreated = [];
+  }
+
+  // ==================== End Tool Wrapper Methods ====================
+
   /**
    * Strip Obsidian-specific markdown syntax from text for cleaner CLI output
    */
@@ -1241,198 +1373,6 @@ Check the sessions/ directory for recent conversations.
     }
 
     return truncated + options.ellipsis;
-  }
-
-  private async searchVault(args: {
-    query: string;
-    directories?: string[];
-    max_results?: number;
-    date_range?: { start?: string; end?: string };
-    snippets_only?: boolean;
-    detail?: string;
-  }) {
-    await this.ensureVaultStructure();
-    await this.loadEmbeddingCache(); // Load embedding cache at start of search
-
-    const searchDirs = args.directories || ['sessions', 'topics', 'decisions'];
-    const maxResults = args.max_results || 10;
-
-    // Determine detail level (backwards compatible)
-    let detailLevel: ResponseDetail;
-    if (args.detail) {
-      detailLevel = parseDetailLevel(args.detail);
-    } else if (args.snippets_only === false) {
-      detailLevel = ResponseDetail.FULL;
-    } else {
-      detailLevel = ResponseDetail.SUMMARY;
-    }
-
-    const results: {
-      file: string;
-      matches: string[];
-      date?: string;
-      score: number;
-      semanticScore?: number;
-      vault?: string;
-      content?: string; // Content for semantic re-ranking
-      fileStats?: any; // File stats for embedding cache
-    }[] = [];
-    const queryLower = args.query.toLowerCase();
-    const queryTerms = queryLower.split(/\s+/).filter(t => t.length > 2);
-
-    // Generate query embedding if enabled
-    let queryEmbedding: number[] | null = null;
-    if (this.embeddingConfig.enabled) {
-      try {
-        queryEmbedding = await this.generateEmbedding(args.query);
-      } catch (error) {
-        console.error('[Search] Failed to generate query embedding, falling back to keyword search:', error);
-      }
-    }
-
-    // Recursive function to search directories
-    const searchDirectory = async (dirPath: string, relativePath: string = '', vaultName: string) => {
-      try {
-        const entries = await fs.readdir(dirPath, { withFileTypes: true });
-
-        for (const entry of entries) {
-          const fullPath = path.join(dirPath, entry.name);
-          const relativeFilePath = relativePath ? path.join(relativePath, entry.name) : entry.name;
-
-          if (entry.isDirectory()) {
-            // Skip common ignored directories
-            if (['.git', 'node_modules', '.DS_Store', '.obsidian'].includes(entry.name)) {
-              continue;
-            }
-            // Handle month subdirectories for sessions (YYYY-MM format)
-            if (/^\d{4}-\d{2}$/.test(entry.name)) {
-              const monthFiles = await fs.readdir(fullPath);
-              for (const file of monthFiles) {
-                if (!file.endsWith('.md')) continue;
-                const filePath = path.join(fullPath, file);
-                const fileStats = await fs.stat(filePath);
-                const content = await fs.readFile(filePath, 'utf-8');
-
-                const searchResult = await this.scoreSearchResult(
-                  'sessions',
-                  path.join(relativeFilePath, file),
-                  file,
-                  content,
-                  fileStats,
-                  queryLower,
-                  queryTerms,
-                  args.date_range,
-                  filePath // Pass absolute path for embedding cache key
-                );
-                if (searchResult) {
-                  results.push({ ...searchResult, vault: vaultName });
-                }
-              }
-            } else {
-              // Recursively search subdirectories
-              await searchDirectory(fullPath, relativeFilePath, vaultName);
-            }
-          } else if (entry.isFile() && entry.name.endsWith('.md')) {
-            // Process markdown file
-            const fileStats = await fs.stat(fullPath);
-            const content = await fs.readFile(fullPath, 'utf-8');
-
-            // Determine category based on path
-            let category = 'document';
-            if (relativeFilePath.includes('sessions')) category = 'sessions';
-            else if (relativeFilePath.includes('topics')) category = 'topics';
-            else if (relativeFilePath.includes('decisions')) category = 'decisions';
-
-            const searchResult = await this.scoreSearchResult(
-              category,
-              relativeFilePath,
-              entry.name,
-              content,
-              fileStats,
-              queryLower,
-              queryTerms,
-              args.date_range,
-              fullPath // Pass absolute path for embedding cache key
-            );
-            if (searchResult) {
-              results.push({ ...searchResult, vault: vaultName });
-            }
-          }
-        }
-      } catch (error) {
-        // Directory doesn't exist or can't be accessed
-      }
-    };
-
-    // Search across all configured vaults
-    const vaults = this.getAllVaults();
-
-    for (const vault of vaults) {
-      // For primary vault, search only in standard directories
-      const isPrimaryVault = vault.path === this.config.primaryVault.path;
-
-      if (isPrimaryVault) {
-        for (const dir of searchDirs) {
-          const dirPath = path.join(vault.path, dir);
-          await searchDirectory(dirPath, dir, vault.name);
-        }
-      } else {
-        // For secondary vaults, search everything recursively
-        await searchDirectory(vault.path, '', vault.name);
-      }
-    }
-
-    // Save embedding cache after search
-    await this.saveEmbeddingCache();
-
-    // Phase 2: Semantic re-ranking (if embeddings enabled)
-    let topResults: typeof results;
-    if (queryEmbedding && this.embeddingConfig.enabled && results.length > 0) {
-      // Sort by keyword score and take top N candidates for re-ranking
-      results.sort((a, b) => b.score - a.score);
-      const candidates = results.slice(0, this.embeddingConfig.keywordCandidatesLimit);
-
-      // Compute semantic similarity for each candidate
-      for (const result of candidates) {
-        if (result.content && result.fileStats) {
-          try {
-            const docEmbedding = await this.getOrCreateEmbedding(result.file, result.content, result.fileStats);
-            const semanticScore = this.cosineSimilarity(queryEmbedding, docEmbedding);
-            result.semanticScore = semanticScore;
-            result.score = semanticScore; // Use semantic score as final ranking score
-          } catch (error) {
-            console.error(`[Search] Failed to compute semantic score for ${result.file}:`, error);
-            // Keep keyword score if semantic scoring fails
-          }
-        }
-        // Clean up temporary fields
-        delete result.content;
-        delete result.fileStats;
-      }
-
-      // Re-sort by semantic score and take top results
-      candidates.sort((a, b) => b.score - a.score);
-      topResults = candidates.slice(0, maxResults);
-    } else {
-      // No semantic re-ranking: just use keyword scores
-      results.sort((a, b) => b.score - a.score);
-      topResults = results.slice(0, maxResults);
-
-      // Clean up temporary fields
-      for (const result of topResults) {
-        delete result.content;
-        delete result.fileStats;
-      }
-    }
-
-    // Format and return results using tiered response levels
-    return this.formatSearchResults(
-      topResults,
-      results.length,
-      detailLevel,
-      queryEmbedding !== null,
-      args.query
-    );
   }
 
   private formatSearchResults(
@@ -1803,397 +1743,15 @@ Check the sessions/ directory for recent conversations.
     return relatedProjects;
   }
 
-  private async createTopicPage(args: { topic: string; content: string; auto_analyze?: boolean | 'true' | 'smart' }) {
-    // Validate that this is appropriate for a topic (not session-specific content)
-    const investigationKeywords = [
-      'investigation', 'investigating', 'bug fix', 'fixing', 'debugg',
-      'found issue', 'found problem', 'discovered', 'troubleshooting session',
-      'worked on', 'fixed issue', 'resolved bug'
-    ];
 
-    const titleLower = args.topic.toLowerCase();
-    const matchedKeyword = investigationKeywords.find(keyword => titleLower.includes(keyword));
 
-    if (matchedKeyword) {
-      throw new Error(
-        `❌ Topic title contains "${matchedKeyword}" - this appears to be investigation/debugging details, not a topic.\n\n` +
-        `Topics should be persistent, reusable knowledge:\n` +
-        `  ✅ How-to guides\n` +
-        `  ✅ Architecture explanations\n` +
-        `  ✅ Troubleshooting procedures (generic)\n` +
-        `  ✅ Implementation patterns\n\n` +
-        `Investigation details belong in session notes instead.\n\n` +
-        `If this is genuinely reusable knowledge, rephrase the title to focus on the solution/pattern, not the investigation.\n` +
-        `Example: Instead of "Fixing search bug", use "Search Algorithm Implementation" or "Common Search Issues"`
-      );
-    }
 
-    await this.ensureVaultStructure();
 
-    const slug = this.slugify(args.topic);
-    const topicFile = path.join(VAULT_PATH, 'topics', `${slug}.md`);
-    const today = new Date().toISOString().split('T')[0];
 
-    // Determine if we should analyze content
-    let shouldAnalyze = false;
-    let tags: string[] | undefined = undefined;
 
-    // Handle both boolean true and string "true" (MCP SDK may convert)
-    if (args.auto_analyze === true || args.auto_analyze === 'true') {
-      shouldAnalyze = true;
-    } else if (args.auto_analyze === 'smart') {
-      // Smart mode: analyze if content is substantial (>500 words ~2500 chars) and no existing tags
-      const wordCount = args.content.split(/\s+/).length;
-      const hasExistingTags = args.content.toLowerCase().includes('tags:');
-      shouldAnalyze = wordCount >= 500 && !hasExistingTags;
-    }
 
-    // Perform analysis if needed
-    if (shouldAnalyze) {
-      try {
-        const analysis = await this.analyzeTopicContentInternal({
-          content: args.content,
-          topic_name: args.topic,
-        });
-        tags = analysis.tags;
-      } catch (error) {
-        // If analysis fails, fall back to default tags
-        console.error('Topic analysis failed:', error);
-      }
-    }
 
-    const content = generateTopicTemplate({
-      title: args.topic,
-      content: args.content,
-      created: today,
-      currentSessionId: this.currentSessionId || undefined,
-      tags: tags,
-    });
 
-    await fs.writeFile(topicFile, content);
-
-    // Track topic creation for lazy session creation
-    this.topicsCreated.push({ slug, title: args.topic, file: topicFile });
-
-    // Proactively search for related projects based on topic content
-    const relatedProjects = await this.findRelatedProjects(args.content);
-
-    // Add related projects to topic page if found
-    if (relatedProjects.length > 0) {
-      let updatedContent = await fs.readFile(topicFile, 'utf-8');
-      const projectLinks = relatedProjects.map(p => `- [[${p.link}|${p.name}]]`).join('\n');
-
-      updatedContent = updatedContent.replace(
-        '## Related Projects\n',
-        `## Related Projects\n${projectLinks}\n`
-      );
-
-      await fs.writeFile(topicFile, updatedContent);
-    }
-
-    return {
-      content: [
-        {
-          type: 'text',
-          text: `Topic page created: ${topicFile}\nObsidian link: [[topics/${slug}|${args.topic}]]${relatedProjects.length > 0 ? `\n\nFound ${relatedProjects.length} related project(s):` + relatedProjects.map(p => `\n- ${p.name}`).join('') : ''}`,
-        },
-      ],
-    };
-  }
-
-  private async createDecision(args: { title: string; content: string; context?: string; project?: string; force?: boolean }) {
-    await this.ensureVaultStructure();
-
-    const titleLower = args.title.toLowerCase();
-    const contentLower = args.content.toLowerCase();
-
-    // Validation 1: Check if title suggests this should be a topic instead
-    const topicKeywords = ['fix', 'bug', 'issue', 'implement', 'how', 'guide', 'setup', 'error', 'crash', 'problem'];
-    const matchedTopicKeywords = topicKeywords.filter(kw => titleLower.includes(kw));
-
-    if (matchedTopicKeywords.length > 0 && !args.force) {
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `⚠️  This title suggests it might be better suited as a topic page, not a decision.
-
-Title contains keywords typical of topics: ${matchedTopicKeywords.join(', ')}
-
-DECISIONS are for strategic choices with alternatives considered (e.g., "Flat vs Hierarchical Organization").
-TOPICS are for implementation details, bug fixes, and how-to guides (e.g., "Fix search algorithm bug").
-
-If you still want to create this as a decision, provide context that explains the strategic choice and alternatives.
-Otherwise, use create_topic_page instead.
-
-To proceed anyway, call create_decision again with force: true.`,
-          },
-        ],
-      };
-    }
-
-    // Validation 2: Check if decision indicates alternatives were considered
-    const decisionIndicators = ['vs', 'versus', 'between', 'alternative', 'option', 'approach', 'choice'];
-    const hasDecisionIndicator = decisionIndicators.some(indicator =>
-      titleLower.includes(indicator) || contentLower.includes(indicator)
-    );
-
-    if (!hasDecisionIndicator && !args.force) {
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `⚠️  This doesn't appear to be a strategic decision with alternatives.
-
-Decisions should document:
-  ✅ Multiple alternatives that were considered
-  ✅ Why one was chosen over others
-  ✅ Trade-offs and consequences
-
-Your title/content doesn't mention alternatives (no "vs", "between", "alternative", "option", etc.)
-
-Examples of proper decisions:
-  ✅ "Use Obsidian vs Notion for Context Management"
-  ✅ "Flat vs Hierarchical Topic Organization"
-  ✅ "CSS-in-JS vs CSS Custom Properties for Theming"
-
-If this documents a single solution/implementation without comparing alternatives, use create_topic_page instead.
-
-To proceed anyway, call create_decision again with force: true.`,
-          },
-        ],
-      };
-    }
-
-    // Determine decision scope: project-specific or vault-level
-    const scope = args.project || 'vault';
-    const decisionsDir = path.join(VAULT_PATH, 'decisions', scope);
-
-    // Ensure the project-specific or vault directory exists
-    try {
-      await fs.mkdir(decisionsDir, { recursive: true });
-    } catch (error) {
-      // Directory might already exist, that's fine
-    }
-
-    // Read existing decision files to determine next number
-    const files = await fs.readdir(decisionsDir);
-    const decisionNumbers = files
-      .filter(f => f.match(/^\d{3}-/))
-      .map(f => parseInt(f.split('-')[0]))
-      .filter(n => !isNaN(n));
-
-    const nextNumber = decisionNumbers.length > 0 ? Math.max(...decisionNumbers) + 1 : 1;
-    const numberStr = String(nextNumber).padStart(3, '0');
-    const slug = this.slugify(args.title);
-    const decisionFile = path.join(decisionsDir, `${numberStr}-${slug}.md`);
-    const today = new Date().toISOString().split('T')[0];
-
-    const content = generateDecisionTemplate({
-      number: numberStr,
-      title: args.title,
-      date: today,
-      context: args.context,
-      content: args.content,
-      currentSessionId: this.currentSessionId || undefined
-    });
-
-    await fs.writeFile(decisionFile, content);
-
-    // Track decision creation for lazy session creation
-    this.decisionsCreated.push({
-      slug: `${numberStr}-${slug}`,
-      title: args.title,
-      file: decisionFile
-    });
-
-    // Proactively search for related content based on decision title and content
-    const searchText = `${args.title} ${args.content} ${args.context || ''}`;
-    const relatedContent = await this.findRelatedContentInText(searchText);
-
-    // Add related topics and projects to decision page if found
-    if (relatedContent.topics.length > 0 || relatedContent.projects.length > 0) {
-      let updatedContent = await fs.readFile(decisionFile, 'utf-8');
-
-      if (relatedContent.topics.length > 0) {
-        const topicLinks = relatedContent.topics.map(t => `- [[${t.link}|${t.title}]]`).join('\n');
-        updatedContent = updatedContent.replace(
-          '## Related Topics\n',
-          `## Related Topics\n${topicLinks}\n`
-        );
-      }
-
-      if (relatedContent.projects.length > 0) {
-        const projectLinks = relatedContent.projects.map(p => `- [[${p.link}|${p.name}]]`).join('\n');
-        updatedContent = updatedContent.replace(
-          '## Related Projects\n',
-          `## Related Projects\n${projectLinks}\n`
-        );
-      }
-
-      await fs.writeFile(decisionFile, updatedContent);
-    }
-
-    const scopeMsg = scope === 'vault' ? ' (vault-level)' : ` (project: ${scope})`;
-    return {
-      content: [
-        {
-          type: 'text',
-          text: `Decision record created${scopeMsg}: ${decisionFile}\nDecision number: ${numberStr}${relatedContent.topics.length > 0 ? `\n\nFound ${relatedContent.topics.length} related topic(s):` + relatedContent.topics.map(t => `\n- ${t.title}`).join('') : ''}${relatedContent.projects.length > 0 ? `\n\nFound ${relatedContent.projects.length} related project(s):` + relatedContent.projects.map(p => `\n- ${p.name}`).join('') : ''}`,
-        },
-      ],
-    };
-  }
-
-  private async updateTopicPage(args: { topic: string; content: string; append?: boolean }) {
-    const slug = this.slugify(args.topic);
-    const topicFile = path.join(VAULT_PATH, 'topics', `${slug}.md`);
-
-    try {
-      await fs.access(topicFile);
-    } catch {
-      // Topic doesn't exist, create it
-      return await this.createTopicPage({ topic: args.topic, content: args.content });
-    }
-
-    const append = args.append !== false;
-
-    if (append) {
-      const existing = await fs.readFile(topicFile, 'utf-8');
-
-      // Extract frontmatter and body from existing content
-      const frontmatterMatch = existing.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
-      const frontmatter = frontmatterMatch ? frontmatterMatch[1] : '';
-      const existingBody = frontmatterMatch ? frontmatterMatch[2] : existing;
-
-      // Strip frontmatter from new content if present
-      const newBodyMatch = args.content.match(/^---\n[\s\S]*?\n---\n([\s\S]*)$/) || args.content.match(/^([\s\S]*)$/);
-      const newBody = newBodyMatch ? newBodyMatch[1] : args.content;
-
-      // Reconstruct file with preserved frontmatter + appended body
-      const newContent = `---\n${frontmatter}\n---\n${existingBody}\n${newBody}`;
-      await fs.writeFile(topicFile, newContent);
-    } else {
-      await fs.writeFile(topicFile, args.content);
-    }
-
-    return {
-      content: [
-        {
-          type: 'text',
-          text: `Topic page updated: ${topicFile}`,
-        },
-      ],
-    };
-  }
-
-  private async getSessionContext(args: { session_id?: string }) {
-    const sessionId = args.session_id || this.currentSessionId;
-
-    if (!sessionId) {
-      throw new Error('No session ID provided and no active session.');
-    }
-
-    let sessionFile: string;
-
-    if (this.currentSessionFile && !args.session_id) {
-      // Use current session file if available
-      sessionFile = this.currentSessionFile;
-    } else if (args.session_id) {
-      // Try to find the session file in monthly directories or root
-      // First, extract the date from session_id (format: YYYY-MM-DD_HH-mm-ss...)
-      const dateMatch = args.session_id.match(/^(\d{4}-\d{2}-\d{2})/);
-
-      if (dateMatch) {
-        const dateStr = dateMatch[1];
-        const monthStr = dateStr.substring(0, 7); // YYYY-MM
-        const monthDir = path.join(VAULT_PATH, 'sessions', monthStr);
-        const monthFile = path.join(monthDir, `${sessionId}.md`);
-
-        try {
-          await fs.access(monthFile);
-          sessionFile = monthFile;
-        } catch {
-          // Fall back to root if not in month directory
-          sessionFile = path.join(VAULT_PATH, 'sessions', `${sessionId}.md`);
-        }
-      } else {
-        // No date in session_id, try root directory
-        sessionFile = path.join(VAULT_PATH, 'sessions', `${sessionId}.md`);
-      }
-    } else {
-      throw new Error('Cannot determine session file path.');
-    }
-
-    const content = await fs.readFile(sessionFile, 'utf-8');
-
-    return {
-      content: [
-        {
-          type: 'text',
-          text: `Session context for ${sessionId}:\n\n${content}`,
-        },
-      ],
-    };
-  }
-
-  private async getTopicContext(args: { topic: string }) {
-    const slug = this.slugify(args.topic);
-    const topicFile = path.join(VAULT_PATH, 'topics', `${slug}.md`);
-
-    try {
-      await fs.access(topicFile);
-    } catch {
-      throw new Error(`Topic not found: ${args.topic}. Use search_vault to find available topics, or create_topic_page to create a new one.`);
-    }
-
-    const content = await fs.readFile(topicFile, 'utf-8');
-
-    // Parse frontmatter to extract title
-    const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
-    let title = args.topic;
-
-    if (frontmatterMatch) {
-      const frontmatter = frontmatterMatch[1];
-      const titleMatch = frontmatter.match(/title:\s*(.+)/);
-      if (titleMatch) {
-        title = titleMatch[1].trim();
-      }
-    }
-
-    return {
-      content: [
-        {
-          type: 'text',
-          text: `Topic context for "${title}" (topics/${slug}.md):\n\n${content}`,
-        },
-      ],
-    };
-  }
-
-  private async linkToTopic(args: { topic: string }) {
-    const slug = this.slugify(args.topic);
-    const topicFile = path.join(VAULT_PATH, 'topics', `${slug}.md`);
-
-    try {
-      await fs.access(topicFile);
-    } catch {
-      // Create minimal topic page if it doesn't exist
-      await this.createTopicPage({
-        topic: args.topic,
-        content: 'Topic created automatically via link.',
-      });
-    }
-
-    return {
-      content: [
-        {
-          type: 'text',
-          text: `[[topics/${slug}|${args.topic}]]`,
-        },
-      ],
-    };
-  }
 
   /**
    * Find topics, decisions, and projects mentioned in text content
@@ -2300,224 +1858,7 @@ To proceed anyway, call create_decision again with force: true.`,
     return result;
   }
 
-  private async closeSession(args: { summary: string; topic?: string; _invoked_by_slash_command?: boolean }) {
-    // Enforce that this tool can only be called via the /close slash command
-    if (args._invoked_by_slash_command !== true) {
-      throw new Error('❌ The close_session tool can ONLY be called via the /close slash command. Please ask the user to run the /close command to close this session.');
-    }
 
-    await this.ensureVaultStructure();
-
-    // Generate session ID from current timestamp and optional topic
-    const now = new Date();
-    const dateStr = now.toISOString().split('T')[0];
-    const timeStr = now.toTimeString().split(' ')[0].replace(/:/g, '-');
-    const topicSlug = args.topic ? `_${this.slugify(args.topic)}` : '';
-    const sessionId = `${dateStr}_${timeStr}${topicSlug}`;
-
-    // Organize sessions by month
-    const monthStr = dateStr.substring(0, 7); // YYYY-MM
-    const monthDir = path.join(VAULT_PATH, 'sessions', monthStr);
-    await fs.mkdir(monthDir, { recursive: true });
-    const sessionFile = path.join(monthDir, `${sessionId}.md`);
-
-    // Auto-detect Git repositories BEFORE building session content
-    // This allows the project to be included in the session's Projects section
-    let detectedRepoInfo: { path: string; name: string; branch?: string; remote?: string } | null = null;
-
-    // Always attempt repo detection - either from tracked files or from CWD
-    try {
-      const cwd = process.env.PWD || process.cwd();
-      const repoPaths = await this.findGitRepos(cwd);
-
-      if (repoPaths.length > 0) {
-        const candidates: RepoCandidate[] = [];
-
-        for (const repoPath of repoPaths) {
-          let score = 0;
-          const reasons: string[] = [];
-
-          const filesInRepo = this.filesAccessed.filter(f => f.path.startsWith(repoPath));
-          const editedFiles = filesInRepo.filter(f => f.action === 'edit' || f.action === 'create');
-          const readFiles = filesInRepo.filter(f => f.action === 'read');
-
-          if (editedFiles.length > 0) {
-            score += editedFiles.length * 10;
-            reasons.push(`${editedFiles.length} file(s) modified`);
-          }
-
-          if (readFiles.length > 0) {
-            score += readFiles.length * 5;
-            reasons.push(`${readFiles.length} file(s) read`);
-          }
-
-          if (sessionId) {
-            const repoName = path.basename(repoPath);
-            if (sessionId.toLowerCase().includes(repoName.toLowerCase())) {
-              score += 20;
-              reasons.push('Session topic matches repo name');
-            }
-          }
-
-          if (repoPath === cwd) {
-            score += 15;
-            reasons.push('Repo is current working directory');
-          } else if (cwd.startsWith(repoPath)) {
-            score += 8;
-            reasons.push('CWD is within this repo');
-          } else if (repoPath.startsWith(cwd)) {
-            score += 5;
-            reasons.push('Repo is subdirectory of CWD');
-          }
-
-          if (score > 0 || repoPaths.length === 1) {
-            const info = await this.getRepoInfo(repoPath);
-            candidates.push({
-              path: repoPath,
-              name: info.name,
-              score,
-              reasons,
-              branch: info.branch,
-              remote: info.remote,
-            });
-          }
-        }
-
-        candidates.sort((a, b) => b.score - a.score);
-
-        if (candidates.length > 0) {
-          const topCandidate = candidates[0];
-
-          // High confidence - automatically create project page
-          if (candidates.length === 1 || topCandidate.score > (candidates[1]?.score || 0) * 2) {
-            try {
-              detectedRepoInfo = topCandidate;
-              await this.createProjectPage({ repo_path: topCandidate.path });
-            } catch (error) {
-              // If project creation fails, continue anyway
-            }
-          }
-        }
-      }
-    } catch (error) {
-      // Silently fail - repo detection is optional
-    }
-
-    // Build topics list from created content
-    const topicsList = this.topicsCreated.map(t => t.title);
-    const decisionsList = this.decisionsCreated.map(d => d.title);
-
-    // Proactively search for related existing content mentioned in the summary
-    const relatedContent = await this.findRelatedContentInText(args.summary);
-
-    // Build session content using template
-    const sessionContent = generateSessionTemplate({
-      sessionId,
-      date: dateStr,
-      topic: args.topic,
-      topicsList,
-      decisionsList,
-      summary: args.summary,
-      filesAccessed: this.filesAccessed,
-      topicsCreated: this.topicsCreated,
-      decisionsCreated: this.decisionsCreated,
-      projectsCreated: this.projectsCreated,
-      relatedTopics: relatedContent.topics,
-      relatedDecisions: relatedContent.decisions,
-      relatedProjects: relatedContent.projects
-    });
-
-    // Write session file
-    await fs.writeFile(sessionFile, sessionContent);
-
-    // Set current session for back-linking
-    this.currentSessionId = sessionId;
-    this.currentSessionFile = sessionFile;
-
-    // Note: Reciprocal linking is now handled automatically by vault_custodian
-    // which runs at the end of this method. No need for manual back-linking here.
-
-    // Build repository detection message
-    let repoDetectionMessage = '';
-    if (detectedRepoInfo) {
-      repoDetectionMessage = `\n\n📦 Git Repository Auto-Linked:\n`;
-      repoDetectionMessage += `   ${detectedRepoInfo.name}\n`;
-      repoDetectionMessage += `   Path: ${detectedRepoInfo.path}\n`;
-      if (detectedRepoInfo.branch) repoDetectionMessage += `   Branch: ${detectedRepoInfo.branch}\n`;
-      repoDetectionMessage += `   ✅ Project page created/updated\n`;
-      if (this.topicsCreated.length > 0) {
-        repoDetectionMessage += `   ✅ ${this.topicsCreated.length} topic(s) linked to project\n`;
-      }
-      repoDetectionMessage += `\n💡 Next step: Create and record your git commit`;
-    }
-
-    // Build summary message
-    let summary = `✅ Session created: ${sessionId}\n`;
-    summary += `📄 Session file: ${sessionFile}\n\n`;
-
-    if (this.topicsCreated.length > 0) {
-      summary += `📚 Topics linked (${this.topicsCreated.length}):\n`;
-      summary += this.topicsCreated.map(t => `   - ${t.title}`).join('\n') + '\n\n';
-    }
-
-    if (this.decisionsCreated.length > 0) {
-      summary += `🎯 Decisions linked (${this.decisionsCreated.length}):\n`;
-      summary += this.decisionsCreated.map(d => `   - ${d.title}`).join('\n') + '\n\n';
-    }
-
-    if (this.projectsCreated.length > 0) {
-      summary += `📦 Projects linked (${this.projectsCreated.length}):\n`;
-      summary += this.projectsCreated.map(p => `   - ${p.name}`).join('\n') + '\n\n';
-    }
-
-    if (this.filesAccessed.length > 0) {
-      summary += `📁 Files accessed: ${this.filesAccessed.length}\n`;
-    }
-
-    // Run vault custodian on files created/updated during this session
-    const editedOrCreatedFiles = this.filesAccessed
-      .filter(f => (f.action === 'edit' || f.action === 'create') && f.path.startsWith(VAULT_PATH))
-      .map(f => f.path);
-
-    const filesToCheck: string[] = [
-      sessionFile,
-      ...this.topicsCreated.map(t => t.file),
-      ...this.decisionsCreated.map(d => d.file),
-      ...this.projectsCreated.map(p => p.file),
-      ...editedOrCreatedFiles,
-    ];
-
-    // Remove duplicates
-    const uniqueFilesToCheck = Array.from(new Set(filesToCheck));
-
-    let vaultCustodianReport = '';
-    if (uniqueFilesToCheck.length > 0) {
-      try {
-        const custodianResult = await this.vaultCustodian({ files_to_check: uniqueFilesToCheck });
-        if (custodianResult.content && custodianResult.content[0]) {
-          vaultCustodianReport = '\n\n' + (custodianResult.content[0] as { text: string }).text;
-        }
-      } catch (error) {
-        vaultCustodianReport = '\n\n⚠️  Vault custodian check failed: ' + (error instanceof Error ? error.message : String(error));
-      }
-    }
-
-    // Clear state for next conversation
-    this.topicsCreated = [];
-    this.decisionsCreated = [];
-    this.projectsCreated = [];
-    this.filesAccessed = [];
-    // Keep currentSessionId and currentSessionFile set for potential follow-up operations
-
-    return {
-      content: [
-        {
-          type: 'text',
-          text: summary + repoDetectionMessage + vaultCustodianReport,
-        },
-      ],
-    };
-  }
 
   private getFileAgeDays(dateString: string): number {
     const fileDate = new Date(dateString);
@@ -2526,865 +1867,16 @@ To proceed anyway, call create_decision again with force: true.`,
     return Math.floor(diffMs / (1000 * 60 * 60 * 24));
   }
 
-  private async findStaleTopics(args: { age_threshold_days?: number; include_never_reviewed?: boolean }) {
-    await this.ensureVaultStructure();
 
-    const thresholdDays = args.age_threshold_days || 365;
-    const includeNeverReviewed = args.include_never_reviewed !== false;
-    const topicsDir = path.join(VAULT_PATH, 'topics');
-    const staleTopics: Array<{
-      title: string;
-      slug: string;
-      created_date: string;
-      last_reviewed?: string;
-      age_days: number;
-      review_count: number;
-      file_path: string;
-    }> = [];
 
-    try {
-      const files = await fs.readdir(topicsDir);
 
-      for (const file of files) {
-        if (!file.endsWith('.md')) continue;
 
-        const filePath = path.join(topicsDir, file);
-        const content = await fs.readFile(filePath, 'utf-8');
 
-        // Parse frontmatter
-        const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
-        if (!frontmatterMatch) continue;
 
-        const frontmatter = frontmatterMatch[1];
-        const createdMatch = frontmatter.match(/created:\s*(.+)/);
-        const lastReviewedMatch = frontmatter.match(/last_reviewed:\s*(.+)/);
-        const reviewCountMatch = frontmatter.match(/review_count:\s*(\d+)/);
-        const titleMatch = frontmatter.match(/title:\s*(.+)/);
 
-        if (!createdMatch) continue;
 
-        const created = createdMatch[1].trim();
-        const lastReviewed = lastReviewedMatch ? lastReviewedMatch[1].trim() : undefined;
-        const reviewCount = reviewCountMatch ? parseInt(reviewCountMatch[1]) : 0;
-        const title = titleMatch ? titleMatch[1].trim() : file.replace('.md', '');
 
-        // Determine if stale
-        const referenceDate = lastReviewed || created;
-        const ageDays = this.getFileAgeDays(referenceDate);
 
-        const isStale = ageDays > thresholdDays;
-        const neverReviewed = !lastReviewed || lastReviewed === created;
-
-        if (isStale && (includeNeverReviewed || !neverReviewed)) {
-          staleTopics.push({
-            title,
-            slug: file.replace('.md', ''),
-            created_date: created,
-            last_reviewed: lastReviewed !== created ? lastReviewed : undefined,
-            age_days: ageDays,
-            review_count: reviewCount,
-            file_path: `topics/${file}`,
-          });
-        }
-      }
-    } catch (error) {
-      throw new Error(`Failed to scan topics: ${error}`);
-    }
-
-    // Sort by age (oldest first)
-    staleTopics.sort((a, b) => b.age_days - a.age_days);
-
-    if (staleTopics.length === 0) {
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `No stale topics found. All topics have been reviewed within the last ${thresholdDays} days.`,
-          },
-        ],
-      };
-    }
-
-    let resultText = `Found ${staleTopics.length} stale topic(s) older than ${thresholdDays} days:\n\n`;
-
-    staleTopics.forEach((topic, idx) => {
-      resultText += `${idx + 1}. **${topic.title}** (${topic.slug})\n`;
-      resultText += `   - Created: ${topic.created_date}\n`;
-      resultText += `   - Last reviewed: ${topic.last_reviewed || 'Never'}\n`;
-      resultText += `   - Age: ${topic.age_days} days\n`;
-      resultText += `   - Reviews: ${topic.review_count}\n\n`;
-    });
-
-    resultText += `\nUse review_topic to analyze any of these topics.`;
-
-    return {
-      content: [
-        {
-          type: 'text',
-          text: resultText,
-        },
-      ],
-    };
-  }
-
-  private async reviewTopic(args: { topic: string; analysis_prompt?: string }) {
-    const slug = this.slugify(args.topic);
-    const topicFile = path.join(VAULT_PATH, 'topics', `${slug}.md`);
-
-    try {
-      await fs.access(topicFile);
-    } catch {
-      throw new Error(`Topic not found: ${args.topic}`);
-    }
-
-    const content = await fs.readFile(topicFile, 'utf-8');
-
-    // Parse frontmatter
-    const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
-    if (!frontmatterMatch) {
-      throw new Error('Invalid topic file format (missing frontmatter)');
-    }
-
-    const frontmatter = frontmatterMatch[1];
-    const titleMatch = frontmatter.match(/title:\s*(.+)/);
-    const title = titleMatch ? titleMatch[1].trim() : args.topic;
-
-    // Extract main content (without frontmatter)
-    const mainContent = content.substring(frontmatterMatch[0].length).trim();
-
-    // For now, we'll create a placeholder analysis since we don't have AI integration
-    // In a real implementation, this would call an LLM API
-    const analysis: ReviewAnalysis = {
-      is_outdated: false,
-      concerns: [
-        'Manual review required - AI analysis not yet implemented',
-        'Please review the content below and provide your assessment',
-      ],
-      suggested_updates: 'Please review the topic content and suggest specific updates if needed.',
-      confidence: 'low',
-    };
-
-    // Generate review ID and store pending review
-    const reviewId = `review_${Date.now()}_${slug}`;
-    const pendingReview: PendingReview = {
-      review_id: reviewId,
-      topic: title,
-      slug,
-      current_content: content,
-      analysis,
-      timestamp: Date.now(),
-    };
-
-    this.pendingReviews.set(reviewId, pendingReview);
-
-    let resultText = `# Review Analysis: ${title}\n\n`;
-    resultText += `**Review ID:** ${reviewId}\n`;
-    resultText += `**Topic File:** topics/${slug}.md\n\n`;
-    resultText += `## Current Content\n\n${mainContent}\n\n`;
-    resultText += `## AI Analysis\n\n`;
-    resultText += `**Status:** ${analysis.is_outdated ? '⚠️ Potentially Outdated' : '✅ Appears Current'}\n`;
-    resultText += `**Confidence:** ${analysis.confidence}\n\n`;
-    resultText += `**Concerns:**\n`;
-    analysis.concerns.forEach(c => resultText += `- ${c}\n`);
-    resultText += `\n**Suggested Updates:**\n${analysis.suggested_updates}\n\n`;
-    resultText += `---\n\n`;
-    resultText += `**Next Steps:**\n`;
-    resultText += `Use approve_topic_update with one of these actions:\n`;
-    resultText += `- \`update\`: Apply suggested changes (you can provide modified_content)\n`;
-    resultText += `- \`keep\`: Mark as reviewed without changes\n`;
-    resultText += `- \`archive\`: Move to archive\n`;
-    resultText += `- \`dismiss\`: Cancel this review\n`;
-
-    return {
-      content: [
-        {
-          type: 'text',
-          text: resultText,
-        },
-      ],
-    };
-  }
-
-  private async approveTopicUpdate(args: { review_id: string; action: string; modified_content?: string }) {
-    const pendingReview = this.pendingReviews.get(args.review_id);
-
-    if (!pendingReview) {
-      throw new Error(`Review not found: ${args.review_id}. It may have expired or already been processed.`);
-    }
-
-    const { slug, topic, current_content } = pendingReview;
-    const topicFile = path.join(VAULT_PATH, 'topics', `${slug}.md`);
-    const today = new Date().toISOString().split('T')[0];
-
-    try {
-      switch (args.action) {
-        case 'update': {
-          // Parse existing frontmatter
-          const frontmatterMatch = current_content.match(/^---\n([\s\S]*?)\n---/);
-          if (!frontmatterMatch) throw new Error('Invalid frontmatter');
-
-          const frontmatter = frontmatterMatch[1];
-          const reviewCountMatch = frontmatter.match(/review_count:\s*(\d+)/);
-          const reviewCount = reviewCountMatch ? parseInt(reviewCountMatch[1]) : 0;
-
-          // Update frontmatter with new review info
-          let updatedFrontmatter = frontmatter
-            .replace(/last_reviewed:.*/, `last_reviewed: ${today}`)
-            .replace(/review_count:.*/, `review_count: ${reviewCount + 1}`);
-
-          // Add to review history
-          const reviewHistoryEntry = `  - date: ${today}\n    action: updated\n    notes: "Content updated via review process"`;
-          if (updatedFrontmatter.includes('review_history:')) {
-            updatedFrontmatter = updatedFrontmatter.replace(
-              /review_history:/,
-              `review_history:\n${reviewHistoryEntry}`
-            );
-          } else {
-            updatedFrontmatter += `\nreview_history:\n${reviewHistoryEntry}`;
-          }
-
-          const mainContent = current_content.substring(frontmatterMatch[0].length).trim();
-          const newContent = `---\n${updatedFrontmatter}\n---\n\n${args.modified_content || mainContent}`;
-
-          await fs.writeFile(topicFile, newContent);
-
-          this.pendingReviews.delete(args.review_id);
-
-          return {
-            content: [
-              {
-                type: 'text',
-                text: `Topic updated: ${topic}\nFile: topics/${slug}.md\nReview count: ${reviewCount + 1}`,
-              },
-            ],
-          };
-        }
-
-        case 'keep': {
-          // Mark as reviewed without content changes
-          const frontmatterMatch = current_content.match(/^---\n([\s\S]*?)\n---/);
-          if (!frontmatterMatch) throw new Error('Invalid frontmatter');
-
-          const frontmatter = frontmatterMatch[1];
-          const reviewCountMatch = frontmatter.match(/review_count:\s*(\d+)/);
-          const reviewCount = reviewCountMatch ? parseInt(reviewCountMatch[1]) : 0;
-
-          let updatedFrontmatter = frontmatter
-            .replace(/last_reviewed:.*/, `last_reviewed: ${today}`)
-            .replace(/review_count:.*/, `review_count: ${reviewCount + 1}`);
-
-          const reviewHistoryEntry = `  - date: ${today}\n    action: reviewed\n    notes: "Reviewed - no changes needed"`;
-          if (updatedFrontmatter.includes('review_history:')) {
-            updatedFrontmatter = updatedFrontmatter.replace(
-              /review_history:/,
-              `review_history:\n${reviewHistoryEntry}`
-            );
-          } else {
-            updatedFrontmatter += `\nreview_history:\n${reviewHistoryEntry}`;
-          }
-
-          const mainContent = current_content.substring(frontmatterMatch[0].length).trim();
-          const newContent = `---\n${updatedFrontmatter}\n---\n\n${mainContent}`;
-
-          await fs.writeFile(topicFile, newContent);
-
-          this.pendingReviews.delete(args.review_id);
-
-          return {
-            content: [
-              {
-                type: 'text',
-                text: `Topic marked as reviewed: ${topic}\nNo content changes made.\nReview count: ${reviewCount + 1}`,
-              },
-            ],
-          };
-        }
-
-        case 'archive': {
-          return await this.archiveTopic({ topic: slug, reason: 'Archived via review process' });
-        }
-
-        case 'dismiss': {
-          this.pendingReviews.delete(args.review_id);
-
-          return {
-            content: [
-              {
-                type: 'text',
-                text: `Review dismissed for: ${topic}`,
-              },
-            ],
-          };
-        }
-
-        default:
-          throw new Error(`Unknown action: ${args.action}. Use: update, keep, archive, or dismiss`);
-      }
-    } catch (error) {
-      throw new Error(`Failed to process review: ${error}`);
-    }
-  }
-
-  private async archiveTopic(args: { topic: string; reason?: string }) {
-    const slug = this.slugify(args.topic);
-    const topicFile = path.join(VAULT_PATH, 'topics', `${slug}.md`);
-    const archiveFile = path.join(VAULT_PATH, 'archive', 'topics', `${slug}.md`);
-
-    try {
-      await fs.access(topicFile);
-    } catch {
-      throw new Error(`Topic not found: ${args.topic}`);
-    }
-
-    await this.ensureVaultStructure();
-
-    // Read current content
-    const content = await fs.readFile(topicFile, 'utf-8');
-    const today = new Date().toISOString().split('T')[0];
-
-    // Update frontmatter to mark as archived
-    const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
-    if (!frontmatterMatch) throw new Error('Invalid frontmatter');
-
-    const frontmatter = frontmatterMatch[1];
-    let updatedFrontmatter = frontmatter;
-
-    // Add archived date and reason
-    updatedFrontmatter += `\narchived: ${today}`;
-    if (args.reason) {
-      updatedFrontmatter += `\narchive_reason: ${args.reason}`;
-    }
-
-    // Add to review history
-    const reviewHistoryEntry = `  - date: ${today}\n    action: archived\n    notes: "${args.reason || 'Topic archived'}"`;
-    if (updatedFrontmatter.includes('review_history:')) {
-      updatedFrontmatter = updatedFrontmatter.replace(
-        /review_history:/,
-        `review_history:\n${reviewHistoryEntry}`
-      );
-    } else {
-      updatedFrontmatter += `\nreview_history:\n${reviewHistoryEntry}`;
-    }
-
-    const mainContent = content.substring(frontmatterMatch[0].length).trim();
-    const newContent = `---\n${updatedFrontmatter}\n---\n\n${mainContent}`;
-
-    // Move to archive
-    await fs.writeFile(archiveFile, newContent);
-    await fs.unlink(topicFile);
-
-    return {
-      content: [
-        {
-          type: 'text',
-          text: `Topic archived: ${args.topic}\nMoved from topics/${slug}.md to archive/topics/${slug}.md${args.reason ? `\nReason: ${args.reason}` : ''}`,
-        },
-      ],
-    };
-  }
-
-  private async listRecentSessions(args: { limit?: number; detail?: string; _invoked_by_slash_command?: boolean }) {
-    // Enforce that this tool can only be called via the /sessions slash command
-    if (!args._invoked_by_slash_command) {
-      throw new Error('This tool can only be invoked via the /sessions slash command. Please ask the user to run the /sessions command.');
-    }
-
-    await this.ensureVaultStructure();
-
-    const limit = args.limit || 5;
-    const detailLevel = parseDetailLevel(args.detail);
-    const sessionsDir = path.join(VAULT_PATH, 'sessions');
-
-    try {
-      // Filter for .md files and get their stats, including from month subdirectories
-      const sessionFiles: Array<{
-        file: string;
-        filePath: string;
-        mtime: Date;
-        session_id: string;
-        topic?: string;
-        date?: string;
-        status?: string;
-      }> = [];
-
-      // Helper function to parse session file metadata
-      const parseSessionFile = (file: string, filePath: string, stats: any, content: string) => {
-        // Parse frontmatter to get metadata
-        const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
-        let session_id = file.replace('.md', '');
-        let topic: string | undefined;
-        let date: string | undefined;
-        let status: string | undefined;
-
-        if (frontmatterMatch) {
-          const frontmatter = frontmatterMatch[1];
-          const sessionIdMatch = frontmatter.match(/session_id:\s*(.+)/);
-          const topicsMatch = frontmatter.match(/topics:\s*(\[.*?\])/);
-          const dateMatch = frontmatter.match(/date:\s*(.+)/);
-          const statusMatch = frontmatter.match(/status:\s*(.+)/);
-
-          if (sessionIdMatch) session_id = sessionIdMatch[1].trim();
-          if (dateMatch) date = dateMatch[1].trim();
-          if (statusMatch) status = statusMatch[1].trim();
-
-          if (topicsMatch) {
-            try {
-              const topicsArray = JSON.parse(topicsMatch[1]);
-              if (Array.isArray(topicsArray) && topicsArray.length > 0) {
-                topic = topicsArray[0];
-              }
-            } catch {
-              // If parsing fails, try to extract from filename
-              const topicFromFilename = file.match(/_(.+)\.md$/);
-              if (topicFromFilename) {
-                topic = topicFromFilename[1].replace(/-/g, ' ');
-              }
-            }
-          } else {
-            // Extract from filename if not in frontmatter
-            const topicFromFilename = file.match(/_(.+)\.md$/);
-            if (topicFromFilename) {
-              topic = topicFromFilename[1].replace(/-/g, ' ');
-            }
-          }
-        }
-
-        sessionFiles.push({
-          file,
-          filePath,
-          mtime: stats.mtime,
-          session_id,
-          topic,
-          date,
-          status,
-        });
-      };
-
-      // Read both root sessions directory and month subdirectories (YYYY-MM)
-      const entries = await fs.readdir(sessionsDir, { withFileTypes: true });
-
-      for (const entry of entries) {
-        const entryPath = path.join(sessionsDir, entry.name);
-
-        if (entry.isDirectory() && /^\d{4}-\d{2}$/.test(entry.name)) {
-          // This is a month directory, read .md files from it
-          const monthFiles = await fs.readdir(entryPath);
-          for (const file of monthFiles) {
-            if (!file.endsWith('.md')) continue;
-            const filePath = path.join(entryPath, file);
-            const stats = await fs.stat(filePath);
-            const content = await fs.readFile(filePath, 'utf-8');
-            parseSessionFile(file, filePath, stats, content);
-          }
-        } else if (entry.isFile() && entry.name.endsWith('.md')) {
-          // Root-level .md file (for backwards compatibility)
-          const stats = await fs.stat(entryPath);
-          const content = await fs.readFile(entryPath, 'utf-8');
-          parseSessionFile(entry.name, entryPath, stats, content);
-        }
-      }
-
-      if (sessionFiles.length === 0) {
-        return {
-          content: [
-            {
-              type: 'text',
-              text: 'No sessions found. Start a new session with start_session.',
-            },
-          ],
-        };
-      }
-
-      // Sort by modification time (most recent first)
-      sessionFiles.sort((a, b) => b.mtime.getTime() - a.mtime.getTime());
-
-      // Limit results
-      const recentSessions = sessionFiles.slice(0, limit);
-
-      if (recentSessions.length === 0) {
-        return {
-          content: [
-            {
-              type: 'text',
-              text: 'No sessions found. Start a new session with start_session.',
-            },
-          ],
-        };
-      }
-
-      // Format using tiered response levels
-      return await this.formatSessionList(recentSessions, detailLevel);
-    } catch (error) {
-      throw new Error(`Failed to list sessions: ${error}`);
-    }
-  }
-
-  private async formatSessionList(
-    sessions: Array<{
-      file: string;
-      filePath: string;
-      mtime: Date;
-      session_id: string;
-      topic?: string;
-      date?: string;
-      status?: string;
-    }>,
-    detail: ResponseDetail
-  ): Promise<{ content: Array<{ type: string; text: string }> }> {
-    let resultText = `Found ${sessions.length} recent session(s):\n\n`;
-
-    switch (detail) {
-      case ResponseDetail.MINIMAL:
-        // Just ID and topic
-        sessions.forEach((s, idx) => {
-          const topicText = s.topic ? `: ${s.topic}` : '';
-          resultText += `${idx + 1}. ${s.session_id}${topicText}\n`;
-        });
-        resultText += `\n💡 Use detail: "summary" for dates and status`;
-        break;
-
-      case ResponseDetail.SUMMARY:
-        // ID, topic, date, status (default - current behavior)
-        sessions.forEach((s, idx) => {
-          const statusIcon = s.status === 'completed' ? '✓' : '○';
-          const topicText = s.topic ? `: ${s.topic}` : '';
-          const dateText = s.date ? ` (${s.date})` : '';
-          resultText += `${idx + 1}. ${statusIcon} ${s.session_id}${topicText}${dateText}\n`;
-        });
-        resultText += `\n💡 Use get_session_context(session_id) for full content`;
-        resultText += `\n💡 Use detail: "detailed" for file and commit info`;
-        break;
-
-      case ResponseDetail.DETAILED:
-        // Everything in summary + parse session files for additional metadata
-        for (let idx = 0; idx < sessions.length; idx++) {
-          const s = sessions[idx];
-          const statusIcon = s.status === 'completed' ? '✓' : '○';
-          const topicText = s.topic ? `: ${s.topic}` : '';
-          const dateText = s.date ? ` (${s.date})` : '';
-
-          resultText += `${idx + 1}. ${statusIcon} ${s.session_id}${topicText}${dateText}\n`;
-
-          // Try to read session file for additional metadata
-          try {
-            const content = await fs.readFile(s.filePath, 'utf-8');
-            const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
-
-            if (frontmatterMatch) {
-              const frontmatter = frontmatterMatch[1];
-
-              // Extract repository info
-              const repoMatch = frontmatter.match(/repository:\s*\n\s*path:\s*(.+)\n\s*name:\s*(.+)/);
-              if (repoMatch) {
-                resultText += `   Repository: ${repoMatch[2].trim()}\n`;
-              }
-
-              // Count files accessed
-              const filesMatch = frontmatter.match(/files_accessed:/);
-              if (filesMatch) {
-                const filesSection = content.substring(content.indexOf('files_accessed:'));
-                const filesCount = (filesSection.match(/- path:/g) || []).length;
-                if (filesCount > 0) {
-                  resultText += `   Files accessed: ${filesCount}\n`;
-                }
-              }
-            }
-          } catch {
-            // Couldn't read file, skip additional metadata
-          }
-          resultText += '\n';
-        }
-        resultText += `💡 Use get_session_context(session_id) for complete content`;
-        break;
-
-      case ResponseDetail.FULL:
-        // Include summary snippets from each session
-        for (let idx = 0; idx < sessions.length; idx++) {
-          const s = sessions[idx];
-          const statusIcon = s.status === 'completed' ? '✓' : '○';
-          const topicText = s.topic ? `: ${s.topic}` : '';
-
-          resultText += `${idx + 1}. ${statusIcon} ${s.session_id}${topicText}\n`;
-          resultText += `   Date: ${s.date || 'Unknown'}\n`;
-
-          // Try to extract summary
-          try {
-            const content = await fs.readFile(s.filePath, 'utf-8');
-            const summaryMatch = content.match(/## Summary\n\n(.+?)(\n\n|$)/s);
-            if (summaryMatch) {
-              const summary = summaryMatch[1].trim();
-              const truncated = summary.substring(0, 200);
-              resultText += `   ${truncated}${summary.length > 200 ? '...' : ''}\n`;
-            }
-          } catch {
-            // Couldn't read file
-          }
-          resultText += '\n';
-        }
-        break;
-    }
-
-    resultText += `\nTo continue a session, use get_session_context with the session_id.`;
-
-    return {
-      content: [
-        {
-          type: 'text',
-          text: resultText
-        }
-      ]
-    };
-  }
-
-  private async listRecentProjects(args: { limit?: number; detail?: string; _invoked_by_slash_command?: boolean }) {
-    // Enforce that this tool can only be called via the /projects slash command
-    if (!args._invoked_by_slash_command) {
-      throw new Error('This tool can only be invoked via the /projects slash command. Please ask the user to run the /projects command.');
-    }
-
-    await this.ensureVaultStructure();
-
-    const limit = args.limit || 5;
-    const detailLevel = parseDetailLevel(args.detail);
-    const projectsDir = path.join(VAULT_PATH, 'projects');
-
-    try {
-      // Check if projects directory exists
-      try {
-        await fs.access(projectsDir);
-      } catch {
-        return {
-          content: [
-            {
-              type: 'text',
-              text: 'No projects directory found. Create a project with create_project_page.',
-            },
-          ],
-        };
-      }
-
-      // Find all project.md files in subdirectories
-      const projectFiles: Array<{
-        file: string;
-        filePath: string;
-        mtime: Date;
-        title?: string;
-        project_slug?: string;
-        repo_path?: string;
-        repo_name?: string;
-        created?: string;
-        status?: string;
-      }> = [];
-
-      const entries = await fs.readdir(projectsDir, { withFileTypes: true });
-
-      for (const entry of entries) {
-        if (!entry.isDirectory()) continue;
-
-        const projectFile = path.join(projectsDir, entry.name, 'project.md');
-        try {
-          const stats = await fs.stat(projectFile);
-          const content = await fs.readFile(projectFile, 'utf-8');
-
-          // Parse frontmatter
-          const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
-          let title: string | undefined;
-          let project_slug: string | undefined;
-          let repo_path: string | undefined;
-          let repo_name: string | undefined;
-          let created: string | undefined;
-          let status: string | undefined;
-
-          if (frontmatterMatch) {
-            const frontmatter = frontmatterMatch[1];
-            const titleMatch = frontmatter.match(/title:\s*(.+)/);
-            const slugMatch = frontmatter.match(/project_slug:\s*(.+)/);
-            const createdMatch = frontmatter.match(/created:\s*(.+)/);
-            const statusMatch = frontmatter.match(/status:\s*(.+)/);
-
-            // Extract repository info
-            const repoPathMatch = frontmatter.match(/repository:\s*\n\s*path:\s*(.+)/);
-            const repoNameMatch = frontmatter.match(/repository:\s*\n\s*path:.*\n\s*name:\s*(.+)/);
-
-            if (titleMatch) title = titleMatch[1].trim();
-            if (slugMatch) project_slug = slugMatch[1].trim();
-            if (createdMatch) created = createdMatch[1].trim();
-            if (statusMatch) status = statusMatch[1].trim();
-            if (repoPathMatch) repo_path = repoPathMatch[1].trim();
-            if (repoNameMatch) repo_name = repoNameMatch[1].trim();
-          }
-
-          projectFiles.push({
-            file: entry.name,
-            filePath: projectFile,
-            mtime: stats.mtime,
-            title: title || entry.name,
-            project_slug,
-            repo_path,
-            repo_name,
-            created,
-            status,
-          });
-        } catch {
-          // Skip if project.md doesn't exist in this directory
-          continue;
-        }
-      }
-
-      if (projectFiles.length === 0) {
-        return {
-          content: [
-            {
-              type: 'text',
-              text: 'No projects found. Create a project with create_project_page.',
-            },
-          ],
-        };
-      }
-
-      // Sort by modification time (most recent first)
-      projectFiles.sort((a, b) => b.mtime.getTime() - a.mtime.getTime());
-
-      // Limit results
-      const recentProjects = projectFiles.slice(0, limit);
-
-      // Format using tiered response levels
-      return await this.formatProjectList(recentProjects, detailLevel);
-    } catch (error) {
-      throw new Error(`Failed to list projects: ${error}`);
-    }
-  }
-
-  private async formatProjectList(
-    projects: Array<{
-      file: string;
-      filePath: string;
-      mtime: Date;
-      title?: string;
-      project_slug?: string;
-      repo_path?: string;
-      repo_name?: string;
-      created?: string;
-      status?: string;
-    }>,
-    detail: ResponseDetail
-  ): Promise<{ content: Array<{ type: string; text: string }> }> {
-    let resultText = `Found ${projects.length} recent project(s):\n\n`;
-
-    switch (detail) {
-      case ResponseDetail.MINIMAL:
-        // Just project names
-        projects.forEach((p, idx) => {
-          const titleText = p.title || p.file;
-          resultText += `${idx + 1}. ${titleText}\n`;
-        });
-        resultText += `\n💡 Use detail: "summary" for paths and dates`;
-        break;
-
-      case ResponseDetail.SUMMARY:
-        // Name, path, created date, status (default - current behavior)
-        projects.forEach((p, idx) => {
-          const statusIcon = p.status === 'active' ? '●' : '○';
-          const titleText = p.title || p.file;
-          const createdText = p.created ? ` (created ${p.created})` : '';
-          const repoText = p.repo_path ? `\n   Repository: ${p.repo_path}` : '';
-
-          resultText += `${idx + 1}. ${statusIcon} ${titleText}${createdText}${repoText}\n`;
-        });
-        resultText += `\n💡 To view project details, specify which project number you'd like to see`;
-        resultText += `\n💡 Use detail: "detailed" for recent commit info`;
-        break;
-
-      case ResponseDetail.DETAILED:
-        // Everything in summary + recent commits
-        for (let idx = 0; idx < projects.length; idx++) {
-          const p = projects[idx];
-          const statusIcon = p.status === 'active' ? '●' : '○';
-          const titleText = p.title || p.file;
-          const createdText = p.created ? ` (created ${p.created})` : '';
-
-          resultText += `${idx + 1}. ${statusIcon} ${titleText}${createdText}\n`;
-          if (p.repo_path) {
-            resultText += `   Repository: ${p.repo_path}\n`;
-          }
-
-          // Try to read project file for commit info
-          try {
-            const content = await fs.readFile(p.filePath, 'utf-8');
-
-            // Extract recent commits from the Recent Activity section
-            const activityMatch = content.match(/## Recent Activity([\s\S]*?)(?=\n## |$)/);
-            if (activityMatch) {
-              const activitySection = activityMatch[1];
-              const commitMatches = activitySection.match(/- \[\[commits\/([a-f0-9]+)\]\]: (.+)/g);
-              if (commitMatches && commitMatches.length > 0) {
-                resultText += `   Recent commits:\n`;
-                commitMatches.slice(0, 3).forEach(commit => {
-                  const commitMatch = commit.match(/- \[\[commits\/([a-f0-9]+)\]\]: (.+)/);
-                  if (commitMatch) {
-                    const hash = commitMatch[1].substring(0, 7);
-                    const message = commitMatch[2];
-                    resultText += `     ${hash}: ${message}\n`;
-                  }
-                });
-              }
-            }
-          } catch {
-            // Couldn't read file, skip commit info
-          }
-          resultText += '\n';
-        }
-        resultText += `💡 Use detail: "full" to see complete project pages`;
-        break;
-
-      case ResponseDetail.FULL:
-        // Include full project page content
-        for (let idx = 0; idx < projects.length; idx++) {
-          const p = projects[idx];
-          const titleText = p.title || p.file;
-          resultText += `\n---\n\n## ${idx + 1}. ${titleText}\n\n`;
-
-          try {
-            const content = await fs.readFile(p.filePath, 'utf-8');
-            // Strip frontmatter
-            const mainContent = content.replace(/^---\n[\s\S]*?\n---\n\n/, '');
-            resultText += mainContent + '\n';
-          } catch {
-            resultText += `(Could not read project file)\n`;
-          }
-        }
-        break;
-    }
-
-    return {
-      content: [
-        {
-          type: 'text',
-          text: resultText
-        }
-      ]
-    };
-  }
-
-  private async trackFileAccess(args: { path: string; action: 'read' | 'edit' | 'create' }) {
-    // Track file access regardless of whether a session exists
-    // This data will be used when /close is invoked to create the session
-    const timestamp = new Date().toISOString();
-    this.filesAccessed.push({
-      path: args.path,
-      action: args.action,
-      timestamp,
-    });
-
-    return {
-      content: [
-        {
-          type: 'text',
-          text: `File access tracked: ${args.action} ${args.path}`,
-        },
-      ],
-    };
-  }
 
   private async findGitRepos(startPath: string, maxDepth: number = 2): Promise<string[]> {
     const repos: string[] = [];
@@ -3459,1698 +1951,18 @@ To proceed anyway, call create_decision again with force: true.`,
     }
   }
 
-  private async detectSessionRepositories() {
-    // Can be called before or after session creation
-    // If before, it helps inform user. If after, it can update session metadata.
 
-    // Get current working directory from environment or use vault path
-    const cwd = process.env.PWD || process.cwd();
 
-    // Find all git repositories
-    const repoPaths = await this.findGitRepos(cwd);
 
-    if (repoPaths.length === 0) {
-      return {
-        content: [
-          {
-            type: 'text',
-            text: 'No Git repositories found in the current working directory or subdirectories.',
-          },
-        ],
-      };
-    }
-
-    // Score each repository
-    const candidates: RepoCandidate[] = [];
-
-    for (const repoPath of repoPaths) {
-      let score = 0;
-      const reasons: string[] = [];
-
-      // Score based on files accessed
-      const filesInRepo = this.filesAccessed.filter(f => f.path.startsWith(repoPath));
-      const editedFiles = filesInRepo.filter(f => f.action === 'edit' || f.action === 'create');
-      const readFiles = filesInRepo.filter(f => f.action === 'read');
-
-      if (editedFiles.length > 0) {
-        score += editedFiles.length * 10;
-        reasons.push(`${editedFiles.length} file(s) modified`);
-      }
-
-      if (readFiles.length > 0) {
-        score += readFiles.length * 5;
-        reasons.push(`${readFiles.length} file(s) read`);
-      }
-
-      // Score based on session topic
-      if (this.currentSessionId) {
-        const repoName = path.basename(repoPath);
-        if (this.currentSessionId.toLowerCase().includes(repoName.toLowerCase())) {
-          score += 20;
-          reasons.push('Session topic matches repo name');
-        }
-      }
-
-      // Score based on proximity to CWD
-      if (repoPath === cwd) {
-        score += 15;
-        reasons.push('Repo is current working directory');
-      } else if (cwd.startsWith(repoPath)) {
-        score += 8;
-        reasons.push('CWD is within this repo');
-      } else if (repoPath.startsWith(cwd)) {
-        score += 5;
-        reasons.push('Repo is subdirectory of CWD');
-      }
-
-      if (score > 0 || repoPaths.length === 1) {
-        const info = await this.getRepoInfo(repoPath);
-        candidates.push({
-          path: repoPath,
-          name: info.name,
-          score,
-          reasons,
-          branch: info.branch,
-          remote: info.remote,
-        });
-      }
-    }
-
-    // Sort by score
-    candidates.sort((a, b) => b.score - a.score);
-
-    if (candidates.length === 0) {
-      return {
-        content: [
-          {
-            type: 'text',
-            text: 'No relevant repositories detected for this session. This may be a research/exploratory session.',
-          },
-        ],
-      };
-    }
-
-    // Format results
-    let resultText = `Detected ${candidates.length} repository candidate(s):\n\n`;
-
-    candidates.forEach((candidate, idx) => {
-      resultText += `${idx + 1}. **${candidate.name}** (score: ${candidate.score})\n`;
-      resultText += `   Path: ${candidate.path}\n`;
-      if (candidate.branch) resultText += `   Branch: ${candidate.branch}\n`;
-      if (candidate.remote) resultText += `   Remote: ${candidate.remote}\n`;
-      resultText += `   Reasons: ${candidate.reasons.join(', ')}\n\n`;
-    });
-
-    if (candidates.length === 1 || candidates[0].score > candidates[1]?.score * 2) {
-      resultText += `\nRecommendation: Auto-select **${candidates[0].name}**\n`;
-      resultText += `Use link_session_to_repository with path: ${candidates[0].path}`;
-    } else {
-      resultText += `\nMultiple candidates detected. Please select the appropriate repository using link_session_to_repository.`;
-    }
-
-    return {
-      content: [
-        {
-          type: 'text',
-          text: resultText,
-        },
-      ],
-    };
-  }
-
-  private async linkSessionToRepository(args: { repo_path: string }) {
-    if (!this.currentSessionFile) {
-      throw new Error('No active session.');
-    }
-
-    // Verify repo exists and is a git repo
-    try {
-      await fs.access(path.join(args.repo_path, '.git'));
-    } catch {
-      throw new Error(`Not a valid Git repository: ${args.repo_path}`);
-    }
-
-    const info = await this.getRepoInfo(args.repo_path);
-
-    // Update session file with repository info
-    const content = await fs.readFile(this.currentSessionFile, 'utf-8');
-    const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
-
-    if (!frontmatterMatch) {
-      throw new Error('Invalid session file format');
-    }
-
-    let frontmatter = frontmatterMatch[1];
-
-    // Add or update repository field
-    if (frontmatter.includes('repository:')) {
-      // Update existing
-      frontmatter = frontmatter.replace(
-        /repository:[\s\S]*?(?=\n[a-z_]+:|$)/,
-        `repository:\n  path: ${args.repo_path}\n  name: ${info.name}\n  commits: []`
-      );
-    } else {
-      // Add new
-      frontmatter += `\nrepository:\n  path: ${args.repo_path}\n  name: ${info.name}\n  commits: []`;
-    }
-
-    // Add files accessed
-    if (this.filesAccessed.length > 0) {
-      const filesYaml = this.filesAccessed.map(f =>
-        `  - path: ${f.path}\n    action: ${f.action}\n    timestamp: ${f.timestamp}`
-      ).join('\n');
-      frontmatter += `\nfiles_accessed:\n${filesYaml}`;
-    }
-
-    const mainContent = content.substring(frontmatterMatch[0].length);
-    const newContent = `---\n${frontmatter}\n---${mainContent}`;
-
-    await fs.writeFile(this.currentSessionFile, newContent);
-
-    // Create or update project page
-    await this.createProjectPage({ repo_path: args.repo_path });
-
-    return {
-      content: [
-        {
-          type: 'text',
-          text: `Session linked to repository: ${info.name}\nPath: ${args.repo_path}\nProject page created/updated in vault.`,
-        },
-      ],
-    };
-  }
 
   /**
    * Extract repository slug from various URL formats
    */
-  private extractRepoSlug(url: string): string | null {
-    if (!url || url === 'N/A') return null;
-
-    // Handle various Git URL formats:
-    // - ssh://git@git.uoregon.edu/jsdev/claude-code-hooks.git
-    // - https://git.uoregon.edu/projects/JSDEV/repos/claude-code-hooks/browse
-    // - git@github.com:user/repo.git
-    // - https://github.com/user/repo
-
-    // Remove .git suffix if present
-    url = url.replace(/\.git$/, '');
-
-    // Try to extract the repository name (last path component)
-    const patterns = [
-      /\/repos\/([^\/]+)/,           // Bitbucket/Stash style: /repos/claude-code-hooks
-      /\/([^\/]+)\.git$/,             // Git clone URLs ending in .git
-      /\/([^\/]+)$/,                  // Last path component
-      /:([^\/]+\/[^\/]+)$/,           // SSH style: git@host:user/repo
-    ];
-
-    for (const pattern of patterns) {
-      const match = url.match(pattern);
-      if (match) {
-        return match[1].toLowerCase();
-      }
-    }
-
-    return null;
-  }
-
-  /**
-   * Find topics related to a project by searching for repo URL and semantic similarity
-   */
-  private async findRelatedTopics(
-    repoUrl: string,
-    projectName: string,
-    repoPath: string
-  ): Promise<Array<{ link: string; title: string }>> {
-    const relatedTopics: Array<{ link: string; title: string; source: string }> = [];
-    const topicsDir = path.join(VAULT_PATH, 'topics');
-
-    // Extract repository slug from project URL for fuzzy matching
-    const projectRepoSlug = this.extractRepoSlug(repoUrl);
-
-    try {
-      // Strategy 1: Search for topics with matching repository URL in frontmatter
-      if (repoUrl && repoUrl !== 'N/A') {
-        const topicFiles = await this.findMarkdownFiles(topicsDir);
-
-        for (const topicFile of topicFiles) {
-          try {
-            const content = await fs.readFile(topicFile, 'utf-8');
-            const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
-
-            if (frontmatterMatch) {
-              const frontmatter = frontmatterMatch[1];
-
-              // Check for repository field in frontmatter
-              const repoMatch = frontmatter.match(/repository:\s*(.+)/);
-              if (repoMatch) {
-                const topicRepoUrl = repoMatch[1].trim();
-
-                // Strategy 1a: Exact URL match
-                if (topicRepoUrl === repoUrl) {
-                  const titleMatch = frontmatter.match(/title:\s*(.+)/);
-                  const title = titleMatch ? titleMatch[1].trim() : path.basename(topicFile, '.md');
-                  const relativePath = path.relative(VAULT_PATH, topicFile);
-
-                  relatedTopics.push({
-                    link: relativePath.replace(/\.md$/, ''),
-                    title,
-                    source: 'url-exact-match',
-                  });
-                  continue;
-                }
-
-                // Strategy 1b: Fuzzy match by repository slug
-                if (projectRepoSlug) {
-                  const topicRepoSlug = this.extractRepoSlug(topicRepoUrl);
-                  if (topicRepoSlug && topicRepoSlug === projectRepoSlug) {
-                    const titleMatch = frontmatter.match(/title:\s*(.+)/);
-                    const title = titleMatch ? titleMatch[1].trim() : path.basename(topicFile, '.md');
-                    const relativePath = path.relative(VAULT_PATH, topicFile);
-
-                    relatedTopics.push({
-                      link: relativePath.replace(/\.md$/, ''),
-                      title,
-                      source: 'url-slug-match',
-                    });
-                    continue;
-                  }
-                }
-              }
-            }
-          } catch (error) {
-            // Skip files that can't be read
-            continue;
-          }
-        }
-      }
-
-      // Strategy 2: Semantic search for topics related to project name
-      if (this.embeddingConfig.enabled) {
-        try {
-          // Search for project name and repo path components
-          const searchQuery = `${projectName} ${path.basename(repoPath)}`;
-          const searchResults = await this.searchVault({
-            query: searchQuery,
-            directories: ['topics'],
-            max_results: 5,
-            snippets_only: false,
-          });
-
-          // Parse search results to extract topic links
-          if (searchResults.content && searchResults.content[0]) {
-            const resultText = (searchResults.content[0] as { text: string }).text;
-            // Extract file paths from search results (format: **path**)
-            const pathMatches = resultText.matchAll(/\*\*([^*]+topics\/[^*]+\.md)\*\*/g);
-
-            for (const match of pathMatches) {
-              const topicPath = match[1];
-              const topicFile = path.join(VAULT_PATH, topicPath);
-
-              try {
-                const content = await fs.readFile(topicFile, 'utf-8');
-                const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
-                const titleMatch = frontmatterMatch?.[1].match(/title:\s*(.+)/);
-                const title = titleMatch ? titleMatch[1].trim() : path.basename(topicFile, '.md');
-                const relativePath = path.relative(VAULT_PATH, topicFile);
-                const link = relativePath.replace(/\.md$/, '');
-
-                // Don't add duplicates
-                if (!relatedTopics.some(t => t.link === link)) {
-                  relatedTopics.push({
-                    link,
-                    title,
-                    source: 'semantic-search',
-                  });
-                }
-              } catch (error) {
-                continue;
-              }
-            }
-          }
-        } catch (error) {
-          // Semantic search failed, continue without it
-        }
-      }
-    } catch (error) {
-      // If topic search fails entirely, just return empty array
-    }
-
-    // Return deduplicated topics (prefer URL matches over semantic matches)
-    const uniqueTopics = new Map<string, { link: string; title: string }>();
-    for (const topic of relatedTopics) {
-      if (!uniqueTopics.has(topic.link)) {
-        uniqueTopics.set(topic.link, { link: topic.link, title: topic.title });
-      }
-    }
-
-    return Array.from(uniqueTopics.values());
-  }
-
-  private async createProjectPage(args: { repo_path: string }) {
-    await this.ensureVaultStructure();
-
-    const info = await this.getRepoInfo(args.repo_path);
-    const slug = this.slugify(info.name);
-    const projectDir = path.join(VAULT_PATH, 'projects', slug);
-    const projectFile = path.join(projectDir, 'project.md');
-
-    // Create project directory structure
-    await fs.mkdir(projectDir, { recursive: true });
-    await fs.mkdir(path.join(projectDir, 'commits'), { recursive: true });
-
-    const today = new Date().toISOString().split('T')[0];
-
-    // Track project creation for lazy session creation
-    this.projectsCreated.push({ slug, name: info.name, file: projectFile });
-
-    // Check if project page already exists
-    let content: string;
-    try {
-      content = await fs.readFile(projectFile, 'utf-8');
-
-      // Update existing project page (only if session exists)
-      if (this.currentSessionId) {
-        const sessionLink = `- [[${this.currentSessionId}]]`;
-        if (!content.includes(sessionLink)) {
-          content = content.replace(
-            /## Related Sessions\n/,
-            `## Related Sessions\n${sessionLink}\n`
-          );
-        }
-        await fs.writeFile(projectFile, content);
-      }
-    } catch {
-      // Create new project page
-      content = generateProjectTemplate({
-        projectName: info.name,
-        repoPath: args.repo_path,
-        repoUrl: info.remote || 'N/A',
-        branch: info.branch || 'unknown',
-        created: today,
-        currentSessionId: this.currentSessionId || undefined
-      });
-      await fs.writeFile(projectFile, content);
-    }
-
-    // Proactively search for related topics
-    const relatedTopics = await this.findRelatedTopics(info.remote || '', info.name, args.repo_path);
-
-    // Add related topics to project page if found
-    if (relatedTopics.length > 0) {
-      content = await fs.readFile(projectFile, 'utf-8');
-      const topicLinks = relatedTopics.map(t => `- [[${t.link}|${t.title}]]`).join('\n');
-
-      // Check if Related Topics section has content already
-      if (content.includes('## Related Topics\n\n')) {
-        // Empty Related Topics section - add links
-        content = content.replace('## Related Topics\n\n', `## Related Topics\n${topicLinks}\n\n`);
-      } else if (content.includes('## Related Topics\n')) {
-        // Empty Related Topics section without extra newline - add links
-        content = content.replace('## Related Topics\n', `## Related Topics\n${topicLinks}\n`);
-      } else {
-        // Related Topics section has content - only add if not already present
-        for (const topic of relatedTopics) {
-          if (!content.includes(topic.link)) {
-            content = content.replace(
-              /## Related Topics\n/,
-              `## Related Topics\n- [[${topic.link}|${topic.title}]]\n`
-            );
-          }
-        }
-      }
-
-      await fs.writeFile(projectFile, content);
-    }
-
-    return {
-      content: [
-        {
-          type: 'text',
-          text: `Project page created/updated: projects/${slug}/project.md${relatedTopics.length > 0 ? `\n\nFound ${relatedTopics.length} related topic(s):` + relatedTopics.map(t => `\n- ${t.title}`).join('') : ''}`,
-        },
-      ],
-    };
-  }
-
-  private async recordCommit(args: { repo_path: string; commit_hash: string }) {
-    if (!this.currentSessionId) {
-      throw new Error('No active session.');
-    }
-
-    await this.ensureVaultStructure();
-
-    const info = await this.getRepoInfo(args.repo_path);
-    const slug = this.slugify(info.name);
-    const projectDir = path.join(VAULT_PATH, 'projects', slug);
-    const commitsDir = path.join(projectDir, 'commits');
-
-    await fs.mkdir(commitsDir, { recursive: true });
-
-    // Get commit information
-    const { stdout: commitInfo } = await execAsync(
-      `git show --format="%H%n%h%n%an%n%ae%n%aI%n%s%n%b" --stat ${args.commit_hash}`,
-      { cwd: args.repo_path }
-    );
-
-    const lines = commitInfo.split('\n');
-    const fullHash = lines[0];
-    const shortHash = lines[1];
-    const authorName = lines[2];
-    const authorEmail = lines[3];
-    const date = lines[4];
-    const subject = lines[5];
-    const body = lines.slice(6).join('\n');
-
-    // Get diff
-    const { stdout: diff } = await execAsync(
-      `git show ${args.commit_hash}`,
-      { cwd: args.repo_path }
-    );
-
-    // Get stats
-    const { stdout: stats } = await execAsync(
-      `git show --stat ${args.commit_hash}`,
-      { cwd: args.repo_path }
-    );
-
-    // Get branch information
-    let branch = 'unknown';
-    try {
-      const { stdout: branchOutput } = await execAsync(
-        `git branch --contains ${args.commit_hash} --format='%(refname:short)'`,
-        { cwd: args.repo_path }
-      );
-      const branches = branchOutput.trim().split('\n').filter(b => b);
-      // Prefer non-detached branches, prefer main/master, otherwise take first
-      branch = branches.find(b => b === 'main') ||
-               branches.find(b => b === 'master') ||
-               branches.find(b => !b.startsWith('HEAD')) ||
-               branches[0] ||
-               'unknown';
-    } catch (error) {
-      // If branch detection fails, try to get current branch
-      try {
-        const { stdout: currentBranch } = await execAsync(
-          `git rev-parse --abbrev-ref HEAD`,
-          { cwd: args.repo_path }
-        );
-        branch = currentBranch.trim() || 'unknown';
-      } catch {
-        // Keep default 'unknown'
-      }
-    }
-
-    const commitFile = path.join(commitsDir, `${shortHash}.md`);
-    const today = new Date().toISOString().split('T')[0];
-
-    const content = generateCommitTemplate({
-      commitHash: fullHash,
-      shortHash,
-      authorName,
-      authorEmail,
-      date,
-      branch,
-      subject,
-      body,
-      stats,
-      diff,
-      sessionId: this.currentSessionId,
-      projectName: info.name,
-      projectSlug: slug
-    });
-
-    await fs.writeFile(commitFile, content);
-
-    // Update project page with commit link
-    const projectFile = path.join(projectDir, 'project.md');
-    const projectContent = await fs.readFile(projectFile, 'utf-8');
-    const commitLink = `- [[projects/${slug}/commits/${shortHash}|${shortHash}: ${subject}]] (${today})`;
-
-    const updatedContent = projectContent.replace(
-      /## Recent Activity\n/,
-      `## Recent Activity\n${commitLink}\n`
-    );
-
-    await fs.writeFile(projectFile, updatedContent);
-
-    // Update session file with commit reference
-    if (this.currentSessionFile) {
-      const sessionContent = await fs.readFile(this.currentSessionFile, 'utf-8');
-      const appendContent = `\n## Git Commit\n- [[projects/${slug}/commits/${shortHash}|${shortHash}]]: ${subject}\n`;
-      await fs.writeFile(this.currentSessionFile, sessionContent + appendContent);
-    }
-
-    // Run vault custodian on all files created/updated by record_commit
-    const filesToCheck = [commitFile, projectFile];
-    if (this.currentSessionFile) {
-      filesToCheck.push(this.currentSessionFile);
-    }
-
-    let custodianReport = '';
-    try {
-      const custodianResult = await this.vaultCustodian({ files_to_check: filesToCheck });
-      if (custodianResult.content && custodianResult.content[0]) {
-        custodianReport = '\n\n' + (custodianResult.content[0] as { text: string }).text;
-      }
-    } catch (error) {
-      custodianReport = '\n\n⚠️  Vault custodian check failed: ' + (error instanceof Error ? error.message : String(error));
-    }
-
-    return {
-      content: [
-        {
-          type: 'text',
-          text: `Commit recorded: ${shortHash}\nCommit page: projects/${slug}/commits/${shortHash}.md\nLinked to session and project.${custodianReport}`,
-        },
-      ],
-    };
-  }
-
   /**
    * Migrate existing commit files to add branch information
    */
-  private async migrateCommitBranches(args: { project_slug?: string; dry_run?: boolean }) {
-    const dryRun = args.dry_run ?? false;
-    const projectsDir = path.join(VAULT_PATH, 'projects');
 
-    try {
-      // Get all project directories or just the specified one
-      const projectDirs = args.project_slug
-        ? [path.join(projectsDir, args.project_slug)]
-        : (await fs.readdir(projectsDir, { withFileTypes: true }))
-            .filter(dirent => dirent.isDirectory())
-            .map(dirent => path.join(projectsDir, dirent.name));
 
-      let totalProcessed = 0;
-      let totalUpdated = 0;
-      let totalSkipped = 0;
-      const errors: string[] = [];
-      const updates: string[] = [];
-
-      for (const projectDir of projectDirs) {
-        const commitsDir = path.join(projectDir, 'commits');
-
-        // Check if commits directory exists
-        try {
-          await fs.access(commitsDir);
-        } catch {
-          continue; // Skip if no commits directory
-        }
-
-        // Get repository path from project.md
-        const projectFile = path.join(projectDir, 'project.md');
-        let repoPath: string | null = null;
-
-        try {
-          const projectContent = await fs.readFile(projectFile, 'utf-8');
-          const repoPathMatch = projectContent.match(/^  path: (.+)$/m);
-          if (repoPathMatch) {
-            repoPath = repoPathMatch[1];
-          }
-        } catch (error) {
-          errors.push(`Failed to read project file: ${projectFile}`);
-          continue;
-        }
-
-        if (!repoPath) {
-          errors.push(`No repository path found in ${projectFile}`);
-          continue;
-        }
-
-        // Get all commit files
-        const commitFiles = (await fs.readdir(commitsDir))
-          .filter(file => file.endsWith('.md'));
-
-        for (const commitFile of commitFiles) {
-          totalProcessed++;
-          const commitPath = path.join(commitsDir, commitFile);
-
-          try {
-            const content = await fs.readFile(commitPath, 'utf-8');
-
-            // Check if branch field already exists
-            if (content.match(/^branch: /m)) {
-              totalSkipped++;
-              continue;
-            }
-
-            // Extract commit hash from frontmatter
-            const hashMatch = content.match(/^commit_hash: ([a-f0-9]+)$/m);
-            if (!hashMatch) {
-              errors.push(`No commit hash found in ${commitFile}`);
-              continue;
-            }
-
-            const commitHash = hashMatch[1];
-
-            // Get branch information
-            let branch = 'unknown';
-            try {
-              const { stdout: branchOutput } = await execAsync(
-                `git branch --contains ${commitHash} --format='%(refname:short)'`,
-                { cwd: repoPath }
-              );
-              const branches = branchOutput.trim().split('\n').filter(b => b);
-              // Prefer non-detached branches, prefer main/master, otherwise take first
-              branch = branches.find(b => b === 'main') ||
-                       branches.find(b => b === 'master') ||
-                       branches.find(b => !b.startsWith('HEAD')) ||
-                       branches[0] ||
-                       'unknown';
-            } catch (error) {
-              // If branch detection fails, try to get current branch
-              try {
-                const { stdout: currentBranch } = await execAsync(
-                  `git rev-parse --abbrev-ref HEAD`,
-                  { cwd: repoPath }
-                );
-                branch = currentBranch.trim() || 'unknown';
-              } catch {
-                branch = 'unknown';
-              }
-            }
-
-            // Add branch field to frontmatter (after date field)
-            const updatedContent = content.replace(
-              /^(date: .+)$/m,
-              `$1\nbranch: ${branch}`
-            );
-
-            // Also add branch to the display section if it doesn't exist
-            const finalContent = updatedContent.replace(
-              /^(\*\*Project:\*\* .+)$/m,
-              `$1\n**Branch:** \`${branch}\``
-            );
-
-            if (!dryRun) {
-              await fs.writeFile(commitPath, finalContent);
-            }
-
-            totalUpdated++;
-            updates.push(`${commitFile}: ${branch}`);
-
-          } catch (error) {
-            errors.push(`Failed to process ${commitFile}: ${error instanceof Error ? error.message : String(error)}`);
-          }
-        }
-      }
-
-      const summary = [
-        `Branch Migration ${dryRun ? '(DRY RUN)' : 'Complete'}`,
-        ``,
-        `📊 Statistics:`,
-        `- Total commits processed: ${totalProcessed}`,
-        `- Commits updated: ${totalUpdated}`,
-        `- Commits skipped (already had branch): ${totalSkipped}`,
-        `- Errors: ${errors.length}`,
-      ];
-
-      if (updates.length > 0 && updates.length <= 20) {
-        summary.push(``, `✅ Updated commits:`);
-        updates.forEach(update => summary.push(`- ${update}`));
-      } else if (updates.length > 20) {
-        summary.push(``, `✅ Updated ${updates.length} commits (showing first 20):`);
-        updates.slice(0, 20).forEach(update => summary.push(`- ${update}`));
-      }
-
-      if (errors.length > 0) {
-        summary.push(``, `❌ Errors:`);
-        errors.forEach(error => summary.push(`- ${error}`));
-      }
-
-      if (dryRun && totalUpdated > 0) {
-        summary.push(``, `💡 Run again with dry_run: false to apply changes.`);
-      }
-
-      return {
-        content: [
-          {
-            type: 'text',
-            text: summary.join('\n'),
-          },
-        ],
-      };
-
-    } catch (error) {
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `Migration failed: ${error instanceof Error ? error.message : String(error)}`,
-          },
-        ],
-      };
-    }
-  }
-
-  /**
-   * Find the correct path for a broken link by searching vault directories
-   */
-  private async findCorrectLinkPath(linkPath: string): Promise<string | null> {
-    // Extract filename from path (remove any directory prefixes)
-    const filename = path.basename(linkPath);
-
-    // Check if it looks like a session file (YYYY-MM-DD_HH-MM-SS_...)
-    const sessionPattern = /^(\d{4})-(\d{2})-(\d{2})_/;
-    const sessionMatch = filename.match(sessionPattern);
-
-    if (sessionMatch) {
-      const year = sessionMatch[1];
-      const month = sessionMatch[2];
-      const sessionPath = path.join(VAULT_PATH, 'sessions', `${year}-${month}`, `${filename}.md`);
-
-      try {
-        await fs.access(sessionPath);
-        return filename; // Return just the filename for wiki-style links
-      } catch {
-        // File doesn't exist
-        return null;
-      }
-    }
-
-    // Check if it looks like an old-format session file (YYYY-MM-DD-...)
-    const oldSessionPattern = /^(\d{4})-(\d{2})-(\d{2})-/;
-    const oldSessionMatch = filename.match(oldSessionPattern);
-
-    if (oldSessionMatch) {
-      const year = oldSessionMatch[1];
-      const month = oldSessionMatch[2];
-      const sessionPath = path.join(VAULT_PATH, 'sessions', `${year}-${month}`, `${filename}.md`);
-
-      try {
-        await fs.access(sessionPath);
-        return filename; // Return just the filename for wiki-style links
-      } catch {
-        // File doesn't exist
-        return null;
-      }
-    }
-
-    // Check topics directory
-    const topicPath = path.join(VAULT_PATH, 'topics', `${filename}.md`);
-    try {
-      await fs.access(topicPath);
-      return filename;
-    } catch {
-      // Continue checking
-    }
-
-    // Check decisions directory (exact match)
-    const decisionPath = path.join(VAULT_PATH, 'decisions', `${filename}.md`);
-    try {
-      await fs.access(decisionPath);
-      return filename;
-    } catch {
-      // Try fuzzy matching - find file that starts with this name
-      try {
-        const decisionsDir = path.join(VAULT_PATH, 'decisions');
-        const decisionFiles = await fs.readdir(decisionsDir);
-        const match = decisionFiles.find(f =>
-          f.startsWith(filename) && f.endsWith('.md')
-        );
-        if (match) {
-          return match.replace(/\.md$/, '');
-        }
-      } catch {
-        // Continue checking
-      }
-    }
-
-    // Check for project files (projects/project-name/project.md)
-    // Look for pattern: projects/xxx/project or just xxx
-    if (linkPath.includes('projects/') || linkPath.includes('/project')) {
-      const projectsDir = path.join(VAULT_PATH, 'projects');
-      try {
-        const projectDirs = await fs.readdir(projectsDir);
-
-        for (const projectDir of projectDirs) {
-          const projectFile = path.join(projectsDir, projectDir, 'project.md');
-          try {
-            await fs.access(projectFile);
-            // Check if the link mentions this project
-            if (linkPath.includes(projectDir) || linkPath.includes('project')) {
-              return `projects/${projectDir}/project`;
-            }
-          } catch {
-            continue;
-          }
-        }
-      } catch {
-        // Projects dir doesn't exist
-      }
-    }
-
-    // Check for commit files (projects/project-name/commits/hash.md)
-    if (linkPath.includes('commits/') || /^[a-f0-9]{7,40}$/.test(filename)) {
-      const projectsDir = path.join(VAULT_PATH, 'projects');
-      try {
-        const projectDirs = await fs.readdir(projectsDir);
-
-        for (const projectDir of projectDirs) {
-          const commitFile = path.join(projectsDir, projectDir, 'commits', `${filename}.md`);
-          try {
-            await fs.access(commitFile);
-            return `projects/${projectDir}/commits/${filename}`;
-          } catch {
-            continue;
-          }
-        }
-      } catch {
-        // Projects dir doesn't exist
-      }
-    }
-
-    return null;
-  }
-
-  /**
-   * Smart filtering for link validation to reduce false positives
-   */
-  private shouldSkipLinkValidation(linkPath: string, content: string, matchIndex: number): boolean {
-    // Skip template variables (e.g., [[sessions/${this.currentSessionId}]])
-    if (linkPath.includes('${')) {
-      return true;
-    }
-
-    // Skip bash conditionals (e.g., [[ "$OSTYPE" == "darwin"* ]])
-    // These start with quotes or $ and aren't wiki links
-    if (linkPath.startsWith('"') || linkPath.startsWith('$')) {
-      return true;
-    }
-
-    // Skip common placeholder patterns used in documentation/examples
-    const placeholderPatterns = [
-      'topic-name',
-      'note-name',
-      'other-topic',
-      'another-topic',
-      'file',
-      'path/to/note',
-      'topic-slug',
-      'sessions/null',  // Common in project files when session_id is null
-      'session-id',
-      'sessions/session-id',
-      '2025-11-06_...',  // Truncated session IDs in examples
-      'xxx',
-      'example',
-      'placeholder',
-    ];
-
-    if (placeholderPatterns.includes(linkPath)) {
-      return true;
-    }
-
-    // Skip links with ellipsis or other obvious placeholder indicators
-    if (linkPath.includes('...') || linkPath.includes('XXX')) {
-      return true;
-    }
-
-    // Check if the link is inside a code block (triple backticks)
-    // Find all code block boundaries before this match
-    const beforeContent = content.substring(0, matchIndex);
-    const codeBlockMatches = beforeContent.match(/```/g);
-
-    // If odd number of ``` before this point, we're inside a code block
-    if (codeBlockMatches && codeBlockMatches.length % 2 === 1) {
-      return true;
-    }
-
-    // Skip links that look like bash conditions (contain operators)
-    if (linkPath.includes('==') || linkPath.includes('!=') || linkPath.includes('||') || linkPath.includes('&&')) {
-      return true;
-    }
-
-    return false;
-  }
-
-  /**
-   * Extract all wiki links from markdown content
-   */
-  private extractWikiLinks(content: string): Array<{ link: string; display?: string }> {
-    const links: Array<{ link: string; display?: string }> = [];
-    const linkRegex = /\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g;
-    let match;
-
-    while ((match = linkRegex.exec(content)) !== null) {
-      links.push({
-        link: match[1],
-        display: match[2],
-      });
-    }
-
-    return links;
-  }
-
-  /**
-   * Resolve a wiki link to an absolute file path
-   */
-  private async resolveWikiLink(link: string, contextFile?: string): Promise<string | null> {
-    // Remove .md extension if present
-    const linkWithoutExt = link.endsWith('.md') ? link.slice(0, -3) : link;
-
-    // Try various possible paths
-    const possiblePaths = [
-      // Direct path in vault
-      path.join(VAULT_PATH, `${linkWithoutExt}.md`),
-      path.join(VAULT_PATH, link),
-
-      // In topics directory
-      path.join(VAULT_PATH, 'topics', `${linkWithoutExt}.md`),
-
-      // In decisions directory
-      path.join(VAULT_PATH, 'decisions', `${linkWithoutExt}.md`),
-
-      // In projects directory (project.md files)
-      path.join(VAULT_PATH, 'projects', linkWithoutExt, 'project.md'),
-    ];
-
-    // Check for session file in monthly subdirectories
-    const sessionFile = await this.findSessionFile(linkWithoutExt);
-    if (sessionFile) {
-      possiblePaths.push(sessionFile);
-    }
-
-    // If context file is provided, also try relative to that file
-    if (contextFile) {
-      const contextDir = path.dirname(contextFile);
-      possiblePaths.push(
-        path.join(contextDir, `${linkWithoutExt}.md`),
-        path.join(contextDir, link)
-      );
-    }
-
-    for (const p of possiblePaths) {
-      try {
-        await fs.access(p);
-        return p;
-      } catch {
-        // Continue checking other paths
-      }
-    }
-
-    return null;
-  }
-
-
-  /**
-   * Determine reciprocal link format and section based on file types
-   */
-  private getReciprocalLinkInfo(_sourceFile: string, targetFile: string): {
-    section: string;
-    link: string;
-  } | null {
-    const targetPath = path.relative(VAULT_PATH, targetFile);
-
-    // Determine target type
-    const targetType = this.getFileType(targetFile);
-
-    // Determine appropriate section and link format
-    if (targetType === 'session') {
-      // Source file should link to session in "Related Sessions"
-      const sessionId = path.basename(targetFile, '.md');
-      return {
-        section: '## Related Sessions',
-        link: `- [[${sessionId}]]`,
-      };
-    } else if (targetType === 'topic') {
-      // Source file should link to topic
-      const topicSlug = path.basename(targetFile, '.md');
-      const topicTitle = this.extractTitleFromFile(targetPath);
-
-      return {
-        section: '## Related Topics',
-        link: `- [[topics/${topicSlug}|${topicTitle}]]`,
-      };
-    } else if (targetType === 'decision') {
-      // Source file should link to decision in "Related Decisions"
-      const decisionSlug = path.basename(targetFile, '.md');
-      const decisionTitle = this.extractTitleFromFile(targetPath);
-      return {
-        section: '## Related Decisions',
-        link: `- [[decisions/${decisionSlug}|${decisionTitle}]]`,
-      };
-    } else if (targetType === 'project') {
-      // Source file should link to project in "Related Projects"
-      const projectSlug = path.basename(path.dirname(targetFile));
-      const projectTitle = this.extractTitleFromFile(targetPath);
-      return {
-        section: '## Related Projects',
-        link: `- [[projects/${projectSlug}/project|${projectTitle}]]`,
-      };
-    }
-
-    return null;
-  }
-
-  /**
-   * Get file type based on path
-   */
-  private getFileType(filePath: string): 'session' | 'topic' | 'decision' | 'project' | 'unknown' {
-    const relativePath = path.relative(VAULT_PATH, filePath);
-
-    if (relativePath.startsWith('sessions/')) return 'session';
-    if (relativePath.startsWith('topics/')) return 'topic';
-    if (relativePath.startsWith('decisions/')) return 'decision';
-    if (relativePath.startsWith('projects/') && filePath.endsWith('project.md')) return 'project';
-
-    return 'unknown';
-  }
-
-  /**
-   * Extract title from file (from frontmatter or first heading)
-   */
-  private extractTitleFromFile(relativePath: string): string {
-    // For now, use the filename as title
-    // TODO: Parse frontmatter or first heading for actual title
-    const filename = path.basename(relativePath, '.md');
-    return filename
-      .split('-')
-      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-      .join(' ');
-  }
-
-  /**
-   * Add reciprocal link to target file
-   */
-  private async addReciprocalLink(
-    targetFile: string,
-    sourceFile: string
-  ): Promise<boolean> {
-    const linkInfo = this.getReciprocalLinkInfo(targetFile, sourceFile);
-    if (!linkInfo) return false;
-
-    let content = await fs.readFile(targetFile, 'utf-8');
-
-    // Check if link already exists
-    if (content.includes(linkInfo.link)) {
-      return false; // Link already exists
-    }
-
-    // Check if section exists
-    const sectionRegex = new RegExp(`^${linkInfo.section.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'm');
-
-    if (sectionRegex.test(content)) {
-      // Section exists, add link after it
-      content = content.replace(
-        sectionRegex,
-        `${linkInfo.section}\n${linkInfo.link}`
-      );
-    } else {
-      // Section doesn't exist, add it at the end
-      if (!content.endsWith('\n')) content += '\n';
-      content += `\n${linkInfo.section}\n${linkInfo.link}\n`;
-    }
-
-    await fs.writeFile(targetFile, content);
-    return true;
-  }
-
-  /**
-   * Validate and repair reciprocal links for given files
-   */
-  private async validateReciprocalLinks(files: string[]): Promise<string[]> {
-    const fixes: string[] = [];
-
-    for (const file of files) {
-      try {
-        const content = await fs.readFile(file, 'utf-8');
-        const links = this.extractWikiLinks(content);
-
-        for (const { link } of links) {
-          // Skip if link looks like it should be skipped
-          if (this.shouldSkipLinkValidation(link, content, 0)) {
-            continue;
-          }
-
-          const linkedFile = await this.resolveWikiLink(link, file);
-          if (!linkedFile) continue; // Can't resolve link
-
-          // Check if it's a vault file (not external)
-          if (!linkedFile.startsWith(VAULT_PATH)) continue;
-
-          // Check if linked file has reciprocal link back to source
-          const reciprocalLinkInfo = this.getReciprocalLinkInfo(linkedFile, file);
-          if (!reciprocalLinkInfo) continue; // No reciprocal relationship expected
-
-          const linkedContent = await fs.readFile(linkedFile, 'utf-8');
-
-          // Check if reciprocal link exists
-          const sourceFileName = path.basename(file, '.md');
-          const hasReciprocalLink = linkedContent.includes(sourceFileName) ||
-                                   linkedContent.includes(path.relative(VAULT_PATH, file));
-
-          if (!hasReciprocalLink) {
-            // Add reciprocal link
-            const added = await this.addReciprocalLink(linkedFile, file);
-            if (added) {
-              const relativeSource = path.relative(VAULT_PATH, file);
-              const relativeTarget = path.relative(VAULT_PATH, linkedFile);
-              fixes.push(`Added reciprocal link: ${relativeTarget} ← ${relativeSource}`);
-            }
-          }
-        }
-      } catch (error) {
-        // Continue on error for individual files
-        console.error(`Error validating reciprocal links for ${file}:`, error);
-      }
-    }
-
-    return fixes;
-  }
-
-  /**
-   * Move Related sections to the bottom of the document
-   * Ensures Related Sessions, Related Topics, Related Projects, and Related Decisions
-   * are always at the end, in that order
-   */
-  private async moveRelatedSectionsToBottom(file: string): Promise<string[]> {
-    const fixes: string[] = [];
-    const content = await fs.readFile(file, 'utf-8');
-    const lines = content.split('\n');
-
-    const relatedHeaders = [
-      '## Related Topics',
-      '## Related Sessions',
-      '## Related Projects',
-      '## Related Decisions'
-    ];
-
-    // Find all Related sections and their content
-    const sections = new Map<string, { startIndex: number, endIndex: number, content: string[] }>();
-
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i].trim();
-
-      if (relatedHeaders.includes(line)) {
-        const startIndex = i;
-        const sectionContent: string[] = [lines[i]]; // Include the header
-
-        // Collect content until next header or end
-        let j = i + 1;
-        while (j < lines.length && !lines[j].trim().startsWith('#')) {
-          sectionContent.push(lines[j]);
-          j++;
-        }
-
-        sections.set(line, {
-          startIndex,
-          endIndex: j - 1,
-          content: sectionContent
-        });
-      }
-    }
-
-    if (sections.size === 0) {
-      return fixes; // No Related sections found
-    }
-
-    // Check if Related sections are already at the bottom in correct order
-    const sectionIndices = Array.from(sections.values()).map(s => s.startIndex).sort((a, b) => a - b);
-
-    // Find the index of the last non-Related, non-empty line
-    let lastContentIndex = lines.length - 1;
-    for (let i = lines.length - 1; i >= 0; i--) {
-      const line = lines[i].trim();
-      if (line && !relatedHeaders.includes(line) && !sections.has(line)) {
-        // Check if this line is part of a Related section
-        let isPartOfRelated = false;
-        for (const section of sections.values()) {
-          if (i > section.startIndex && i <= section.endIndex) {
-            isPartOfRelated = true;
-            break;
-          }
-        }
-        if (!isPartOfRelated) {
-          lastContentIndex = i;
-          break;
-        }
-      }
-    }
-
-    // Check if all Related sections are already after the last content
-    const firstRelatedIndex = Math.min(...sectionIndices);
-    if (firstRelatedIndex > lastContentIndex && sections.size > 0) {
-      // Check if they're in the correct order
-      const expectedOrder = relatedHeaders.filter(h => sections.has(h));
-      const actualOrder = Array.from(sections.keys()).sort((a, b) => {
-        return sections.get(a)!.startIndex - sections.get(b)!.startIndex;
-      });
-
-      if (JSON.stringify(expectedOrder) === JSON.stringify(actualOrder)) {
-        return fixes; // Already at bottom in correct order
-      }
-    }
-
-    // Remove Related sections from their current positions
-    const linesToKeep: string[] = [];
-    for (let i = 0; i < lines.length; i++) {
-      let shouldKeep = true;
-
-      for (const section of sections.values()) {
-        if (i >= section.startIndex && i <= section.endIndex) {
-          shouldKeep = false;
-          break;
-        }
-      }
-
-      if (shouldKeep) {
-        linesToKeep.push(lines[i]);
-      }
-    }
-
-    // Remove trailing empty lines from main content
-    while (linesToKeep.length > 0 && linesToKeep[linesToKeep.length - 1].trim() === '') {
-      linesToKeep.pop();
-    }
-
-    // Add Related sections at the bottom in the correct order
-    for (const header of relatedHeaders) {
-      if (sections.has(header)) {
-        linesToKeep.push(''); // Add blank line before section
-        linesToKeep.push(...sections.get(header)!.content);
-        fixes.push(`Moved "${header}" to bottom of document`);
-      }
-    }
-
-    // Write the updated content
-    const newContent = linesToKeep.join('\n');
-    await fs.writeFile(file, newContent);
-
-    return fixes;
-  }
-
-  /**
-   * Deduplicate headers in a file, especially Related sections
-   */
-  private async deduplicateHeaders(file: string): Promise<string[]> {
-    const fixes: string[] = [];
-    const content = await fs.readFile(file, 'utf-8');
-    const lines = content.split('\n');
-
-    // Track seen headers and their content
-    const headerSections = new Map<string, { indices: number[], content: string[] }>();
-    const relatedHeaders = [
-      '## Related Sessions',
-      '## Related Projects',
-      '## Related Topics',
-      '## Related Decisions'
-    ];
-
-    // First pass: identify all headers and their positions
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i].trim();
-
-      // Check for Related headers
-      if (relatedHeaders.includes(line)) {
-        if (!headerSections.has(line)) {
-          headerSections.set(line, { indices: [], content: [] });
-        }
-        headerSections.get(line)!.indices.push(i);
-
-        // Collect content under this header until next header or end
-        const sectionContent: string[] = [];
-        let j = i + 1;
-        while (j < lines.length && !lines[j].trim().startsWith('#')) {
-          if (lines[j].trim()) { // Only collect non-empty lines
-            sectionContent.push(lines[j].trim());
-          }
-          j++;
-        }
-        headerSections.get(line)!.content.push(...sectionContent);
-      }
-    }
-
-    // Second pass: check for duplicates and consecutive duplicate headers
-    const linesToRemove = new Set<number>();
-    let modified = false;
-
-    // Check for consecutive duplicate headers (any header, not just Related)
-    for (let i = 0; i < lines.length - 1; i++) {
-      const currentLine = lines[i].trim();
-      const nextLine = lines[i + 1].trim();
-
-      if (currentLine.startsWith('#') && currentLine === nextLine) {
-        linesToRemove.add(i + 1);
-        fixes.push(`Removed consecutive duplicate header at line ${i + 2}: ${currentLine}`);
-        modified = true;
-      }
-    }
-
-    // Check for duplicate Related sections
-    for (const [header, data] of headerSections.entries()) {
-      if (data.indices.length > 1) {
-        // Keep the first occurrence, remove others
-        // Mark duplicate headers for removal
-        for (let i = 1; i < data.indices.length; i++) {
-          const dupIndex = data.indices[i];
-          linesToRemove.add(dupIndex);
-
-          // Also remove content lines after duplicate header (until next header)
-          let j = dupIndex + 1;
-          while (j < lines.length && !lines[j].trim().startsWith('#')) {
-            if (lines[j].trim()) {
-              linesToRemove.add(j);
-            }
-            j++;
-          }
-        }
-
-        fixes.push(`Removed ${data.indices.length - 1} duplicate "${header}" section(s)`);
-        modified = true;
-      }
-    }
-
-    // Third pass: rebuild content without removed lines
-    if (modified) {
-      const newLines = lines.filter((_, index) => !linesToRemove.has(index));
-      const newContent = newLines.join('\n');
-      await fs.writeFile(file, newContent);
-    }
-
-    return fixes;
-  }
-
-  private async vaultCustodian(args?: { files_to_check?: string[] }) {
-    await this.ensureVaultStructure();
-
-    const issues: string[] = [];
-    const fixes: string[] = [];
-    const warnings: string[] = [];
-    const filesToCheck = args?.files_to_check;
-
-    try {
-      // Check 1: Verify sessions are in the correct directory
-      const sessionsDir = path.join(VAULT_PATH, 'sessions');
-      let sessionFiles = await this.findMarkdownFiles(sessionsDir);
-
-      // Filter to only check specified files if provided
-      if (filesToCheck) {
-        sessionFiles = sessionFiles.filter(f => filesToCheck.includes(f));
-      }
-
-      for (const file of sessionFiles) {
-        const content = await fs.readFile(file, 'utf-8');
-        const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
-
-        if (!frontmatterMatch) {
-          issues.push(`Session file missing frontmatter: ${path.relative(VAULT_PATH, file)}`);
-          continue;
-        }
-
-        // Check if session file is in date-organized subdirectory
-        const filenameDate = path.basename(file).match(/^(\d{4})-(\d{2})-(\d{2})/);
-
-        if (filenameDate) {
-          const expectedDir = path.join(sessionsDir, `${filenameDate[1]}-${filenameDate[2]}`);
-          const actualDir = path.dirname(file);
-
-          if (actualDir !== expectedDir) {
-            issues.push(`Session in wrong directory: ${path.relative(VAULT_PATH, file)}`);
-
-            // Move to correct directory
-            await fs.mkdir(expectedDir, { recursive: true });
-            const newPath = path.join(expectedDir, path.basename(file));
-            await fs.rename(file, newPath);
-            fixes.push(`Moved ${path.relative(VAULT_PATH, file)} to ${path.relative(VAULT_PATH, newPath)}`);
-          }
-        }
-      }
-
-      // Check 2: Verify topics are properly formatted
-      const topicsDir = path.join(VAULT_PATH, 'topics');
-      let topicFiles = await this.findMarkdownFiles(topicsDir);
-
-      // Filter to only check specified files if provided
-      if (filesToCheck) {
-        topicFiles = topicFiles.filter(f => filesToCheck.includes(f));
-      }
-
-      for (const file of topicFiles) {
-        const content = await fs.readFile(file, 'utf-8');
-        const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
-
-        if (!frontmatterMatch) {
-          issues.push(`Topic file missing frontmatter: ${path.relative(VAULT_PATH, file)}`);
-
-          // Add basic frontmatter
-          const title = path.basename(file, '.md');
-          const today = new Date().toISOString().split('T')[0];
-          const newContent = `---
-title: ${title}
-created: ${today}
-tags: []
----
-
-${content}`;
-          await fs.writeFile(file, newContent);
-          fixes.push(`Added frontmatter to ${path.relative(VAULT_PATH, file)}`);
-        }
-      }
-
-      // Check 3: Verify project structure
-      const projectsDir = path.join(VAULT_PATH, 'projects');
-      try {
-        const projectDirs = await fs.readdir(projectsDir);
-
-        for (const projectDir of projectDirs) {
-          const projectPath = path.join(projectsDir, projectDir);
-          const stat = await fs.stat(projectPath);
-
-          if (!stat.isDirectory()) continue;
-
-          const projectFile = path.join(projectPath, 'project.md');
-
-          // Skip this project if we're filtering and this project file is not in the list
-          if (filesToCheck && !filesToCheck.includes(projectFile)) {
-            continue;
-          }
-
-          try {
-            await fs.access(projectFile);
-          } catch {
-            issues.push(`Project directory missing project.md: projects/${projectDir}`);
-            warnings.push(`Consider creating a project.md file in projects/${projectDir}`);
-          }
-
-          // Check for commits directory
-          const commitsDir = path.join(projectPath, 'commits');
-          try {
-            const commitStat = await fs.stat(commitsDir);
-            if (commitStat.isDirectory()) {
-              const commits = await fs.readdir(commitsDir);
-              if (commits.length === 0) {
-                warnings.push(`Empty commits directory: projects/${projectDir}/commits`);
-              }
-            }
-          } catch {
-            // No commits directory is fine
-          }
-        }
-      } catch (error) {
-        // No projects directory is fine
-      }
-
-      // Check 4: Validate and fix internal links
-      const decisionsDir = path.join(VAULT_PATH, 'decisions');
-      let allFiles = [
-        ...await this.findMarkdownFiles(sessionsDir),
-        ...await this.findMarkdownFiles(topicsDir),
-        ...await this.findMarkdownFiles(decisionsDir),
-        ...await this.findMarkdownFiles(projectsDir),
-      ];
-
-      // Filter to only check specified files if provided
-      if (filesToCheck) {
-        allFiles = allFiles.filter(f => filesToCheck.includes(f));
-      }
-
-      for (const file of allFiles) {
-        let content = await fs.readFile(file, 'utf-8');
-        const linkRegex = /\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g;
-        let match;
-        const linksToFix: Array<{ original: string; corrected: string; fullMatch: string }> = [];
-
-        // First pass: collect all broken links
-        while ((match = linkRegex.exec(content)) !== null) {
-          const linkPath = match[1];
-          const matchIndex = match.index;
-          const fullMatch = match[0];
-
-          // Skip false positives
-          if (this.shouldSkipLinkValidation(linkPath, content, matchIndex)) {
-            continue;
-          }
-
-          // Check if link has directory prefix that violates wiki-link standards
-          // Per Decision 002, internal links should not include directory prefixes
-          // Note: projects/ prefix is kept because project files are not uniquely named
-          // (all project pages are "project.md", commit files may have overlapping hashes)
-          const directoryPrefixPattern = /^(sessions|topics|decisions)\//;
-          const prefixMatch = linkPath.match(directoryPrefixPattern);
-
-          if (prefixMatch) {
-            // Strip the directory prefix to get the base filename
-            const strippedPath = linkPath.replace(directoryPrefixPattern, '');
-
-            // Try to find the correct file for this stripped path
-            const correctedPath = await this.findCorrectLinkPath(strippedPath);
-
-            if (correctedPath) {
-              // Found the file, add it to fixes
-              linksToFix.push({
-                original: linkPath,
-                corrected: correctedPath,
-                fullMatch: fullMatch,
-              });
-            } else {
-              // File doesn't exist even after stripping prefix - it's truly broken
-              warnings.push(`Broken link in ${path.relative(VAULT_PATH, file)}: [[${linkPath}]] (file not found even after stripping prefix)`);
-            }
-            continue; // Skip to next link
-          }
-
-          // Try to resolve the link
-          const possiblePaths = [
-            path.join(VAULT_PATH, `${linkPath}.md`),
-            path.join(VAULT_PATH, linkPath),
-            path.join(path.dirname(file), `${linkPath}.md`),
-            path.join(path.dirname(file), linkPath),
-          ];
-
-          let found = false;
-          for (const p of possiblePaths) {
-            try {
-              await fs.access(p);
-              found = true;
-              break;
-            } catch {
-              // Continue checking
-            }
-          }
-
-          if (!found) {
-            // Try to find the correct path
-            const correctedPath = await this.findCorrectLinkPath(linkPath);
-
-            if (correctedPath) {
-              linksToFix.push({
-                original: linkPath,
-                corrected: correctedPath,
-                fullMatch: fullMatch,
-              });
-            } else {
-              warnings.push(`Broken link in ${path.relative(VAULT_PATH, file)}: [[${linkPath}]]`);
-            }
-          }
-        }
-
-        // Second pass: fix all broken links
-        if (linksToFix.length > 0) {
-          for (const link of linksToFix) {
-            // Replace the link in content
-            // Handle both [[link]] and [[link|display]] formats
-            const escapedOriginal = link.original.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-            const linkPattern = new RegExp(`\\[\\[${escapedOriginal}(?:\\|[^\\]]+)?\\]\\]`, 'g');
-            content = content.replace(linkPattern, `[[${link.corrected}]]`);
-            fixes.push(`Fixed link in ${path.relative(VAULT_PATH, file)}: [[${link.original}]] → [[${link.corrected}]]`);
-          }
-
-          // Write the updated content back to the file
-          await fs.writeFile(file, content);
-        }
-      }
-
-      // Check 5: Validate reciprocal links
-      const reciprocalFixes = await this.validateReciprocalLinks(allFiles);
-      fixes.push(...reciprocalFixes);
-
-      // Check 6: Deduplicate headers
-      for (const file of allFiles) {
-        try {
-          const headerFixes = await this.deduplicateHeaders(file);
-          if (headerFixes.length > 0) {
-            const relativeFile = path.relative(VAULT_PATH, file);
-            for (const fix of headerFixes) {
-              fixes.push(`${relativeFile}: ${fix}`);
-            }
-          }
-        } catch (error) {
-          console.error(`Error deduplicating headers in ${file}:`, error);
-        }
-      }
-
-      // Check 7: Move Related sections to bottom
-      for (const file of allFiles) {
-        try {
-          const relatedFixes = await this.moveRelatedSectionsToBottom(file);
-          if (relatedFixes.length > 0) {
-            const relativeFile = path.relative(VAULT_PATH, file);
-            for (const fix of relatedFixes) {
-              fixes.push(`${relativeFile}: ${fix}`);
-            }
-          }
-        } catch (error) {
-          console.error(`Error moving Related sections in ${file}:`, error);
-        }
-      }
-
-      // Generate report
-      let report = '# Vault Custodian Report\n\n';
-
-      if (issues.length === 0 && warnings.length === 0) {
-        report += '✅ Vault integrity check passed! No issues found.\n';
-      } else {
-        if (issues.length > 0) {
-          report += `## Issues Found (${issues.length})\n`;
-          for (const issue of issues) {
-            report += `- ❌ ${issue}\n`;
-          }
-          report += '\n';
-        }
-
-        if (fixes.length > 0) {
-          report += `## Fixes Applied (${fixes.length})\n`;
-          for (const fix of fixes) {
-            report += `- ✅ ${fix}\n`;
-          }
-          report += '\n';
-        }
-
-        if (warnings.length > 0) {
-          report += `## Warnings (${warnings.length})\n`;
-          for (const warning of warnings) {
-            report += `- ⚠️  ${warning}\n`;
-          }
-          report += '\n';
-        }
-      }
-
-      report += '\n---\n';
-      report += `**Checked:** ${allFiles.length} files\n`;
-      report += `**Issues:** ${issues.length} found, ${fixes.length} fixed\n`;
-      report += `**Warnings:** ${warnings.length}\n`;
-
-      return {
-        content: [
-          {
-            type: 'text',
-            text: report,
-          },
-        ],
-      };
-
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `Error during vault integrity check: ${errorMessage}`,
-          },
-        ],
-      };
-    }
-  }
 
   private async findMarkdownFiles(dir: string): Promise<string[]> {
     const files: string[] = [];
@@ -5179,94 +1991,7 @@ ${content}`;
 
   // ==================== Sub-Agent Powered Analysis Methods ====================
 
-  private async analyzeTopicContent(args: {
-    content: string;
-    topic_name?: string;
-    context?: string;
-  }) {
-    // Build analysis prompt for the sub-agent
-    const analysisPrompt = `Analyze the following topic content and provide structured analysis.
 
-${args.topic_name ? `Topic Name: ${args.topic_name}` : ''}
-${args.context ? `Context: ${args.context}` : ''}
-
-Content to analyze:
-${args.content}
-
-Please provide:
-1. **Tags**: 3-7 relevant tags that categorize this topic (e.g., technology names, concepts, domains)
-2. **Summary**: A concise 1-2 sentence summary of the main idea
-3. **Key Concepts**: List 3-5 key technical concepts or terms discussed
-4. **Related Topics**: Suggest 2-4 topic names that would be related (based on common knowledge and the content)
-5. **Content Type**: Categorize as one of: implementation, architecture, troubleshooting, reference, tutorial, concept
-
-Respond in JSON format:
-{
-  "tags": ["tag1", "tag2", ...],
-  "summary": "...",
-  "key_concepts": ["concept1", "concept2", ...],
-  "related_topics": ["topic1", "topic2", ...],
-  "content_type": "..."
-}`;
-
-    try {
-      // Search for similar existing topics
-      const searchResults = await this.searchVault({
-        query: args.content.substring(0, 200), // Use first 200 chars for similarity search
-        directories: ['topics'],
-        max_results: 5,
-        snippets_only: true,
-      });
-
-      // Parse search results to find potential duplicates
-      const potentialDuplicates = searchResults.content[0].text.includes('Found 0 matches')
-        ? []
-        : searchResults.content[0].text.split('\n')
-            .filter(line => line.includes('**'))
-            .slice(0, 3)
-            .map(line => {
-              const match = line.match(/\*\*(.+?)\*\*/);
-              return match ? match[1] : null;
-            })
-            .filter(Boolean);
-
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `# Topic Content Analysis
-
-## Analysis Prompt for Sub-Agent
-To complete this analysis, use a sub-agent with the following prompt:
-
-\`\`\`
-${analysisPrompt}
-\`\`\`
-
-## Potential Duplicate Topics
-${potentialDuplicates.length > 0
-  ? `Found ${potentialDuplicates.length} potentially similar existing topics:\n${potentialDuplicates.map((t, i) => `${i + 1}. ${t}`).join('\n')}`
-  : 'No similar topics found in the vault.'}
-
-## Next Steps
-1. Run the analysis prompt above through a sub-agent to get structured analysis
-2. Review the potential duplicates to decide if this is truly new content
-3. Use the analysis results to enhance topic creation with auto-generated tags and summary`,
-          },
-        ],
-      };
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `Error analyzing topic content: ${errorMessage}`,
-          },
-        ],
-      };
-    }
-  }
 
   /**
    * Internal method to analyze topic content using heuristic tag extraction.
@@ -5366,502 +2091,11 @@ ${potentialDuplicates.length > 0
     };
   }
 
-  private async extractDecisionsFromSession(args: {
-    session_id?: string;
-    content?: string;
-  }) {
-    try {
-      let sessionContent = args.content;
-      let sessionId = args.session_id;
-      let detectedProject: string | null = null;
 
-      // If no content provided, read from session file
-      if (!sessionContent) {
-        if (!sessionId && !this.currentSessionFile) {
-          return {
-            content: [
-              {
-                type: 'text',
-                text: 'Error: No session_id provided and no current session active.',
-              },
-            ],
-          };
-        }
 
-        sessionId = sessionId || this.currentSessionId || '';
-        const sessionFile = sessionId
-          ? await this.findSessionFile(sessionId)
-          : this.currentSessionFile;
 
-        if (!sessionFile) {
-          return {
-            content: [
-              {
-                type: 'text',
-                text: `Error: Session file not found for ID: ${sessionId}`,
-              },
-            ],
-          };
-        }
 
-        sessionContent = await fs.readFile(sessionFile, 'utf-8');
 
-        // Extract project context from session frontmatter
-        const frontmatterMatch = sessionContent.match(/^---\n([\s\S]*?)\n---/);
-        if (frontmatterMatch) {
-          const frontmatter = frontmatterMatch[1];
-
-          // Try to find repository name from frontmatter
-          const repoNameMatch = frontmatter.match(/repository:\s*\n\s*path:.*\n\s*name:\s*(.+)/);
-          if (repoNameMatch) {
-            const repoName = repoNameMatch[1].trim();
-            // Convert repository name to project slug (e.g., "accessibility-automatic-testing")
-            detectedProject = this.slugify(repoName);
-          }
-        }
-      }
-
-      // Build decision extraction prompt
-      const extractionPrompt = `Analyze the following session content and extract any architectural or technical decisions that were made.
-
-Session Content:
-${sessionContent}
-
-For each decision found, provide:
-1. **Decision Title**: A clear, concise title (e.g., "Use PostgreSQL instead of MongoDB")
-2. **Context**: What problem or situation led to this decision?
-3. **Alternatives Considered**: What other options were discussed or considered?
-4. **Decision Made**: What was ultimately chosen?
-5. **Rationale**: Why was this choice made?
-6. **Consequences**: What are the positive and negative consequences?
-7. **Strategic Level**: Rate from 1-5 (1=tactical implementation detail, 5=major architectural choice)
-
-Only extract decisions with strategic level 3 or higher. Ignore minor implementation details.
-
-Respond in JSON format:
-{
-  "decisions": [
-    {
-      "title": "...",
-      "context": "...",
-      "alternatives": ["...", "..."],
-      "decision": "...",
-      "rationale": "...",
-      "consequences": {
-        "positive": ["...", "..."],
-        "negative": ["..."]
-      },
-      "strategic_level": 4
-    }
-  ]
-}
-
-If no significant decisions are found, return { "decisions": [] }`;
-
-      const projectContext = detectedProject
-        ? `\n- **Detected Project**: ${detectedProject}\n  → Consider using \`project: "${detectedProject}"\` when creating project-specific decisions`
-        : '\n- **No project detected** → Decisions will be vault-level by default';
-
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `# Decision Extraction Analysis
-
-## Session Information
-- Session ID: ${sessionId || 'Current session'}
-- Content length: ${sessionContent?.length || 0} characters${projectContext}
-
-## Extraction Prompt for Sub-Agent
-To complete this extraction, use a sub-agent with the following prompt:
-
-\`\`\`
-${extractionPrompt}
-\`\`\`
-
-## Next Steps
-1. Run the extraction prompt through a sub-agent to identify decisions
-2. For each decision found with strategic_level >= 3:
-   - Review the extracted information for accuracy
-   - Use \`create_decision\` tool to generate an ADR${detectedProject ? `\n   - **Recommended**: Use \`project: "${detectedProject}"\` for project-specific decisions` : ''}
-   - Link the ADR back to this session
-3. If no significant decisions found, no action needed
-
-## How to Create ADRs from Results
-For each decision in the JSON response:
-\`\`\`
-create_decision({
-  title: decision.title,
-  context: decision.context,
-  content: \`
-## Decision
-\${decision.decision}
-
-## Alternatives Considered
-\${decision.alternatives.map((alt, i) => \`\${i + 1}. \${alt}\`).join('\\n')}
-
-## Rationale
-\${decision.rationale}
-
-## Consequences
-
-### Positive
-\${decision.consequences.positive.map(c => \`- \${c}\`).join('\\n')}
-
-### Negative
-\${decision.consequences.negative.map(c => \`- \${c}\`).join('\\n')}
-\`
-})
-\`\`\``,
-          },
-        ],
-      };
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `Error extracting decisions: ${errorMessage}`,
-          },
-        ],
-      };
-    }
-  }
-
-  private async enhancedSearch(args: {
-    query: string;
-    context?: string;
-    current_session_id?: string;
-    max_results_per_query?: number;
-  }) {
-    try {
-      const maxResults = args.max_results_per_query || 5;
-
-      // Get current session context if provided
-      let sessionContext = '';
-      if (args.current_session_id) {
-        const sessionFile = await this.findSessionFile(args.current_session_id);
-        if (sessionFile) {
-          const content = await fs.readFile(sessionFile, 'utf-8');
-          // Extract just the context section for brevity
-          const contextMatch = content.match(/## Context\n(.*?)(?=\n##|\n---|$)/s);
-          sessionContext = contextMatch ? contextMatch[1].trim() : '';
-        }
-      }
-
-      // Build query expansion prompt
-      const expansionPrompt = `You are helping expand a search query to find relevant information in an Obsidian vault.
-
-Original Query: "${args.query}"
-${args.context ? `Additional Context: ${args.context}` : ''}
-${sessionContext ? `Current Session Context: ${sessionContext}` : ''}
-
-Your task:
-1. Understand the user's intent behind this query
-2. Generate 4-5 diverse search query variations that capture different aspects
-3. Include:
-   - Technical terms and synonyms
-   - Related concepts
-   - Different phrasings
-   - Specific vs. general variations
-
-Format your response as a JSON array of query strings:
-["query1", "query2", "query3", "query4", "query5"]
-
-Each query should be concise (2-5 words) and focused on a specific aspect of the original query.`;
-
-      // Perform a preliminary search to understand available content
-      const preliminarySearch = await this.searchVault({
-        query: args.query,
-        max_results: 3,
-        snippets_only: true,
-      });
-
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `# Enhanced Search Analysis
-
-## Original Query
-"${args.query}"
-
-${args.context ? `## Context\n${args.context}\n` : ''}
-${sessionContext ? `## Current Session Context\n${sessionContext}\n` : ''}
-
-## Query Expansion Prompt
-To complete this search, use a sub-agent with the following prompt to generate query variations:
-
-\`\`\`
-${expansionPrompt}
-\`\`\`
-
-## Preliminary Results
-Here's what a basic search for "${args.query}" found:
-
-${preliminarySearch.content[0].text}
-
-## Next Steps
-
-1. **Generate Query Variations**: Run the expansion prompt through a sub-agent to get 4-5 query variations
-2. **Execute Multiple Searches**: For each variation, call \`search_vault\` with max_results=${maxResults}
-3. **Deduplicate Results**: Track unique file paths to avoid duplicates
-4. **Synthesize Findings**: Combine results and identify key themes
-
-## Example Workflow
-
-\`\`\`javascript
-// After getting query variations from sub-agent:
-const queryVariations = ["variation1", "variation2", ...];
-const allResults = new Map(); // filePath -> result
-
-for (const query of queryVariations) {
-  const results = await search_vault({
-    query: query,
-    max_results: ${maxResults}
-  });
-
-  // Extract file paths and add to map (deduplicates automatically)
-  // Higher scores override lower scores for same file
-}
-
-// Present synthesized results to user
-\`\`\`
-
-## Benefits of This Approach
-
-- **Improved Recall**: Multiple query variations find more relevant content
-- **Semantic Understanding**: Captures user intent beyond literal keywords
-- **Context Awareness**: Uses session context to refine search direction
-- **Efficient Deduplication**: Map structure ensures each file appears once
-- **Embedding Cache Reuse**: Subsequent searches benefit from cached embeddings`,
-          },
-        ],
-      };
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `Error in enhanced search: ${errorMessage}`,
-          },
-        ],
-      };
-    }
-  }
-
-  private async analyzeCommitImpact(args: {
-    repo_path: string;
-    commit_hash: string;
-    include_diff?: boolean;
-  }) {
-    try {
-      // Validate repository exists
-      const gitDir = path.join(args.repo_path, '.git');
-      try {
-        await fs.access(gitDir);
-      } catch {
-        return {
-          content: [
-            {
-              type: 'text',
-              text: `Error: Not a git repository: ${args.repo_path}`,
-            },
-          ],
-        };
-      }
-
-      // Get commit information using git commands
-      const { execSync } = require('child_process');
-
-      let commitInfo: string;
-      let commitDiff: string;
-      let commitFiles: string;
-
-      try {
-        // Get commit message and metadata
-        commitInfo = execSync(
-          `git -C "${args.repo_path}" show --no-patch --format="%H%n%an%n%ae%n%ad%n%s%n%b" ${args.commit_hash}`,
-          { encoding: 'utf-8', maxBuffer: 10 * 1024 * 1024 }
-        );
-
-        // Get files changed (stat summary)
-        commitFiles = execSync(
-          `git -C "${args.repo_path}" show --stat ${args.commit_hash}`,
-          { encoding: 'utf-8', maxBuffer: 10 * 1024 * 1024 }
-        );
-
-        // Get diff (full or summary based on flag)
-        if (args.include_diff) {
-          commitDiff = execSync(
-            `git -C "${args.repo_path}" show ${args.commit_hash}`,
-            { encoding: 'utf-8', maxBuffer: 50 * 1024 * 1024 }
-          );
-        } else {
-          commitDiff = execSync(
-            `git -C "${args.repo_path}" diff ${args.commit_hash}^ ${args.commit_hash} --stat`,
-            { encoding: 'utf-8', maxBuffer: 10 * 1024 * 1024 }
-          );
-        }
-      } catch (gitError: any) {
-        return {
-          content: [
-            {
-              type: 'text',
-              text: `Error executing git command: ${gitError.message}`,
-            },
-          ],
-        };
-      }
-
-      // Parse commit info
-      const [hash, author, email, date, subject, ...bodyLines] = commitInfo.split('\n');
-      const body = bodyLines.join('\n').trim();
-
-      // Extract changed file paths for searching related topics
-      const filePathsMatch = commitFiles.match(/\s([\w\/\.\-_]+)\s+\|/g);
-      const changedFiles = filePathsMatch
-        ? filePathsMatch.map(m => m.trim().split('|')[0].trim())
-        : [];
-
-      // Search for related topics and decisions based on commit content
-      const searchTerms = [
-        subject,
-        ...changedFiles.slice(0, 3).map(f => path.basename(f, path.extname(f)))
-      ];
-
-      const relatedContent: string[] = [];
-
-      for (const term of searchTerms) {
-        try {
-          const results = await this.searchVault({
-            query: term,
-            max_results: 3,
-            snippets_only: true,
-          });
-
-          if (!results.content[0].text.includes('Found 0 matches')) {
-            relatedContent.push(`**Search for "${term}":**\n${results.content[0].text}\n`);
-          }
-        } catch {
-          // Skip failed searches
-        }
-      }
-
-      // Build impact analysis prompt
-      const analysisPrompt = `Analyze this Git commit and provide impact assessment for documentation updates.
-
-## Commit Information
-- **Hash**: ${hash.substring(0, 12)}
-- **Author**: ${author} <${email}>
-- **Date**: ${date}
-- **Subject**: ${subject}
-${body ? `- **Body**: ${body}` : ''}
-
-## Files Changed
-${commitFiles}
-
-${args.include_diff ? `## Full Diff\n\`\`\`\n${commitDiff}\n\`\`\`` : `## Summary\n${commitDiff}`}
-
-## Your Task
-Analyze this commit and provide:
-
-1. **Summary** (2-3 sentences): What was changed and why?
-2. **Key Changes**: List 3-5 main technical changes
-3. **Impact Level** (1-5): How significant is this change?
-   - 1: Minor fix or tweak
-   - 2: Small feature or bug fix
-   - 3: Notable feature or refactoring
-   - 4: Major feature or architectural change
-   - 5: Fundamental system redesign
-
-4. **Affected Topics**: Which existing topics should be updated? (provide topic names)
-5. **New Topics**: Should new documentation be created?
-6. **Related Decisions**: Does this relate to any architectural decisions?
-7. **Suggested Actions**: What documentation updates are recommended?
-
-Respond in JSON format:
-{
-  "summary": "...",
-  "key_changes": ["change1", "change2", ...],
-  "impact_level": 3,
-  "affected_topics": ["topic1", "topic2", ...],
-  "new_topics": ["topic1", "topic2", ...],
-  "related_decisions": ["decision1", ...],
-  "suggested_actions": [
-    {"action": "update", "target": "topic-name", "reason": "..."},
-    {"action": "create", "target": "new-topic-name", "reason": "..."}
-  ]
-}`;
-
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `# Git Commit Impact Analysis
-
-## Commit Summary
-- **Hash**: ${hash.substring(0, 12)}
-- **Author**: ${author}
-- **Date**: ${date}
-- **Message**: ${subject}
-
-## Files Changed
-\`\`\`
-${commitFiles}
-\`\`\`
-
-## Related Content in Vault
-${relatedContent.length > 0 ? relatedContent.join('\n') : 'No directly related topics found in vault.'}
-
-## Impact Analysis Prompt
-To complete this analysis, use a sub-agent with the following prompt:
-
-\`\`\`
-${analysisPrompt}
-\`\`\`
-
-## Next Steps
-
-1. **Run Analysis**: Execute the prompt through a sub-agent to get structured impact assessment
-2. **Review Suggestions**: Check which topics need updates based on the analysis
-3. **Update Documentation**:
-   - For affected topics: Use \`update_topic_page\` with new information
-   - For new topics: Use \`create_topic_page\` with commit context
-   - For decisions: Use \`create_decision\` if architectural choices were made
-4. **Link Commit**: The commit is already recorded via \`record_commit\`, ensure it links to updated topics
-
-## Benefits of This Analysis
-
-- **Automatic Documentation Triggers**: Identifies when docs need updates
-- **Context Preservation**: Links code changes to conceptual documentation
-- **Decision Tracking**: Connects implementation to architectural rationale
-- **Knowledge Graph**: Builds relationships between commits, topics, and decisions
-
-## Integration with Existing record_commit
-
-The \`record_commit\` tool already creates commit pages. This analysis enhances it by:
-- Providing human-readable summaries (beyond raw diffs)
-- Suggesting specific documentation actions
-- Identifying architectural implications
-- Linking to existing knowledge base`,
-          },
-        ],
-      };
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `Error analyzing commit impact: ${errorMessage}`,
-          },
-        ],
-      };
-    }
-  }
 
   private async findSessionFile(sessionId: string): Promise<string | null> {
     const primaryPath = this.getPrimaryVaultPath();

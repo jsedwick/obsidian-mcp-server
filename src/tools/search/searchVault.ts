@@ -1,0 +1,253 @@
+/**
+ * Tool: search_vault
+ *
+ * Description: Search the Obsidian vault for relevant notes and context. Returns ranked results with snippets.
+ * Use get_session_context to read full files.
+ */
+
+import * as fs from 'fs/promises';
+import * as path from 'path';
+import { ResponseDetail, parseDetailLevel } from '../../models/Search.js';
+
+export interface SearchVaultArgs {
+  query: string;
+  directories?: string[];
+  max_results?: number;
+  date_range?: { start?: string; end?: string };
+  snippets_only?: boolean;
+  detail?: string;
+}
+
+export interface SearchVaultResult {
+  content: Array<{ type: string; text: string }>;
+}
+
+export async function searchVault(
+  args: SearchVaultArgs,
+  context: {
+    vaultPath: string;
+    config: {
+      primaryVault: { path: string; name: string };
+      secondaryVaults: Array<{ path: string; name: string }>;
+    };
+    embeddingConfig: {
+      enabled: boolean;
+      keywordCandidatesLimit: number;
+    };
+    ensureVaultStructure: () => Promise<void>;
+    loadEmbeddingCache: () => Promise<void>;
+    saveEmbeddingCache: () => Promise<void>;
+    generateEmbedding: (text: string) => Promise<number[]>;
+    getOrCreateEmbedding: (file: string, content: string, fileStats: any) => Promise<number[]>;
+    cosineSimilarity: (vecA: number[], vecB: number[]) => number;
+    scoreSearchResult: (
+      dir: string,
+      relPath: string,
+      fileName: string,
+      content: string,
+      fileStats: any,
+      queryLower: string,
+      queryTerms: string[],
+      dateRange?: { start?: string; end?: string },
+      absolutePath?: string
+    ) => Promise<any>;
+    formatSearchResults: (
+      results: Array<{
+        file: string;
+        matches: string[];
+        date?: string;
+        score: number;
+        semanticScore?: number;
+        vault?: string;
+      }>,
+      totalCount: number,
+      detail: ResponseDetail,
+      hasSemanticSearch: boolean,
+      query: string
+    ) => { content: Array<{ type: string; text: string }> };
+    getAllVaults: () => Array<{ path: string; name: string }>;
+  }
+): Promise<SearchVaultResult> {
+  await context.ensureVaultStructure();
+  await context.loadEmbeddingCache(); // Load embedding cache at start of search
+
+  const searchDirs = args.directories || ['sessions', 'topics', 'decisions'];
+  const maxResults = args.max_results || 10;
+
+  // Determine detail level (backwards compatible)
+  let detailLevel: ResponseDetail;
+  if (args.detail) {
+    detailLevel = parseDetailLevel(args.detail);
+  } else if (args.snippets_only === false) {
+    detailLevel = ResponseDetail.FULL;
+  } else {
+    detailLevel = ResponseDetail.SUMMARY;
+  }
+
+  const results: {
+    file: string;
+    matches: string[];
+    date?: string;
+    score: number;
+    semanticScore?: number;
+    vault?: string;
+    content?: string; // Content for semantic re-ranking
+    fileStats?: any; // File stats for embedding cache
+  }[] = [];
+  const queryLower = args.query.toLowerCase();
+  const queryTerms = queryLower.split(/\s+/).filter(t => t.length > 2);
+
+  // Generate query embedding if enabled
+  let queryEmbedding: number[] | null = null;
+  if (context.embeddingConfig.enabled) {
+    try {
+      queryEmbedding = await context.generateEmbedding(args.query);
+    } catch (error) {
+      console.error('[Search] Failed to generate query embedding, falling back to keyword search:', error);
+    }
+  }
+
+  // Recursive function to search directories
+  const searchDirectory = async (dirPath: string, relativePath: string = '', vaultName: string) => {
+    try {
+      const entries = await fs.readdir(dirPath, { withFileTypes: true });
+
+      for (const entry of entries) {
+        const fullPath = path.join(dirPath, entry.name);
+        const relativeFilePath = relativePath ? path.join(relativePath, entry.name) : entry.name;
+
+        if (entry.isDirectory()) {
+          // Skip common ignored directories
+          if (['.git', 'node_modules', '.DS_Store', '.obsidian'].includes(entry.name)) {
+            continue;
+          }
+          // Handle month subdirectories for sessions (YYYY-MM format)
+          if (/^\d{4}-\d{2}$/.test(entry.name)) {
+            const monthFiles = await fs.readdir(fullPath);
+            for (const file of monthFiles) {
+              if (!file.endsWith('.md')) continue;
+              const filePath = path.join(fullPath, file);
+              const fileStats = await fs.stat(filePath);
+              const content = await fs.readFile(filePath, 'utf-8');
+
+              const searchResult = await context.scoreSearchResult(
+                'sessions',
+                path.join(relativeFilePath, file),
+                file,
+                content,
+                fileStats,
+                queryLower,
+                queryTerms,
+                args.date_range,
+                filePath // Pass absolute path for embedding cache key
+              );
+              if (searchResult) {
+                results.push({ ...searchResult, vault: vaultName });
+              }
+            }
+          } else {
+            // Recursively search subdirectories
+            await searchDirectory(fullPath, relativeFilePath, vaultName);
+          }
+        } else if (entry.isFile() && entry.name.endsWith('.md')) {
+          // Process markdown file
+          const fileStats = await fs.stat(fullPath);
+          const content = await fs.readFile(fullPath, 'utf-8');
+
+          // Determine category based on path
+          let category = 'document';
+          if (relativeFilePath.includes('sessions')) category = 'sessions';
+          else if (relativeFilePath.includes('topics')) category = 'topics';
+          else if (relativeFilePath.includes('decisions')) category = 'decisions';
+
+          const searchResult = await context.scoreSearchResult(
+            category,
+            relativeFilePath,
+            entry.name,
+            content,
+            fileStats,
+            queryLower,
+            queryTerms,
+            args.date_range,
+            fullPath // Pass absolute path for embedding cache key
+          );
+          if (searchResult) {
+            results.push({ ...searchResult, vault: vaultName });
+          }
+        }
+      }
+    } catch (error) {
+      // Directory doesn't exist or can't be accessed
+    }
+  };
+
+  // Search across all configured vaults
+  const vaults = context.getAllVaults();
+
+  for (const vault of vaults) {
+    // For primary vault, search only in standard directories
+    const isPrimaryVault = vault.path === context.config.primaryVault.path;
+
+    if (isPrimaryVault) {
+      for (const dir of searchDirs) {
+        const dirPath = path.join(vault.path, dir);
+        await searchDirectory(dirPath, dir, vault.name);
+      }
+    } else {
+      // For secondary vaults, search everything recursively
+      await searchDirectory(vault.path, '', vault.name);
+    }
+  }
+
+  // Save embedding cache after search
+  await context.saveEmbeddingCache();
+
+  // Phase 2: Semantic re-ranking (if embeddings enabled)
+  let topResults: typeof results;
+  if (queryEmbedding && context.embeddingConfig.enabled && results.length > 0) {
+    // Sort by keyword score and take top N candidates for re-ranking
+    results.sort((a, b) => b.score - a.score);
+    const candidates = results.slice(0, context.embeddingConfig.keywordCandidatesLimit);
+
+    // Compute semantic similarity for each candidate
+    for (const result of candidates) {
+      if (result.content && result.fileStats) {
+        try {
+          const docEmbedding = await context.getOrCreateEmbedding(result.file, result.content, result.fileStats);
+          const semanticScore = context.cosineSimilarity(queryEmbedding, docEmbedding);
+          result.semanticScore = semanticScore;
+          result.score = semanticScore; // Use semantic score as final ranking score
+        } catch (error) {
+          console.error(`[Search] Failed to compute semantic score for ${result.file}:`, error);
+          // Keep keyword score if semantic scoring fails
+        }
+      }
+      // Clean up temporary fields
+      delete result.content;
+      delete result.fileStats;
+    }
+
+    // Re-sort by semantic score and take top results
+    candidates.sort((a, b) => b.score - a.score);
+    topResults = candidates.slice(0, maxResults);
+  } else {
+    // No semantic re-ranking: just use keyword scores
+    results.sort((a, b) => b.score - a.score);
+    topResults = results.slice(0, maxResults);
+
+    // Clean up temporary fields
+    for (const result of topResults) {
+      delete result.content;
+      delete result.fileStats;
+    }
+  }
+
+  // Format and return results using tiered response levels
+  return context.formatSearchResults(
+    topResults,
+    results.length,
+    detailLevel,
+    queryEmbedding !== null,
+    args.query
+  );
+}
