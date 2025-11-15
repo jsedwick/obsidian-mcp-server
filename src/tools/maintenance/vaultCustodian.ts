@@ -358,11 +358,13 @@ function getReciprocalLinkInfo(_sourceFile: string, targetFile: string, vaultPat
     };
   } else if (targetType === 'decision') {
     // Source file should link to decision in "Related Decisions"
+    // Need to include the parent directory (vault/ or project-slug/)
+    const decisionDir = path.basename(path.dirname(targetFile));
     const decisionSlug = path.basename(targetFile, '.md');
     const decisionTitle = extractTitleFromFile(targetPath);
     return {
       section: '## Related Decisions',
-      link: `- [[decisions/${decisionSlug}|${decisionTitle}]]`,
+      link: `- [[decisions/${decisionDir}/${decisionSlug}|${decisionTitle}]]`,
     };
   } else if (targetType === 'project') {
     // Source file should link to project in "Related Projects"
