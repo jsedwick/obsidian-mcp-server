@@ -63,7 +63,7 @@ export async function migrateCommitBranches(
         if (repoPathMatch) {
           repoPath = repoPathMatch[1];
         }
-      } catch (error) {
+      } catch {
         errors.push(`Failed to read project file: ${projectFile}`);
         continue;
       }
@@ -113,7 +113,7 @@ export async function migrateCommitBranches(
                      branches.find(b => !b.startsWith('HEAD')) ||
                      branches[0] ||
                      'unknown';
-          } catch (error) {
+          } catch {
             // If branch detection fails, try to get current branch
             try {
               branch = await context.gitService.getCurrentBranch(repoPath);
