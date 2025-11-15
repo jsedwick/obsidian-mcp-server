@@ -17,3 +17,25 @@ export type {
   FileMetadata,
 } from './Search.js';
 export { ResponseDetail, parseDetailLevel } from './Search.js';
+
+export type {
+  RepoCandidate,
+  RepositoryInfo,
+  GitCommandResult,
+  GitBranchInfo,
+  GitRemoteInfo,
+  GitCommitInfo,
+  GitDiffStats,
+  RepositoryDetectionOptions,
+} from './Git.js';
+
+export type {
+  FileAccessAction,
+  FileAccess,
+  SessionStatus,
+  SessionMetadata,
+  SessionCloseOptions,
+  SessionCloseResult,
+  SessionContext,
+  SessionListEntry,
+} from './Session.js';
