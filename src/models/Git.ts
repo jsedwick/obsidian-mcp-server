@@ -22,7 +22,7 @@ export interface RepoCandidate {
   /** Current branch name */
   branch?: string;
   /** Remote URL (if available) */
-  remote?: string;
+  remote?: string | null;
 }
 
 /**

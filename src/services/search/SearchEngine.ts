@@ -18,8 +18,8 @@ import type {
   SearchOptions,
   SearchResults,
   InternalSearchMatch,
-  ResponseDetail,
 } from '../../models/Search.js';
+import { ResponseDetail } from '../../models/Search.js';
 
 const logger = createLogger('SearchEngine');
 
@@ -218,7 +218,7 @@ export class SearchEngine {
               const fileStats = await fs.stat(filePath);
               const content = await fs.readFile(filePath, 'utf-8');
 
-              const searchResult = await this.keywordSearch.scoreSearchResult(
+              const searchResult = this.keywordSearch.scoreSearchResult(
                 'sessions',
                 path.join(relativeFilePath, file),
                 file,
@@ -257,7 +257,7 @@ export class SearchEngine {
           else if (relativeFilePath.includes('topics')) category = 'topics';
           else if (relativeFilePath.includes('decisions')) category = 'decisions';
 
-          const searchResult = await this.keywordSearch.scoreSearchResult(
+          const searchResult = this.keywordSearch.scoreSearchResult(
             category,
             relativeFilePath,
             entry.name,

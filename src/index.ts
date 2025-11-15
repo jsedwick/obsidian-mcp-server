@@ -9,7 +9,6 @@ import {
 import fs from 'fs/promises';
 import fssync from 'fs';
 import path from 'path';
-import { fileURLToPath } from 'url';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import { pipeline } from '@xenova/transformers';
@@ -22,9 +21,6 @@ import {
 } from './templates.js';
 
 const execAsync = promisify(exec);
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 // Configuration types
 interface VaultConfig {
@@ -89,37 +85,6 @@ function loadConfig(): ServerConfig {
 
 const CONFIG = loadConfig();
 const VAULT_PATH = CONFIG.primaryVault.path; // Keep for backward compatibility
-
-interface SessionMetadata {
-  date: string;
-  session_id: string;
-  topics: string[];
-  decisions: string[];
-  status: 'ongoing' | 'completed';
-  repository?: {
-    path: string;
-    name: string;
-    commits: string[];
-  };
-  files_accessed?: Array<{
-    path: string;
-    action: 'read' | 'edit' | 'create';
-    timestamp: string;
-  }>;
-}
-
-interface TopicMetadata {
-  title: string;
-  created: string;
-  last_reviewed?: string;
-  review_count?: number;
-  tags: string[];
-  review_history?: Array<{
-    date: string;
-    action: 'created' | 'updated' | 'reviewed' | 'archived';
-    notes: string;
-  }>;
-}
 
 interface ReviewAnalysis {
   is_outdated: boolean;
@@ -1584,7 +1549,7 @@ Check the sessions/ directory for recent conversations.
       case ResponseDetail.FULL:
         // Complete matches - no truncation (backwards compatible)
         resultText += `Found ${totalCount} matches. Showing ${results.length} complete results:\n\n`;
-        results.forEach((r, idx) => {
+        results.forEach(r => {
           resultText += `**${r.file}** ${r.date ? `(${r.date})` : ''}:\n`;
           if (r.matches.length > 0) {
             resultText += r.matches.map(m => `  - ${this.cleanObsidianMarkdown(m.trim())}`).join('\n') + '\n';
@@ -1769,8 +1734,7 @@ Check the sessions/ directory for recent conversations.
    * Find projects related to a topic by searching for repo URLs and semantic matches
    */
   private async findRelatedProjects(
-    topicContent: string,
-    topicTitle: string
+    topicContent: string
   ): Promise<Array<{ link: string; name: string }>> {
     const relatedProjects: Array<{ link: string; name: string }> = [];
     const projectsDir = path.join(VAULT_PATH, 'projects');
@@ -1912,7 +1876,7 @@ Check the sessions/ directory for recent conversations.
     this.topicsCreated.push({ slug, title: args.topic, file: topicFile });
 
     // Proactively search for related projects based on topic content
-    const relatedProjects = await this.findRelatedProjects(args.content, args.topic);
+    const relatedProjects = await this.findRelatedProjects(args.content);
 
     // Add related projects to topic page if found
     if (relatedProjects.length > 0) {
@@ -2235,8 +2199,7 @@ To proceed anyway, call create_decision again with force: true.`,
    * Find topics, decisions, and projects mentioned in text content
    */
   private async findRelatedContentInText(
-    text: string,
-    excludeSessionId?: string
+    text: string
   ): Promise<{
     topics: Array<{ link: string; title: string }>;
     decisions: Array<{ link: string; title: string }>;
@@ -2445,7 +2408,7 @@ To proceed anyway, call create_decision again with force: true.`,
     const decisionsList = this.decisionsCreated.map(d => d.title);
 
     // Proactively search for related existing content mentioned in the summary
-    const relatedContent = await this.findRelatedContentInText(args.summary, sessionId);
+    const relatedContent = await this.findRelatedContentInText(args.summary);
 
     // Build session content using template
     const sessionContent = generateSessionTemplate({
@@ -2689,21 +2652,6 @@ To proceed anyway, call create_decision again with force: true.`,
     // Extract main content (without frontmatter)
     const mainContent = content.substring(frontmatterMatch[0].length).trim();
 
-    // Generate review analysis
-    const defaultPrompt = `Analyze this topic for outdated or inaccurate information. Consider:
-1. Are there any deprecated technologies or approaches mentioned?
-2. Is the information still current and accurate?
-3. Are there any missing important updates or developments?
-4. What specific changes would improve accuracy?
-
-Provide a structured analysis with:
-- is_outdated: true/false
-- concerns: list of specific issues
-- suggested_updates: concrete suggestions for improvements
-- confidence: high/medium/low`;
-
-    const analysisPrompt = args.analysis_prompt || defaultPrompt;
-
     // For now, we'll create a placeholder analysis since we don't have AI integration
     // In a real implementation, this would call an LLM API
     const analysis: ReviewAnalysis = {
@@ -2771,9 +2719,6 @@ Provide a structured analysis with:
     try {
       switch (args.action) {
         case 'update': {
-          // Update content
-          const contentToWrite = args.modified_content || pendingReview.analysis.suggested_updates;
-
           // Parse existing frontmatter
           const frontmatterMatch = current_content.match(/^---\n([\s\S]*?)\n---/);
           if (!frontmatterMatch) throw new Error('Invalid frontmatter');
@@ -4510,15 +4455,13 @@ Provide a structured analysis with:
   /**
    * Determine reciprocal link format and section based on file types
    */
-  private getReciprocalLinkInfo(sourceFile: string, targetFile: string): {
+  private getReciprocalLinkInfo(_sourceFile: string, targetFile: string): {
     section: string;
     link: string;
   } | null {
-    const sourcePath = path.relative(VAULT_PATH, sourceFile);
     const targetPath = path.relative(VAULT_PATH, targetFile);
 
-    // Determine source type
-    const sourceType = this.getFileType(sourceFile);
+    // Determine target type
     const targetType = this.getFileType(targetFile);
 
     // Determine appropriate section and link format
@@ -4723,7 +4666,6 @@ Provide a structured analysis with:
 
     // Check if Related sections are already at the bottom in correct order
     const sectionIndices = Array.from(sections.values()).map(s => s.startIndex).sort((a, b) => a - b);
-    const lastNonRelatedIndex = lines.length - 1;
 
     // Find the index of the last non-Related, non-empty line
     let lastContentIndex = lines.length - 1;
@@ -4858,10 +4800,6 @@ Provide a structured analysis with:
     for (const [header, data] of headerSections.entries()) {
       if (data.indices.length > 1) {
         // Keep the first occurrence, remove others
-        // But first merge unique content
-        const uniqueContent = new Set(data.content);
-        const firstIndex = data.indices[0];
-
         // Mark duplicate headers for removal
         for (let i = 1; i < data.indices.length; i++) {
           const dupIndex = data.indices[i];
@@ -4920,8 +4858,6 @@ Provide a structured analysis with:
         }
 
         // Check if session file is in date-organized subdirectory
-        const relativePath = path.relative(sessionsDir, file);
-        const dateMatch = relativePath.match(/^(\d{4})-(\d{2})\//);
         const filenameDate = path.basename(file).match(/^(\d{4})-(\d{2})-(\d{2})/);
 
         if (filenameDate) {
@@ -5032,7 +4968,6 @@ ${content}`;
         let content = await fs.readFile(file, 'utf-8');
         const linkRegex = /\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g;
         let match;
-        let fileModified = false;
         const linksToFix: Array<{ original: string; corrected: string; fullMatch: string }> = [];
 
         // First pass: collect all broken links
@@ -5118,7 +5053,6 @@ ${content}`;
             const linkPattern = new RegExp(`\\[\\[${escapedOriginal}(?:\\|[^\\]]+)?\\]\\]`, 'g');
             content = content.replace(linkPattern, `[[${link.corrected}]]`);
             fixes.push(`Fixed link in ${path.relative(VAULT_PATH, file)}: [[${link.original}]] → [[${link.corrected}]]`);
-            fileModified = true;
           }
 
           // Write the updated content back to the file

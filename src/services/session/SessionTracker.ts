@@ -155,7 +155,7 @@ export class SessionTracker {
       },
     };
 
-    logger.debug('Generated file access stats', stats);
+    logger.debug('Generated file access stats', stats as unknown as Record<string, unknown>);
 
     return stats;
   }

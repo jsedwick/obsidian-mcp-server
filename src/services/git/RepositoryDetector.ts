@@ -243,7 +243,7 @@ export class RepositoryDetector {
 
     // Get repository metadata if requested
     let branch: string | undefined;
-    let remote: string | undefined;
+    let remote: string | null | undefined;
     let name: string;
 
     if (includeMetadata) {

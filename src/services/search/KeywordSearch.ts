@@ -41,7 +41,7 @@ export class KeywordSearch {
     queryTerms: string[],
     dateRange?: DateRange,
     absolutePath?: string
-  ): Promise<InternalSearchMatch | null> {
+  ): InternalSearchMatch | null {
     const contentLower = content.toLowerCase();
     let keywordScore = 0;
     let hasMatch = false;
