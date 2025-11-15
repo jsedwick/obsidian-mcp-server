@@ -519,11 +519,11 @@ class ObsidianMCPServer {
       // Convert to array if needed
       let embedding: number[];
       if (result.data) {
-        embedding = Array.from(result.data as any) as number[];
+        embedding = Array.from(result.data);
       } else if (Array.isArray(result)) {
-        embedding = (result as unknown[])[0] ? Array.from((result as unknown[])[0] as any) as number[] : Array.from(result as any) as number[];
+        embedding = (result as unknown[])[0] ? Array.from((result as unknown[])[0] as any) : Array.from(result as any);
       } else {
-        embedding = Array.from(result as any) as number[];
+        embedding = Array.from(result);
       }
       return embedding;
     } catch (error) {

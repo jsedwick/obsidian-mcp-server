@@ -59,7 +59,7 @@ export async function migrateCommitBranches(
 
       try {
         const projectContent = await fs.readFile(projectFile, 'utf-8');
-        const repoPathMatch = projectContent.match(/^  path: (.+)$/m);
+        const repoPathMatch = projectContent.match(/^ {2}path: (.+)$/m);
         if (repoPathMatch) {
           repoPath = repoPathMatch[1];
         }
