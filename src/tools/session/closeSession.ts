@@ -7,9 +7,86 @@
 
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import { exec } from 'child_process';
+import { promisify } from 'util';
 import { generateSessionTemplate } from '../../templates.js';
 import type { FileAccess } from '../../models/Session.js';
 import type { RepoCandidate } from '../../models/Git.js';
+
+const execAsync = promisify(exec);
+
+/**
+ * Find commits on the current branch that haven't been recorded in the vault yet
+ * Applies three filters:
+ * 1. Time-based: Only commits after the most recent session date for the repo
+ * 2. Branch-based: Only commits on current branch but not on parent branch (main)
+ * 3. Unrecorded: Only commits that don't already exist in vault
+ */
+async function findUnrecordedCommits(
+  repoPath: string,
+  repoSlug: string,
+  vaultPath: string,
+  getMostRecentSessionDate: (repoSlug: string) => Promise<Date | null>
+): Promise<string[]> {
+  try {
+    // Get the current branch
+    const { stdout: currentBranchOutput } = await execAsync('git rev-parse --abbrev-ref HEAD', { cwd: repoPath });
+    const currentBranch = currentBranchOutput.trim();
+
+    // Don't process main/master branch (commits there are historical)
+    if (currentBranch === 'main' || currentBranch === 'master') {
+      return [];
+    }
+
+    // Get most recent session date for this repo
+    const lastSessionDate = await getMostRecentSessionDate(repoSlug);
+    const sinceDate = lastSessionDate ? lastSessionDate.toISOString().split('T')[0] : null;
+
+    // Get commits on current branch but not on main
+    let commitCommand = `git log main..HEAD --format=%H --date=short --no-merges`;
+    if (sinceDate) {
+      commitCommand += ` --since="${sinceDate}"`;
+    }
+
+    const { stdout: commitsOutput } = await execAsync(commitCommand, { cwd: repoPath });
+    const commitHashes = commitsOutput
+      .trim()
+      .split('\n')
+      .filter((hash: string) => hash.length > 0);
+
+    if (commitHashes.length === 0) {
+      return [];
+    }
+
+    // Filter out commits that are already recorded in vault
+    const recordedCommits = new Set<string>();
+    const commitsDir = path.join(vaultPath, 'projects', repoSlug, 'commits');
+
+    try {
+      const files = await fs.readdir(commitsDir);
+      for (const file of files) {
+        if (file.endsWith('.md')) {
+          // Filename is the short hash
+          const shortHash = file.replace('.md', '');
+          recordedCommits.add(shortHash);
+        }
+      }
+    } catch {
+      // commits directory doesn't exist yet, that's fine
+    }
+
+    // Filter to only unrecorded commits
+    const unrecordedCommits = commitHashes.filter(hash => {
+      const shortHash = hash.substring(0, 7);
+      return !recordedCommits.has(shortHash);
+    });
+
+    return unrecordedCommits;
+  } catch (_error) {
+    // If anything fails, just return empty array - this is non-critical
+    return [];
+  }
+}
 
 export interface CloseSessionArgs {
   summary: string;
@@ -41,9 +118,11 @@ interface CloseSessionContext {
     projects: Array<{ link: string; name: string }>;
   }>;
   vaultCustodian: (args: { files_to_check: string[] }) => Promise<any>;
+  recordCommit: (args: { repo_path: string; commit_hash: string }) => Promise<any>;
   slugify: (text: string) => string;
   setCurrentSession: (sessionId: string, sessionFile: string) => void;
   clearSessionState: () => void;
+  getMostRecentSessionDate: (repoSlug: string) => Promise<Date | null>;
 }
 
 export async function closeSession(
@@ -147,6 +226,29 @@ export async function closeSession(
               remote: topCandidate.remote ?? undefined,
             };
             await context.createProjectPage({ repo_path: topCandidate.path });
+
+            // Auto-detect and record unrecorded commits on the current branch
+            const repoSlug = context.slugify(topCandidate.name);
+            const unrecordedCommits = await findUnrecordedCommits(
+              topCandidate.path,
+              repoSlug,
+              context.vaultPath,
+              context.getMostRecentSessionDate
+            );
+
+            if (unrecordedCommits.length > 0) {
+              for (const commitHash of unrecordedCommits) {
+                try {
+                  await context.recordCommit({
+                    repo_path: topCandidate.path,
+                    commit_hash: commitHash,
+                  });
+                } catch (_error) {
+                  // Log but don't fail - continue with next commit
+                  console.error(`Failed to record commit ${commitHash}: ${_error instanceof Error ? _error.message : String(_error)}`);
+                }
+              }
+            }
           } catch (error) {
             // If project creation fails, continue anyway
           }
@@ -201,7 +303,22 @@ export async function closeSession(
     if (context.topicsCreated.length > 0) {
       repoDetectionMessage += `   ✅ ${context.topicsCreated.length} topic(s) linked to project\n`;
     }
-    repoDetectionMessage += `\n💡 Next step: Create and record your git commit`;
+
+    // Try to get unrecorded commits count for final message
+    try {
+      const repoSlug = context.slugify(detectedRepoInfo.name);
+      const unrecordedCommits = await findUnrecordedCommits(
+        detectedRepoInfo.path,
+        repoSlug,
+        context.vaultPath,
+        context.getMostRecentSessionDate
+      );
+      if (unrecordedCommits.length > 0) {
+        repoDetectionMessage += `   ✅ ${unrecordedCommits.length} commit(s) auto-recorded\n`;
+      }
+    } catch {
+      // Silently fail - this is just for the message
+    }
   }
 
   // Build summary message

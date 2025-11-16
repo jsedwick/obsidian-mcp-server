@@ -306,9 +306,11 @@ class ObsidianMCPServer {
               createProjectPage: this.createProjectPageWrapper.bind(this),
               findRelatedContentInText: this.findRelatedContentInText.bind(this),
               vaultCustodian: this.vaultCustodianWrapper.bind(this),
+              recordCommit: this.recordCommitWrapper.bind(this),
               slugify: this.slugify.bind(this),
               setCurrentSession: this.setCurrentSession.bind(this),
               clearSessionState: this.clearSessionState.bind(this),
+              getMostRecentSessionDate: this.getMostRecentSessionDate.bind(this),
             });
 
           case 'find_stale_topics':
@@ -1325,6 +1327,72 @@ Check the sessions/ directory for recent conversations.
       formatSearchResults: this.formatSearchResults.bind(this),
       getAllVaults: this.getAllVaults.bind(this),
     });
+  }
+
+  private async recordCommitWrapper(args: { repo_path: string; commit_hash: string }): Promise<any> {
+    return tools.recordCommit(args as unknown as tools.RecordCommitArgs, {
+      vaultPath: this.config.primaryVault.path,
+      gitService: this.gitService,
+      currentSessionId: this.currentSessionId,
+      currentSessionFile: this.currentSessionFile,
+      vaultCustodian: this.vaultCustodianWrapper.bind(this),
+    });
+  }
+
+  private async getMostRecentSessionDate(repoSlug: string): Promise<Date | null> {
+    try {
+      const projectPath = path.join(this.config.primaryVault.path, 'projects', repoSlug);
+      const projectFile = path.join(projectPath, 'project.md');
+
+      // Check if project file exists
+      try {
+        await fs.access(projectFile);
+      } catch (_error) {
+        return null;
+      }
+
+      // Read the project file to find linked sessions
+      const content = await fs.readFile(projectFile, 'utf-8');
+      const sessionLinks = content.match(/\[\[2025-\d{2}_\d{2}-\d{2}-\d{2}[^\]]*\]\]/g) || [];
+
+      if (sessionLinks.length === 0) {
+        return null;
+      }
+
+      // Extract the most recent date from session links
+      // Format: [[2025-11-15_12-01-39_session-name]]
+      let mostRecentDate: Date | null = null;
+
+      for (const link of sessionLinks) {
+        // Extract session ID from [[...]]
+        const sessionMatch = link.match(/\[\[(2025-\d{2}_\d{2}-\d{2}-\d{2})/);
+        if (sessionMatch) {
+          const sessionPart = sessionMatch[1];
+          // Parse date and time: 2025-11-15_12-01-39
+          const [datePart, timePart] = sessionPart.split('_');
+          const [year, month, day] = datePart.split('-');
+          const [hours, minutes, seconds] = timePart.split('-');
+
+          const date = new Date(
+            parseInt(year),
+            parseInt(month) - 1,
+            parseInt(day),
+            parseInt(hours),
+            parseInt(minutes),
+            parseInt(seconds)
+          );
+
+          if (!mostRecentDate || date > mostRecentDate) {
+            mostRecentDate = date;
+          }
+        }
+      }
+
+      return mostRecentDate;
+    } catch (_error) {
+      // If anything fails, return null - not critical
+      return null;
+    }
   }
 
   private setCurrentSession(sessionId: string, sessionFile: string): void {
