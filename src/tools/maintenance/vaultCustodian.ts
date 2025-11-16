@@ -32,13 +32,13 @@ async function findMarkdownFiles(dir: string): Promise<string[]> {
       if (entry.isDirectory()) {
         // Skip hidden directories and cache directories
         if (!entry.name.startsWith('.')) {
-          files.push(...await findMarkdownFiles(fullPath));
+          files.push(...(await findMarkdownFiles(fullPath)));
         }
       } else if (entry.isFile() && entry.name.endsWith('.md')) {
         files.push(fullPath);
       }
     }
-  } catch (error) {
+  } catch (_e) {
     // Directory doesn't exist or can't be read
   }
 
@@ -69,10 +69,10 @@ function shouldSkipLinkValidation(linkPath: string, content: string, matchIndex:
     'file',
     'path/to/note',
     'topic-slug',
-    'sessions/null',  // Common in project files when session_id is null
+    'sessions/null', // Common in project files when session_id is null
     'session-id',
     'sessions/session-id',
-    '2025-11-06_...',  // Truncated session IDs in examples
+    '2025-11-06_...', // Truncated session IDs in examples
     'xxx',
     'example',
     'placeholder',
@@ -98,7 +98,12 @@ function shouldSkipLinkValidation(linkPath: string, content: string, matchIndex:
   }
 
   // Skip links that look like bash conditions (contain operators)
-  if (linkPath.includes('==') || linkPath.includes('!=') || linkPath.includes('||') || linkPath.includes('&&')) {
+  if (
+    linkPath.includes('==') ||
+    linkPath.includes('!=') ||
+    linkPath.includes('||') ||
+    linkPath.includes('&&')
+  ) {
     return true;
   }
 
@@ -167,9 +172,7 @@ async function findCorrectLinkPath(linkPath: string, vaultPath: string): Promise
     try {
       const decisionsDir = path.join(vaultPath, 'decisions');
       const decisionFiles = await fs.readdir(decisionsDir);
-      const match = decisionFiles.find(f =>
-        f.startsWith(filename) && f.endsWith('.md')
-      );
+      const match = decisionFiles.find(f => f.startsWith(filename) && f.endsWith('.md'));
       if (match) {
         return match.replace(/\.md$/, '');
       }
@@ -282,10 +285,7 @@ async function resolveWikiLink(
   // If context file is provided, also try relative to that file
   if (contextFile) {
     const contextDir = path.dirname(contextFile);
-    possiblePaths.push(
-      path.join(contextDir, `${linkWithoutExt}.md`),
-      path.join(contextDir, link)
-    );
+    possiblePaths.push(path.join(contextDir, `${linkWithoutExt}.md`), path.join(contextDir, link));
   }
 
   for (const p of possiblePaths) {
@@ -303,7 +303,10 @@ async function resolveWikiLink(
 /**
  * Get file type based on path
  */
-function getFileType(filePath: string, vaultPath: string): 'session' | 'topic' | 'decision' | 'project' | 'unknown' {
+function getFileType(
+  filePath: string,
+  vaultPath: string
+): 'session' | 'topic' | 'decision' | 'project' | 'unknown' {
   const relativePath = path.relative(vaultPath, filePath);
 
   if (relativePath.startsWith('sessions/')) return 'session';
@@ -330,7 +333,11 @@ function extractTitleFromFile(relativePath: string): string {
 /**
  * Determine reciprocal link format and section based on file types
  */
-function getReciprocalLinkInfo(_sourceFile: string, targetFile: string, vaultPath: string): {
+function getReciprocalLinkInfo(
+  _sourceFile: string,
+  targetFile: string,
+  vaultPath: string
+): {
   section: string;
   link: string;
 } | null {
@@ -398,14 +405,14 @@ async function addReciprocalLink(
   }
 
   // Check if section exists
-  const sectionRegex = new RegExp(`^${linkInfo.section.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'm');
+  const sectionRegex = new RegExp(
+    `^${linkInfo.section.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`,
+    'm'
+  );
 
   if (sectionRegex.test(content)) {
     // Section exists, add link after it
-    content = content.replace(
-      sectionRegex,
-      `${linkInfo.section}\n${linkInfo.link}`
-    );
+    content = content.replace(sectionRegex, `${linkInfo.section}\n${linkInfo.link}`);
   } else {
     // Section doesn't exist, add it at the end
     if (!content.endsWith('\n')) content += '\n';
@@ -451,8 +458,9 @@ async function validateReciprocalLinks(
 
         // Check if reciprocal link exists
         const sourceFileName = path.basename(file, '.md');
-        const hasReciprocalLink = linkedContent.includes(sourceFileName) ||
-                                 linkedContent.includes(path.relative(vaultPath, file));
+        const hasReciprocalLink =
+          linkedContent.includes(sourceFileName) ||
+          linkedContent.includes(path.relative(vaultPath, file));
 
         if (!hasReciprocalLink) {
           // Add reciprocal link
@@ -487,11 +495,11 @@ async function moveRelatedSectionsToBottom(file: string): Promise<string[]> {
     '## Related Topics',
     '## Related Sessions',
     '## Related Projects',
-    '## Related Decisions'
+    '## Related Decisions',
   ];
 
   // Find all Related sections and their content
-  const sections = new Map<string, { startIndex: number, endIndex: number, content: string[] }>();
+  const sections = new Map<string, { startIndex: number; endIndex: number; content: string[] }>();
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].trim();
@@ -510,7 +518,7 @@ async function moveRelatedSectionsToBottom(file: string): Promise<string[]> {
       sections.set(line, {
         startIndex,
         endIndex: j - 1,
-        content: sectionContent
+        content: sectionContent,
       });
     }
   }
@@ -520,7 +528,9 @@ async function moveRelatedSectionsToBottom(file: string): Promise<string[]> {
   }
 
   // Check if Related sections are already at the bottom in correct order
-  const sectionIndices = Array.from(sections.values()).map(s => s.startIndex).sort((a, b) => a - b);
+  const sectionIndices = Array.from(sections.values())
+    .map(s => s.startIndex)
+    .sort((a, b) => a - b);
 
   // Find the index of the last non-Related, non-empty line
   let lastContentIndex = lines.length - 1;
@@ -595,6 +605,93 @@ async function moveRelatedSectionsToBottom(file: string): Promise<string[]> {
 }
 
 /**
+ * Remove aspirational wiki links (links to non-existent content)
+ * Converts broken links to plain text while preserving the content
+ */
+async function removeAspirationalLinks(
+  file: string,
+  vaultPath: string,
+  findSessionFile: (filename: string) => Promise<string | null>
+): Promise<string[]> {
+  const fixes: string[] = [];
+  let content = await fs.readFile(file, 'utf-8');
+  const originalContent = content;
+
+  // Find all wiki links in the content
+  const linkRegex = /\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g;
+  let match;
+  const linksToConvert: Array<{ original: string; linkPath: string; display: string }> = [];
+
+  while ((match = linkRegex.exec(content)) !== null) {
+    const linkPath = match[1];
+    const display = match[2] || linkPath;
+    const fullMatch = match[0];
+
+    // Skip template variables and bash conditionals (same filters as link validation)
+    if (linkPath.includes('${') || linkPath.startsWith('"') || linkPath.startsWith('$')) {
+      continue;
+    }
+
+    // Skip common placeholders
+    const placeholderPatterns = [
+      'topic-name',
+      'note-name',
+      'other-topic',
+      'another-topic',
+      'file',
+      'path/to/note',
+      'topic-slug',
+      'session-id',
+      'sessions/session-id',
+      'xxx',
+      'example',
+      'placeholder',
+    ];
+    if (placeholderPatterns.includes(linkPath)) {
+      continue;
+    }
+
+    // Skip links that look like bash conditions
+    if (
+      linkPath.includes('==') ||
+      linkPath.includes('!=') ||
+      linkPath.includes('||') ||
+      linkPath.includes('&&')
+    ) {
+      continue;
+    }
+
+    // Try to resolve the link
+    const resolved = await resolveWikiLink(linkPath, vaultPath, file, findSessionFile);
+
+    // If link cannot be resolved, it's aspirational
+    if (!resolved) {
+      linksToConvert.push({
+        original: fullMatch,
+        linkPath,
+        display,
+      });
+    }
+  }
+
+  // Convert aspirational links to plain text
+  for (const link of linksToConvert) {
+    // Replace the wiki link with plain text display
+    // If there was custom display text, use it; otherwise use the link path
+    const plainText = link.display;
+    content = content.replace(link.original, plainText);
+    fixes.push(`Removed aspirational link: ${link.original} → ${plainText}`);
+  }
+
+  // Write the updated content if changes were made
+  if (content !== originalContent) {
+    await fs.writeFile(file, content);
+  }
+
+  return fixes;
+}
+
+/**
  * Deduplicate headers in a file, especially Related sections
  */
 async function deduplicateHeaders(file: string): Promise<string[]> {
@@ -603,12 +700,12 @@ async function deduplicateHeaders(file: string): Promise<string[]> {
   const lines = content.split('\n');
 
   // Track seen headers and their content
-  const headerSections = new Map<string, { indices: number[], content: string[] }>();
+  const headerSections = new Map<string, { indices: number[]; content: string[] }>();
   const relatedHeaders = [
     '## Related Sessions',
     '## Related Projects',
     '## Related Topics',
-    '## Related Decisions'
+    '## Related Decisions',
   ];
 
   // First pass: identify all headers and their positions
@@ -626,7 +723,8 @@ async function deduplicateHeaders(file: string): Promise<string[]> {
       const sectionContent: string[] = [];
       let j = i + 1;
       while (j < lines.length && !lines[j].trim().startsWith('#')) {
-        if (lines[j].trim()) { // Only collect non-empty lines
+        if (lines[j].trim()) {
+          // Only collect non-empty lines
           sectionContent.push(lines[j].trim());
         }
         j++;
@@ -644,7 +742,7 @@ async function deduplicateHeaders(file: string): Promise<string[]> {
     const currentLine = lines[i].trim();
     const nextLine = lines[i + 1].trim();
 
-    if (currentLine.startsWith('#') && currentLine === nextLine) {
+    if (currentLine.startsWith('#') && currentLine.toLowerCase() === nextLine.toLowerCase()) {
       linesToRemove.add(i + 1);
       fixes.push(`Removed consecutive duplicate header at line ${i + 2}: ${currentLine}`);
       modified = true;
@@ -733,7 +831,9 @@ export async function vaultCustodian(
           await fs.mkdir(expectedDir, { recursive: true });
           const newPath = path.join(expectedDir, path.basename(file));
           await fs.rename(file, newPath);
-          fixes.push(`Moved ${path.relative(context.vaultPath, file)} to ${path.relative(context.vaultPath, newPath)}`);
+          fixes.push(
+            `Moved ${path.relative(context.vaultPath, file)} to ${path.relative(context.vaultPath, newPath)}`
+          );
         }
       }
     }
@@ -808,17 +908,17 @@ ${content}`;
           // No commits directory is fine
         }
       }
-    } catch (error) {
+    } catch (_e) {
       // No projects directory is fine
     }
 
     // Check 4: Validate and fix internal links
     const decisionsDir = path.join(context.vaultPath, 'decisions');
     let allFiles = [
-      ...await findMarkdownFiles(sessionsDir),
-      ...await findMarkdownFiles(topicsDir),
-      ...await findMarkdownFiles(decisionsDir),
-      ...await findMarkdownFiles(projectsDir),
+      ...(await findMarkdownFiles(sessionsDir)),
+      ...(await findMarkdownFiles(topicsDir)),
+      ...(await findMarkdownFiles(decisionsDir)),
+      ...(await findMarkdownFiles(projectsDir)),
     ];
 
     // Filter to only check specified files if provided
@@ -866,7 +966,9 @@ ${content}`;
             });
           } else {
             // File doesn't exist even after stripping prefix - it's truly broken
-            warnings.push(`Broken link in ${path.relative(context.vaultPath, file)}: [[${linkPath}]] (file not found even after stripping prefix)`);
+            warnings.push(
+              `Broken link in ${path.relative(context.vaultPath, file)}: [[${linkPath}]] (file not found even after stripping prefix)`
+            );
           }
           continue; // Skip to next link
         }
@@ -901,7 +1003,9 @@ ${content}`;
               fullMatch: fullMatch,
             });
           } else {
-            warnings.push(`Broken link in ${path.relative(context.vaultPath, file)}: [[${linkPath}]]`);
+            warnings.push(
+              `Broken link in ${path.relative(context.vaultPath, file)}: [[${linkPath}]]`
+            );
           }
         }
       }
@@ -914,7 +1018,9 @@ ${content}`;
           const escapedOriginal = link.original.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
           const linkPattern = new RegExp(`\\[\\[${escapedOriginal}(?:\\|[^\\]]+)?\\]\\]`, 'g');
           content = content.replace(linkPattern, `[[${link.corrected}]]`);
-          fixes.push(`Fixed link in ${path.relative(context.vaultPath, file)}: [[${link.original}]] → [[${link.corrected}]]`);
+          fixes.push(
+            `Fixed link in ${path.relative(context.vaultPath, file)}: [[${link.original}]] → [[${link.corrected}]]`
+          );
         }
 
         // Write the updated content back to the file
@@ -923,10 +1029,33 @@ ${content}`;
     }
 
     // Check 5: Validate reciprocal links
-    const reciprocalFixes = await validateReciprocalLinks(allFiles, context.vaultPath, context.findSessionFile);
+    const reciprocalFixes = await validateReciprocalLinks(
+      allFiles,
+      context.vaultPath,
+      context.findSessionFile
+    );
     fixes.push(...reciprocalFixes);
 
-    // Check 6: Deduplicate headers
+    // Check 6: Remove aspirational links (links to non-existent content)
+    for (const file of allFiles) {
+      try {
+        const aspirationalFixes = await removeAspirationalLinks(
+          file,
+          context.vaultPath,
+          context.findSessionFile
+        );
+        if (aspirationalFixes.length > 0) {
+          const relativeFile = path.relative(context.vaultPath, file);
+          for (const fix of aspirationalFixes) {
+            fixes.push(`${relativeFile}: ${fix}`);
+          }
+        }
+      } catch (error) {
+        console.error(`Error removing aspirational links in ${file}:`, error);
+      }
+    }
+
+    // Check 7: Deduplicate headers
     for (const file of allFiles) {
       try {
         const headerFixes = await deduplicateHeaders(file);
@@ -941,7 +1070,7 @@ ${content}`;
       }
     }
 
-    // Check 7: Move Related sections to bottom
+    // Check 8: Move Related sections to bottom
     for (const file of allFiles) {
       try {
         const relatedFixes = await moveRelatedSectionsToBottom(file);
@@ -1000,7 +1129,6 @@ ${content}`;
         },
       ],
     };
-
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     return {
