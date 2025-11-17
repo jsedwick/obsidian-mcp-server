@@ -18,10 +18,10 @@
  * Filename: YYYY-MM-DD_HH-mm-ss[_topic-slug].md
  */
 export interface SessionFrontmatter {
-  date: string;              // ISO 8601 date (YYYY-MM-DD)
-  session_id: string;        // Unique session identifier
-  topics: string[];          // List of topic titles covered
-  decisions: string[];       // List of decision titles made
+  date: string; // ISO 8601 date (YYYY-MM-DD)
+  session_id: string; // Unique session identifier
+  topics: string[]; // List of topic titles covered
+  decisions: string[]; // List of decision titles made
   status: 'ongoing' | 'completed';
 }
 
@@ -31,11 +31,11 @@ export interface SessionFrontmatter {
  * Filename: {slugified-topic-name}.md
  */
 export interface TopicFrontmatter {
-  title: string;             // Human-readable topic name
-  created: string;           // ISO 8601 date
-  last_reviewed: string;     // ISO 8601 date
-  review_count: number;      // Number of times reviewed
-  tags: string[];            // Categorization tags
+  title: string; // Human-readable topic name
+  created: string; // ISO 8601 date
+  last_reviewed: string; // ISO 8601 date
+  review_count: number; // Number of times reviewed
+  tags: string[]; // Categorization tags
   review_history: Array<{
     date: string;
     action: string;
@@ -49,9 +49,9 @@ export interface TopicFrontmatter {
  * Filename: {NNN}-{decision-slug}.md
  */
 export interface DecisionFrontmatter {
-  number: string;            // Zero-padded decision number (e.g., "008")
-  title: string;             // Decision title
-  date: string;              // ISO 8601 date
+  number: string; // Zero-padded decision number (e.g., "008")
+  title: string; // Decision title
+  date: string; // ISO 8601 date
   status: 'accepted' | 'rejected' | 'superseded' | 'deprecated';
 }
 
@@ -61,14 +61,14 @@ export interface DecisionFrontmatter {
  * Filename: project.md
  */
 export interface ProjectFrontmatter {
-  project_name: string;      // Project name
-  repo_path: string;         // Absolute path to repository
-  repo_url: string;          // Remote URL (or "N/A")
-  created: string;           // ISO 8601 date
+  project_name: string; // Project name
+  repo_path: string; // Absolute path to repository
+  repo_url: string; // Remote URL (or "N/A")
+  created: string; // ISO 8601 date
   last_commit_tracked: string; // ISO 8601 date
-  total_sessions: number;    // Count of related sessions
+  total_sessions: number; // Count of related sessions
   total_commits_tracked: number; // Count of tracked commits
-  tags: string[];            // Always ["project"]
+  tags: string[]; // Always ["project"]
 }
 
 /**
@@ -77,18 +77,36 @@ export interface ProjectFrontmatter {
  * Filename: {short-hash}.md
  */
 export interface CommitFrontmatter {
-  commit_hash: string;       // Full SHA hash
-  short_hash: string;        // Abbreviated hash
-  author: string;            // "Name <email>"
-  date: string;              // ISO 8601 date with timezone
-  branch: string;            // Branch name (or "unknown")
-  session_id: string;        // Related session ID
-  project: string;           // Project name
+  commit_hash: string; // Full SHA hash
+  short_hash: string; // Abbreviated hash
+  author: string; // "Name <email>"
+  date: string; // ISO 8601 date with timezone
+  branch: string; // Branch name (or "unknown")
+  session_id: string; // Related session ID
+  project: string; // Project name
 }
 
 // ============================================================================
 // Template Generator Functions
 // ============================================================================
+
+/**
+ * Strip leading H1 header from content to prevent duplicates.
+ *
+ * Templates add their own H1 headers, so if the content already starts with
+ * an H1 header (optionally preceded by whitespace), we need to remove it.
+ *
+ * Examples:
+ * - "# Title\nContent" -> "Content"
+ * - "\n\n# Title\nContent" -> "Content"
+ * - "Content without header" -> "Content without header"
+ */
+function stripLeadingH1Header(content: string): string {
+  // Match optional whitespace, then H1 header, then capture everything after
+  // This handles both "# Title" and variations with leading/trailing whitespace
+  const h1Pattern = /^\s*#\s+[^\n]*\n*/;
+  return content.replace(h1Pattern, '').trimStart();
+}
 
 export interface TopicTemplateArgs {
   title: string;
@@ -109,10 +127,13 @@ export function generateTopicTemplate(args: TopicTemplateArgs): string {
       {
         date: args.created,
         action: 'created',
-        notes: 'Topic created'
-      }
-    ]
+        notes: 'Topic created',
+      },
+    ],
   };
+
+  // Strip any leading H1 header from content to prevent duplicates
+  const cleanedContent = stripLeadingH1Header(args.content);
 
   return `---
 title: "${frontmatter.title}"
@@ -128,7 +149,7 @@ review_history:
 
 # ${args.title}
 
-${args.content}
+${cleanedContent}
 
 ## Related Sessions
 
@@ -153,12 +174,15 @@ export function generateDecisionTemplate(args: DecisionTemplateArgs): string {
     number: args.number,
     title: args.title,
     date: args.date,
-    status: 'accepted'
+    status: 'accepted',
   };
+
+  // Strip any leading H1 header from content to prevent duplicates
+  const cleanedContent = stripLeadingH1Header(args.content);
 
   // Check if content is already pre-formatted with markdown headers
   // If it contains ## headers, treat it as complete ADR content
-  const isPreFormatted = /^##\s+/m.test(args.content);
+  const isPreFormatted = /^##\s+/m.test(cleanedContent);
 
   if (isPreFormatted) {
     // Content already includes structure (Context, Decision, Alternatives, Consequences, etc.)
@@ -171,7 +195,7 @@ status: "${frontmatter.status}"
 
 # Decision ${args.number}: ${args.title}
 
-${args.content}
+${cleanedContent}
 
 ## Related Topics
 
@@ -198,7 +222,7 @@ status: "${frontmatter.status}"
 ${args.context || 'Decision made during development.'}
 
 ## Decision
-${args.content}
+${cleanedContent}
 
 ## Consequences
 
@@ -233,7 +257,7 @@ export function generateProjectTemplate(args: ProjectTemplateArgs): string {
     last_commit_tracked: args.created,
     total_sessions: 1,
     total_commits_tracked: 0,
-    tags: ['project']
+    tags: ['project'],
   };
 
   return `---
@@ -291,7 +315,7 @@ export function generateCommitTemplate(args: CommitTemplateArgs): string {
     date: args.date,
     branch: args.branch,
     session_id: args.sessionId,
-    project: args.projectName
+    project: args.projectName,
   };
 
   return `---
@@ -357,8 +381,11 @@ export function generateSessionTemplate(args: SessionTemplateArgs): string {
     session_id: args.sessionId,
     topics: args.topic ? [args.topic, ...args.topicsList] : args.topicsList,
     decisions: args.decisionsList,
-    status: 'completed'
+    status: 'completed',
   };
+
+  // Strip any leading H1 header from summary to prevent duplicates
+  const cleanedSummary = stripLeadingH1Header(args.summary);
 
   return `---
 date: "${frontmatter.date}"
@@ -372,7 +399,7 @@ status: "${frontmatter.status}"
 
 ## Summary
 
-${args.summary}
+${cleanedSummary}
 
 ## Files Accessed
 
