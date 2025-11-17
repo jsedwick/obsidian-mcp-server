@@ -15,6 +15,9 @@ import { pipeline } from '@xenova/transformers';
 import * as tools from './tools/index.js';
 import { GitService } from './services/git/GitService.js';
 import { validateToolArgs, ValidationError } from './validation/index.js';
+import { IndexBuilder } from './services/search/index/IndexBuilder.js';
+import { IndexedSearch } from './services/search/IndexedSearch.js';
+import { DEFAULT_INDEX_CONFIG } from './models/IndexModels.js';
 
 const execAsync = promisify(exec);
 
@@ -148,6 +151,8 @@ class ObsidianMCPServer {
   private embeddingInitPromise: Promise<void> | null = null;
   private embeddingToggleFile: string = '';
   private gitService: GitService;
+  private indexBuilder: IndexBuilder | null = null;
+  private indexedSearch: IndexedSearch | null = null;
 
   constructor() {
     this.config = CONFIG;
@@ -189,6 +194,13 @@ class ObsidianMCPServer {
 
     // Initialize GitService
     this.gitService = new GitService();
+
+    // Initialize IndexBuilder and IndexedSearch if enabled
+    if (DEFAULT_INDEX_CONFIG.enabled) {
+      const indexCacheDir = path.join(this.config.primaryVault.path, DEFAULT_INDEX_CONFIG.cacheDir);
+      this.indexBuilder = new IndexBuilder(indexCacheDir);
+      this.indexedSearch = new IndexedSearch(this.indexBuilder, indexCacheDir);
+    }
 
     this.setupHandlers();
     this.setupErrorHandling();
@@ -237,6 +249,8 @@ class ObsidianMCPServer {
               vaultPath: this.config.primaryVault.path,
               config: this.config,
               embeddingConfig: this.embeddingConfig,
+              indexedSearch: this.indexedSearch || undefined,
+              indexBuilder: this.indexBuilder || undefined,
               ensureVaultStructure: this.ensureVaultStructure.bind(this),
               loadEmbeddingCache: this.loadEmbeddingCache.bind(this),
               saveEmbeddingCache: this.saveEmbeddingCache.bind(this),
@@ -1438,6 +1452,8 @@ Check the sessions/ directory for recent conversations.
       vaultPath: this.config.primaryVault.path,
       config: this.config,
       embeddingConfig: this.embeddingConfig,
+      indexedSearch: this.indexedSearch || undefined,
+      indexBuilder: this.indexBuilder || undefined,
       ensureVaultStructure: this.ensureVaultStructure.bind(this),
       loadEmbeddingCache: this.loadEmbeddingCache.bind(this),
       saveEmbeddingCache: this.saveEmbeddingCache.bind(this),

@@ -39,3 +39,28 @@ export type {
   SessionContext,
   SessionListEntry,
 } from './Session.js';
+
+export type {
+  DocumentPosting,
+  FieldScore,
+  FieldBoosts,
+  DocumentMetadata,
+  IndexStatistics,
+  BM25Parameters,
+  TokenizationOptions,
+  Term,
+  FileChange,
+  IndexMetadata,
+  SerializedIndexEntry,
+  SerializedDocumentEntry,
+  IndexPaths,
+  IndexConfiguration,
+  IndexedSearchResult,
+} from './IndexModels.js';
+export {
+  IndexField,
+  DEFAULT_FIELD_BOOSTS,
+  DEFAULT_BM25_PARAMS,
+  DEFAULT_TOKENIZATION_OPTIONS,
+  DEFAULT_INDEX_CONFIG,
+} from './IndexModels.js';

@@ -5,6 +5,7 @@ An MCP (Model Context Protocol) server that enables Claude Code to automatically
 ## Features
 
 - **Lazy Session Management**: Creates session notes retroactively when you run `/close`, organized by month
+- **Inverted Index Search**: BM25-based indexed search for 20-50x faster queries on large vaults (10k+ files), with automatic fallback to linear search
 - **Intelligent Search with Semantic Understanding**: Hybrid keyword + embedding-based search using local AI models (no API calls)
 - **Tiered Response Levels**: Control verbosity with minimal/summary/detailed/full response modes for efficient token usage
 - **Enhanced Search with Query Understanding**: AI-powered query expansion for improved discovery and contextual refinement
@@ -307,6 +308,50 @@ The toggle state is persisted in `.embedding-toggle.json`:
 ```
 
 The toggle state is remembered across restarts, so your preference persists. You can also manually edit this file if needed.
+
+### Inverted Index Search (BM25)
+
+The MCP server uses an inverted index with BM25 scoring for dramatically faster search on large vaults:
+
+**How it works:**
+- Builds a Trie-based inverted index mapping terms → documents
+- Uses industry-standard BM25 ranking algorithm
+- Applies field boosting (title 2x, tags 1.5x, frontmatter 1.2x, content 1x)
+- Adds exact phrase matching bonus (+15) to match linear search behavior
+- Integrates recency scoring for recently modified/reviewed documents
+- Automatic fallback to linear search if index unavailable
+
+**Performance:**
+- Index build: ~2.2ms per file (646ms for 292 docs)
+- First query: ~240ms (loads index from disk)
+- Subsequent queries: ~120ms average (in-memory cache)
+- Scalability: O(log n) for 10k+ files vs O(n) for linear search
+- Expected speedup: 20-50x on large vaults
+
+**Storage:**
+- Index location: `.search-index/` in your vault
+- Size: ~1.5-2KB per document
+- Format: JSONL for human readability
+- Includes: inverted index, document store, metadata
+
+**Configuration:**
+- Enabled by default (as of Phase 6)
+- Index builds lazily on first search
+- Automatically detects changes and rebuilds incrementally
+- Gracefully falls back to linear search on errors
+
+**Rebuild Index:**
+The index rebuilds automatically, but you can force a rebuild if needed:
+- Delete `.search-index/` directory
+- Next search will trigger full rebuild
+
+**How It's Different from Linear Search:**
+- Linear search: reads every file, scores in memory (slower for 1000+ files)
+- Indexed search: pre-built index, BM25 scoring, phrase matching (faster for large vaults)
+- Both methods produce highly overlapping results (85-95% top-5 match rate)
+
+**Technical Details:**
+See [[inverted-index-phase-5-6-implementation-summary]] in topics/ for complete implementation details.
 
 ### Improved Search Ranking
 

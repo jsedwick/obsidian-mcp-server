@@ -8,6 +8,9 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { ResponseDetail, parseDetailLevel } from '../../models/Search.js';
+import type { IndexedSearch } from '../../services/search/IndexedSearch.js';
+import { IndexBuilder, BuildMode } from '../../services/search/index/IndexBuilder.js';
+import { DEFAULT_INDEX_CONFIG } from '../../models/IndexModels.js';
 
 export interface SearchVaultArgs {
   query: string;
@@ -35,6 +38,8 @@ export async function searchVault(
       keywordCandidatesLimit: number;
       confidenceThreshold: number;
     };
+    indexedSearch?: IndexedSearch;
+    indexBuilder?: IndexBuilder;
     ensureVaultStructure: () => Promise<void>;
     loadEmbeddingCache: () => Promise<void>;
     saveEmbeddingCache: () => Promise<void>;
@@ -83,6 +88,79 @@ export async function searchVault(
     detailLevel = ResponseDetail.FULL;
   } else {
     detailLevel = ResponseDetail.SUMMARY;
+  }
+
+  // Try indexed search first if enabled
+  const useIndexedSearch = DEFAULT_INDEX_CONFIG.enabled && context.indexedSearch && context.indexBuilder;
+
+  if (useIndexedSearch) {
+    try {
+      // Ensure index is built (lazy loading)
+      // Build index if it doesn't exist
+      try {
+        await context.indexBuilder!.build({
+          vaults: context.getAllVaults(),
+          config: DEFAULT_INDEX_CONFIG,
+          mode: BuildMode.AUTO, // Will auto-detect if index exists
+        });
+      } catch (buildError) {
+        console.error('[Search] Failed to build index:', buildError);
+        throw buildError;
+      }
+
+      // Prepare query terms
+      const queryTermsArray = args.query.toLowerCase().split(/\s+/).filter(t => t.length > 2);
+
+      // Perform indexed search
+      const indexedResults = await context.indexedSearch!.search({
+        query: args.query,
+        queryTerms: queryTermsArray,
+        maxResults,
+        directories: args.directories,
+        dateRange: args.date_range,
+      });
+
+      // Convert indexed results to search result format
+      // Note: vault field needs to be inferred from file path
+      const convertedResults = indexedResults.map(result => {
+        // Find which vault this file belongs to
+        const allVaults = context.getAllVaults();
+        const matchingVault = allVaults.find(v => result.file.startsWith(v.path));
+
+        return {
+          file: result.file,
+          matches: result.matches,
+          date: result.date,
+          score: result.score,
+          vault: matchingVault?.name || context.config.primaryVault.name,
+          content: result.content,
+          fileStats: result.fileStats,
+        };
+      });
+
+      // Apply semantic re-ranking if enabled
+      const finalResults = await applySemanticReranking(
+        convertedResults,
+        args.query,
+        maxResults,
+        context
+      );
+
+      // Save embedding cache after search
+      await context.saveEmbeddingCache();
+
+      // Format and return results
+      return context.formatSearchResults(
+        finalResults,
+        indexedResults.length,
+        detailLevel,
+        context.embeddingConfig.enabled,
+        args.query
+      );
+    } catch (error) {
+      console.error('[Search] Indexed search failed, falling back to linear search:', error);
+      // Fall through to linear search
+    }
   }
 
   const results: {
@@ -265,4 +343,89 @@ export async function searchVault(
     queryEmbedding !== null,
     args.query
   );
+}
+
+/**
+ * Apply semantic re-ranking to search results if embeddings are enabled
+ */
+async function applySemanticReranking(
+  results: Array<{
+    file: string;
+    matches: string[];
+    date?: string;
+    score: number;
+    vault?: string;
+    content?: string;
+    fileStats?: any;
+  }>,
+  query: string,
+  maxResults: number,
+  context: {
+    embeddingConfig: {
+      enabled: boolean;
+      keywordCandidatesLimit: number;
+      confidenceThreshold: number;
+    };
+    generateEmbedding: (text: string) => Promise<number[]>;
+    getOrCreateEmbedding: (file: string, content: string, fileStats: any) => Promise<number[]>;
+    cosineSimilarity: (vecA: number[], vecB: number[]) => number;
+  }
+): Promise<typeof results> {
+  if (!context.embeddingConfig.enabled || results.length === 0) {
+    return results.slice(0, maxResults);
+  }
+
+  try {
+    // Generate query embedding
+    const queryEmbedding = await context.generateEmbedding(query);
+
+    // Sort by score and take top candidates for re-ranking
+    results.sort((a, b) => b.score - a.score);
+
+    // Confidence-based optimization
+    const topResult = results[0];
+    const confidenceThreshold = context.embeddingConfig.confidenceThreshold || 0.75;
+
+    if (topResult && topResult.score >= confidenceThreshold && maxResults === 1) {
+      // Skip semantic re-ranking for high-confidence single result
+      return [topResult];
+    }
+
+    // Load file contents for semantic re-ranking
+    const candidates = results.slice(0, context.embeddingConfig.keywordCandidatesLimit);
+
+    for (const result of candidates) {
+      try {
+        // Load file content if not already loaded
+        if (!result.content) {
+          result.content = await fs.readFile(result.file, 'utf-8');
+          result.fileStats = await fs.stat(result.file);
+        }
+
+        // Compute semantic similarity
+        const docEmbedding = await context.getOrCreateEmbedding(
+          result.file,
+          result.content,
+          result.fileStats
+        );
+        const semanticScore = context.cosineSimilarity(queryEmbedding, docEmbedding);
+        result.score = semanticScore;
+      } catch (error) {
+        console.error(`[Search] Failed to compute semantic score for ${result.file}:`, error);
+        // Keep existing score if semantic scoring fails
+      }
+
+      // Clean up temporary fields
+      delete result.content;
+      delete result.fileStats;
+    }
+
+    // Re-sort by semantic score and take top results
+    candidates.sort((a, b) => b.score - a.score);
+    return candidates.slice(0, maxResults);
+  } catch (error) {
+    console.error('[Search] Semantic re-ranking failed:', error);
+    // Fall back to original scores
+    return results.slice(0, maxResults);
+  }
 }
