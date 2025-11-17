@@ -33,6 +33,7 @@ export async function searchVault(
     embeddingConfig: {
       enabled: boolean;
       keywordCandidatesLimit: number;
+      confidenceThreshold: number;
     };
     ensureVaultStructure: () => Promise<void>;
     loadEmbeddingCache: () => Promise<void>;
@@ -176,7 +177,7 @@ export async function searchVault(
           }
         }
       }
-    } catch (error) {
+    } catch (_error) {
       // Directory doesn't exist or can't be accessed
     }
   };
@@ -207,29 +208,43 @@ export async function searchVault(
   if (queryEmbedding && context.embeddingConfig.enabled && results.length > 0) {
     // Sort by keyword score and take top N candidates for re-ranking
     results.sort((a, b) => b.score - a.score);
-    const candidates = results.slice(0, context.embeddingConfig.keywordCandidatesLimit);
 
-    // Compute semantic similarity for each candidate
-    for (const result of candidates) {
-      if (result.content && result.fileStats) {
-        try {
-          const docEmbedding = await context.getOrCreateEmbedding(result.file, result.content, result.fileStats);
-          const semanticScore = context.cosineSimilarity(queryEmbedding, docEmbedding);
-          result.semanticScore = semanticScore;
-          result.score = semanticScore; // Use semantic score as final ranking score
-        } catch (error) {
-          console.error(`[Search] Failed to compute semantic score for ${result.file}:`, error);
-          // Keep keyword score if semantic scoring fails
+    // Confidence-based optimization: Check if top result is highly confident
+    // If so, return it immediately without expensive semantic re-ranking
+    const topResult = results[0];
+    const confidenceThreshold = context.embeddingConfig.confidenceThreshold || 0.75;
+
+    if (topResult && topResult.score >= confidenceThreshold && maxResults === 1) {
+      // Skip semantic re-ranking for high-confidence single result
+      delete topResult.content;
+      delete topResult.fileStats;
+      topResults = [topResult];
+    } else {
+      // Proceed with semantic re-ranking
+      const candidates = results.slice(0, context.embeddingConfig.keywordCandidatesLimit);
+
+      // Compute semantic similarity for each candidate
+      for (const result of candidates) {
+        if (result.content && result.fileStats) {
+          try {
+            const docEmbedding = await context.getOrCreateEmbedding(result.file, result.content, result.fileStats);
+            const semanticScore = context.cosineSimilarity(queryEmbedding, docEmbedding);
+            result.semanticScore = semanticScore;
+            result.score = semanticScore; // Use semantic score as final ranking score
+          } catch (error) {
+            console.error(`[Search] Failed to compute semantic score for ${result.file}:`, error);
+            // Keep keyword score if semantic scoring fails
+          }
         }
+        // Clean up temporary fields
+        delete result.content;
+        delete result.fileStats;
       }
-      // Clean up temporary fields
-      delete result.content;
-      delete result.fileStats;
-    }
 
-    // Re-sort by semantic score and take top results
-    candidates.sort((a, b) => b.score - a.score);
-    topResults = candidates.slice(0, maxResults);
+      // Re-sort by semantic score and take top results
+      candidates.sort((a, b) => b.score - a.score);
+      topResults = candidates.slice(0, maxResults);
+    }
   } else {
     // No semantic re-ranking: just use keyword scores
     results.sort((a, b) => b.score - a.score);

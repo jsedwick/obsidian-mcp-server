@@ -110,6 +110,8 @@ interface EmbeddingConfig {
   modelName: string;
   cacheDirs: Map<string, string>; // Map of vaultPath -> cacheDir
   keywordCandidatesLimit: number; // Number of top keyword results to re-rank with semantic search
+  confidenceThreshold: number; // Score above which to skip semantic re-ranking (0-1)
+  precomputeEmbeddings: boolean; // Whether to pre-compute embeddings on startup
 }
 
 interface EmbeddingToggleConfig {
@@ -180,7 +182,9 @@ class ObsidianMCPServer {
       enabled: this.loadEmbeddingToggleState(),
       modelName: 'Xenova/all-MiniLM-L6-v2',
       cacheDirs: cacheDirs,
-      keywordCandidatesLimit: 100, // Re-rank top 100 keyword results with semantic search
+      keywordCandidatesLimit: parseInt(process.env.EMBEDDING_CANDIDATES_LIMIT || '100', 10),
+      confidenceThreshold: parseFloat(process.env.EMBEDDING_CONFIDENCE_THRESHOLD || '0.75'),
+      precomputeEmbeddings: process.env.EMBEDDING_PRECOMPUTE !== 'false',
     };
 
     // Initialize GitService
@@ -677,6 +681,123 @@ class ObsidianMCPServer {
 
     // Fall back to environment variable (default: enabled)
     return process.env.ENABLE_EMBEDDINGS !== 'false';
+  }
+
+  /**
+   * Pre-compute embeddings for all vault files on startup
+   * This ensures fast search performance on first query
+   */
+  private async precomputeAllEmbeddings(): Promise<void> {
+    await this.loadEmbeddingCache();
+
+    const vaults = this.getAllVaults();
+    let filesProcessed = 0;
+    let filesSkipped = 0;
+
+    for (const vault of vaults) {
+      const searchDirs = vault.path === this.config.primaryVault.path
+        ? ['sessions', 'topics', 'decisions']
+        : []; // Search everything in secondary vaults
+
+      try {
+        // Recursively find all markdown files
+        const mdFiles = await this.findAllMarkdownFiles(
+          vault.path,
+          searchDirs,
+          vault.path === this.config.primaryVault.path
+        );
+
+        for (const filePath of mdFiles) {
+          try {
+            // Check if already cached and up to date
+            const fileStats = await fs.stat(filePath);
+            const cached = await this.getCachedEmbedding(filePath, fileStats);
+
+            if (cached) {
+              filesSkipped++;
+              continue;
+            }
+
+            // Generate and cache embedding
+            const content = await fs.readFile(filePath, 'utf-8');
+            await this.getOrCreateEmbedding(filePath, content, fileStats);
+            filesProcessed++;
+
+            // Log progress every 10 files
+            if (filesProcessed % 10 === 0) {
+              console.error(`[Embeddings] Pre-computed ${filesProcessed} files...`);
+            }
+          } catch (err) {
+            console.error(`[Embeddings] Error processing ${filePath}:`, err);
+          }
+        }
+      } catch (err) {
+        console.error(`[Embeddings] Error pre-computing embeddings for vault ${vault.name}:`, err);
+      }
+    }
+
+    // Save all computed embeddings
+    await this.saveEmbeddingCache();
+
+    console.error(`[Embeddings] Pre-computation complete: ${filesProcessed} new, ${filesSkipped} cached`);
+  }
+
+  /**
+   * Recursively find all markdown files in a directory
+   */
+  private async findAllMarkdownFiles(
+    dirPath: string,
+    searchDirs: string[],
+    isPartialSearch: boolean
+  ): Promise<string[]> {
+    const files: string[] = [];
+
+    const searchDir = async (dir: string) => {
+      try {
+        const entries = await fs.readdir(dir, { withFileTypes: true });
+
+        for (const entry of entries) {
+          const fullPath = path.join(dir, entry.name);
+
+          // Skip ignored directories
+          if (entry.isDirectory()) {
+            if (['.git', 'node_modules', '.DS_Store', '.obsidian', '.embedding-cache'].includes(entry.name)) {
+              continue;
+            }
+
+            // Handle month subdirectories (YYYY-MM format) for sessions
+            if (/^\d{4}-\d{2}$/.test(entry.name)) {
+              const monthFiles = await fs.readdir(fullPath);
+              for (const file of monthFiles) {
+                if (file.endsWith('.md')) {
+                  files.push(path.join(fullPath, file));
+                }
+              }
+            } else {
+              // Recursively search subdirectories
+              await searchDir(fullPath);
+            }
+          } else if (entry.isFile() && entry.name.endsWith('.md')) {
+            files.push(fullPath);
+          }
+        }
+      } catch (error) {
+        // Directory doesn't exist or can't be accessed
+      }
+    };
+
+    if (isPartialSearch && searchDirs.length > 0) {
+      // Only search specific directories
+      for (const dir of searchDirs) {
+        const dirPath2 = path.join(dirPath, dir);
+        await searchDir(dirPath2);
+      }
+    } else {
+      // Search entire vault
+      await searchDir(dirPath);
+    }
+
+    return files;
   }
 
   // ==================== End Embedding Methods ====================
@@ -2202,6 +2323,19 @@ Check the sessions/ directory for recent conversations.
 
   async run(): Promise<void> {
     const transport = new StdioServerTransport();
+
+    // Pre-compute embeddings if enabled
+    if (this.embeddingConfig.enabled && this.embeddingConfig.precomputeEmbeddings) {
+      console.error('[Embeddings] Pre-computing embeddings on startup...');
+      try {
+        await this.precomputeAllEmbeddings();
+        console.error('[Embeddings] Pre-computation complete');
+      } catch (error) {
+        console.error('[Embeddings] Pre-computation failed:', error);
+        // Continue anyway - searches will still work with on-demand embedding
+      }
+    }
+
     await this.server.connect(transport);
     console.error('Obsidian MCP Server running on stdio');
   }
