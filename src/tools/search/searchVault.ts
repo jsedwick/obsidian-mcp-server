@@ -138,25 +138,32 @@ export async function searchVault(
         };
       });
 
-      // Apply semantic re-ranking if enabled
-      const finalResults = await applySemanticReranking(
-        convertedResults,
-        args.query,
-        maxResults,
-        context
-      );
+      // If indexed search found no results and embeddings are enabled,
+      // fall back to pure semantic search (no keyword filtering)
+      if (indexedResults.length === 0 && context.embeddingConfig.enabled) {
+        console.log('[Search] Zero indexed results, falling back to pure semantic search');
+        // Fall through to linear search with semantic scoring
+      } else {
+        // Apply semantic re-ranking if enabled
+        const finalResults = await applySemanticReranking(
+          convertedResults,
+          args.query,
+          maxResults,
+          context
+        );
 
-      // Save embedding cache after search
-      await context.saveEmbeddingCache();
+        // Save embedding cache after search
+        await context.saveEmbeddingCache();
 
-      // Format and return results
-      return context.formatSearchResults(
-        finalResults,
-        indexedResults.length,
-        detailLevel,
-        context.embeddingConfig.enabled,
-        args.query
-      );
+        // Format and return results
+        return context.formatSearchResults(
+          finalResults,
+          indexedResults.length,
+          detailLevel,
+          context.embeddingConfig.enabled,
+          args.query
+        );
+      }
     } catch (error) {
       console.error('[Search] Indexed search failed, falling back to linear search:', error);
       // Fall through to linear search
@@ -281,9 +288,77 @@ export async function searchVault(
   // Save embedding cache after search
   await context.saveEmbeddingCache();
 
-  // Phase 2: Semantic re-ranking (if embeddings enabled)
+  // Phase 2: Semantic search / re-ranking (if embeddings enabled)
   let topResults: typeof results;
-  if (queryEmbedding && context.embeddingConfig.enabled && results.length > 0) {
+
+  // Special case: If zero keyword matches but embeddings enabled, do pure semantic search
+  if (queryEmbedding && context.embeddingConfig.enabled && results.length === 0) {
+    console.log('[Search] Zero keyword matches, performing pure semantic search across all documents');
+
+    // Re-scan all documents with pure semantic scoring (no keyword filter)
+    const vaults = context.getAllVaults();
+    const allResults: typeof results = [];
+
+    for (const vault of vaults) {
+      const isPrimaryVault = vault.path === context.config.primaryVault.path;
+      const dirsToScan = isPrimaryVault ? searchDirs : [''];
+
+      for (const dir of dirsToScan) {
+        const dirPath = isPrimaryVault ? path.join(vault.path, dir) : vault.path;
+
+        // Recursively collect all .md files
+        const collectFiles = async (currentPath: string): Promise<string[]> => {
+          const files: string[] = [];
+          try {
+            const entries = await fs.readdir(currentPath, { withFileTypes: true });
+            for (const entry of entries) {
+              const fullPath = path.join(currentPath, entry.name);
+              if (entry.isDirectory() && !['.git', 'node_modules', '.DS_Store', '.obsidian'].includes(entry.name)) {
+                files.push(...await collectFiles(fullPath));
+              } else if (entry.isFile() && entry.name.endsWith('.md')) {
+                files.push(fullPath);
+              }
+            }
+          } catch (error) {
+            // Directory doesn't exist or can't be accessed
+          }
+          return files;
+        };
+
+        const mdFiles = await collectFiles(dirPath);
+
+        // Score each file by semantic similarity
+        for (const filePath of mdFiles) {
+          try {
+            const content = await fs.readFile(filePath, 'utf-8');
+            const fileStats = await fs.stat(filePath);
+            const docEmbedding = await context.getOrCreateEmbedding(filePath, content, fileStats);
+            const semanticScore = context.cosineSimilarity(queryEmbedding, docEmbedding);
+
+            // Only include documents with meaningful similarity (> 0.3 threshold)
+            if (semanticScore > 0.3) {
+              const relativePath = filePath.replace(vault.path, '').replace(/^\//, '');
+              allResults.push({
+                file: relativePath,
+                matches: [`Semantic match (score: ${semanticScore.toFixed(3)})`],
+                score: semanticScore,
+                semanticScore: semanticScore,
+                vault: vault.name,
+              });
+            }
+          } catch (error) {
+            console.error(`[Search] Failed to score ${filePath}:`, error);
+          }
+        }
+      }
+    }
+
+    // Sort by semantic score and take top results
+    allResults.sort((a, b) => b.score - a.score);
+    topResults = allResults.slice(0, maxResults);
+
+    await context.saveEmbeddingCache();
+  } else if (queryEmbedding && context.embeddingConfig.enabled && results.length > 0) {
     // Sort by keyword score and take top N candidates for re-ranking
     results.sort((a, b) => b.score - a.score);
 
