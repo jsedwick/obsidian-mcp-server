@@ -79,7 +79,7 @@ export interface DocumentMetadata {
   /** Unique document ID (absolute file path) */
   id: string;
 
-  /** Relative or absolute path for display */
+  /** Absolute file path (enables direct use with Read and other file tools) */
   path: string;
 
   /** Document category (sessions, topics, decisions, etc.) */

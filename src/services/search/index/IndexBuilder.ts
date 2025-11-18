@@ -314,11 +314,7 @@ export class IndexBuilder {
       processed++;
 
       if (options.onProgress && processed % 50 === 0) {
-        options.onProgress(
-          processed,
-          filesToReindex.length,
-          `Updating ${file.relativePath}`
-        );
+        options.onProgress(processed, filesToReindex.length, `Updating ${file.relativePath}`);
       }
     }
 
@@ -383,7 +379,7 @@ export class IndexBuilder {
       const uniqueTerms = this.tokenizer.getUniqueTerms(terms);
       const metadata: DocumentMetadata = {
         id: file.absolutePath,
-        path: file.relativePath,
+        path: file.absolutePath, // Use absolute path for direct tool compatibility
         category: file.category,
         vault: file.vault,
         lastModified: file.lastModified,
@@ -422,7 +418,7 @@ export class IndexBuilder {
       });
 
       return { index: loaded.index, store: loaded.store };
-    } catch (error) {
+    } catch (_error) {
       logger.debug('No existing index found, will build from scratch');
       return {
         index: new InvertedIndex(),
