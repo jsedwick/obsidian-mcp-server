@@ -38,8 +38,8 @@ export async function searchVault(
       keywordCandidatesLimit: number;
       confidenceThreshold: number;
     };
-    indexedSearch?: IndexedSearch;
-    indexBuilder?: IndexBuilder;
+    indexedSearches: Map<string, IndexedSearch>;
+    indexBuilders: Map<string, IndexBuilder>;
     ensureVaultStructure: () => Promise<void>;
     loadEmbeddingCache: () => Promise<void>;
     saveEmbeddingCache: () => Promise<void>;
@@ -91,52 +91,77 @@ export async function searchVault(
   }
 
   // Try indexed search first if enabled
-  const useIndexedSearch = DEFAULT_INDEX_CONFIG.enabled && context.indexedSearch && context.indexBuilder;
+  const useIndexedSearch = DEFAULT_INDEX_CONFIG.enabled &&
+    context.indexedSearches.size > 0 &&
+    context.indexBuilders.size > 0;
 
   if (useIndexedSearch) {
     try {
-      // Ensure index is built (lazy loading)
-      // Build index if it doesn't exist
-      try {
-        await context.indexBuilder!.build({
-          vaults: context.getAllVaults(),
-          config: DEFAULT_INDEX_CONFIG,
-          mode: BuildMode.AUTO, // Will auto-detect if index exists
-        });
-      } catch (buildError) {
-        console.error('[Search] Failed to build index:', buildError);
-        throw buildError;
-      }
-
       // Prepare query terms
       const queryTermsArray = args.query.toLowerCase().split(/\s+/).filter(t => t.length > 2);
 
-      // Perform indexed search
-      const indexedResults = await context.indexedSearch!.search({
-        query: args.query,
-        queryTerms: queryTermsArray,
-        maxResults,
-        directories: args.directories,
-        dateRange: args.date_range,
-      });
+      // Search each vault's index and merge results
+      const allIndexedResults: any[] = [];
+      const allVaults = context.getAllVaults();
+
+      for (const vault of allVaults) {
+        const builder = context.indexBuilders.get(vault.path);
+        const searcher = context.indexedSearches.get(vault.path);
+
+        if (!builder || !searcher) {
+          console.log(`[Search] No index for vault ${vault.name}, skipping`);
+          continue;
+        }
+
+        // Ensure index is built for this vault (lazy loading)
+        try {
+          await builder.build({
+            vaults: [vault], // Build index for just this vault
+            config: DEFAULT_INDEX_CONFIG,
+            mode: BuildMode.AUTO, // Will auto-detect if index exists
+          });
+        } catch (buildError) {
+          console.error(`[Search] Failed to build index for vault ${vault.name}:`, buildError);
+          continue; // Skip this vault but try others
+        }
+
+        // Perform indexed search on this vault
+        try {
+          const vaultResults = await searcher.search({
+            query: args.query,
+            queryTerms: queryTermsArray,
+            maxResults, // Each vault can return up to maxResults
+            directories: args.directories,
+            dateRange: args.date_range,
+          });
+
+          // Add vault information to results
+          vaultResults.forEach(result => {
+            allIndexedResults.push({
+              ...result,
+              vault: vault.name,
+            });
+          });
+        } catch (searchError) {
+          console.error(`[Search] Failed to search vault ${vault.name}:`, searchError);
+          continue; // Skip this vault but try others
+        }
+      }
+
+      // Sort combined results by score and limit to maxResults
+      allIndexedResults.sort((a, b) => b.score - a.score);
+      const indexedResults = allIndexedResults.slice(0, maxResults);
 
       // Convert indexed results to search result format
-      // Note: vault field needs to be inferred from file path
-      const convertedResults = indexedResults.map(result => {
-        // Find which vault this file belongs to
-        const allVaults = context.getAllVaults();
-        const matchingVault = allVaults.find(v => result.file.startsWith(v.path));
-
-        return {
-          file: result.file,
-          matches: result.matches,
-          date: result.date,
-          score: result.score,
-          vault: matchingVault?.name || context.config.primaryVault.name,
-          content: result.content,
-          fileStats: result.fileStats,
-        };
-      });
+      const convertedResults = indexedResults.map(result => ({
+        file: result.file,
+        matches: result.matches,
+        date: result.date,
+        score: result.score,
+        vault: result.vault,
+        content: result.content,
+        fileStats: result.fileStats,
+      }));
 
       // If indexed search found no results and embeddings are enabled,
       // fall back to pure semantic search (no keyword filtering)

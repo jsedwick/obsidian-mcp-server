@@ -151,8 +151,8 @@ class ObsidianMCPServer {
   private embeddingInitPromise: Promise<void> | null = null;
   private embeddingToggleFile: string = '';
   private gitService: GitService;
-  private indexBuilder: IndexBuilder | null = null;
-  private indexedSearch: IndexedSearch | null = null;
+  private indexBuilders: Map<string, IndexBuilder> = new Map(); // Per-vault index builders
+  private indexedSearches: Map<string, IndexedSearch> = new Map(); // Per-vault indexed searches
 
   constructor() {
     this.config = CONFIG;
@@ -195,11 +195,21 @@ class ObsidianMCPServer {
     // Initialize GitService
     this.gitService = new GitService();
 
-    // Initialize IndexBuilder and IndexedSearch if enabled
+    // Initialize IndexBuilder and IndexedSearch for each vault if enabled
     if (DEFAULT_INDEX_CONFIG.enabled) {
-      const indexCacheDir = path.join(this.config.primaryVault.path, DEFAULT_INDEX_CONFIG.cacheDir);
-      this.indexBuilder = new IndexBuilder(indexCacheDir);
-      this.indexedSearch = new IndexedSearch(this.indexBuilder, indexCacheDir);
+      // Primary vault
+      const primaryCacheDir = path.join(this.config.primaryVault.path, DEFAULT_INDEX_CONFIG.cacheDir);
+      const primaryBuilder = new IndexBuilder(primaryCacheDir);
+      this.indexBuilders.set(this.config.primaryVault.path, primaryBuilder);
+      this.indexedSearches.set(this.config.primaryVault.path, new IndexedSearch(primaryBuilder, primaryCacheDir));
+
+      // Secondary vaults
+      for (const vault of this.config.secondaryVaults) {
+        const cacheDir = path.join(vault.path, DEFAULT_INDEX_CONFIG.cacheDir);
+        const builder = new IndexBuilder(cacheDir);
+        this.indexBuilders.set(vault.path, builder);
+        this.indexedSearches.set(vault.path, new IndexedSearch(builder, cacheDir));
+      }
     }
 
     this.setupHandlers();
@@ -249,8 +259,8 @@ class ObsidianMCPServer {
               vaultPath: this.config.primaryVault.path,
               config: this.config,
               embeddingConfig: this.embeddingConfig,
-              indexedSearch: this.indexedSearch || undefined,
-              indexBuilder: this.indexBuilder || undefined,
+              indexedSearches: this.indexedSearches,
+              indexBuilders: this.indexBuilders,
               ensureVaultStructure: this.ensureVaultStructure.bind(this),
               loadEmbeddingCache: this.loadEmbeddingCache.bind(this),
               saveEmbeddingCache: this.saveEmbeddingCache.bind(this),
@@ -1452,8 +1462,8 @@ Check the sessions/ directory for recent conversations.
       vaultPath: this.config.primaryVault.path,
       config: this.config,
       embeddingConfig: this.embeddingConfig,
-      indexedSearch: this.indexedSearch || undefined,
-      indexBuilder: this.indexBuilder || undefined,
+      indexedSearches: this.indexedSearches,
+      indexBuilders: this.indexBuilders,
       ensureVaultStructure: this.ensureVaultStructure.bind(this),
       loadEmbeddingCache: this.loadEmbeddingCache.bind(this),
       saveEmbeddingCache: this.saveEmbeddingCache.bind(this),

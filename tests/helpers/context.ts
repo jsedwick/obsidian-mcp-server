@@ -84,6 +84,8 @@ export interface SearchToolsContext extends BaseContext {
     enabled: boolean;
     keywordCandidatesLimit: number;
   };
+  indexedSearches: Map<string, any>;
+  indexBuilders: Map<string, any>;
   ensureVaultStructure: () => Promise<void>;
   loadEmbeddingCache: () => Promise<void>;
   saveEmbeddingCache: () => Promise<void>;
@@ -135,6 +137,8 @@ export function createSearchToolsContext(overrides?: Partial<SearchToolsContext>
       enabled: false,
       keywordCandidatesLimit: 50,
     },
+    indexedSearches: new Map(),
+    indexBuilders: new Map(),
     ensureVaultStructure: vi.fn().mockResolvedValue(undefined),
     loadEmbeddingCache: vi.fn().mockResolvedValue(undefined),
     saveEmbeddingCache: vi.fn().mockResolvedValue(undefined),
