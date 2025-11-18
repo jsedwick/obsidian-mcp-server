@@ -30,7 +30,9 @@ async function findUnrecordedCommits(
 ): Promise<string[]> {
   try {
     // Get the current branch
-    const { stdout: currentBranchOutput } = await execAsync('git rev-parse --abbrev-ref HEAD', { cwd: repoPath });
+    const { stdout: currentBranchOutput } = await execAsync('git rev-parse --abbrev-ref HEAD', {
+      cwd: repoPath,
+    });
     const currentBranch = currentBranchOutput.trim();
 
     // Don't process main/master branch (commits there are historical)
@@ -110,7 +112,9 @@ interface CloseSessionContext {
   projectsCreated: Array<{ slug: string; name: string; file: string }>;
   ensureVaultStructure: () => Promise<void>;
   findGitRepos: (startPath: string, maxDepth?: number) => Promise<string[]>;
-  getRepoInfo: (repoPath: string) => Promise<{ name: string; branch?: string; remote?: string | null }>;
+  getRepoInfo: (
+    repoPath: string
+  ) => Promise<{ name: string; branch?: string; remote?: string | null }>;
   createProjectPage: (args: { repo_path: string }) => Promise<any>;
   findRelatedContentInText: (text: string) => Promise<{
     topics: Array<{ link: string; title: string }>;
@@ -131,14 +135,19 @@ export async function closeSession(
 ): Promise<CloseSessionResult> {
   // Enforce that this tool can only be called via the /close slash command
   if (args._invoked_by_slash_command !== true) {
-    throw new Error('❌ The close_session tool can ONLY be called via the /close slash command. Please ask the user to run the /close command to close this session.');
+    throw new Error(
+      '❌ The close_session tool can ONLY be called via the /close slash command. Please ask the user to run the /close command to close this session.'
+    );
   }
 
   await context.ensureVaultStructure();
 
-  // Generate session ID from current timestamp and optional topic
+  // Generate session ID from current timestamp and optional topic (using local timezone)
   const now = new Date();
-  const dateStr = now.toISOString().split('T')[0];
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  const dateStr = `${year}-${month}-${day}`;
   const timeStr = now.toTimeString().split(' ')[0].replace(/:/g, '-');
   const topicSlug = args.topic ? `_${context.slugify(args.topic)}` : '';
   const sessionId = `${dateStr}_${timeStr}${topicSlug}`;
@@ -151,7 +160,8 @@ export async function closeSession(
 
   // Auto-detect Git repositories BEFORE building session content
   // This allows the project to be included in the session's Projects section
-  let detectedRepoInfo: { path: string; name: string; branch?: string; remote?: string } | null = null;
+  let detectedRepoInfo: { path: string; name: string; branch?: string; remote?: string } | null =
+    null;
 
   // Always attempt repo detection - either from tracked files or from CWD
   try {
@@ -245,17 +255,19 @@ export async function closeSession(
                   });
                 } catch (_error) {
                   // Log but don't fail - continue with next commit
-                  console.error(`Failed to record commit ${commitHash}: ${_error instanceof Error ? _error.message : String(_error)}`);
+                  console.error(
+                    `Failed to record commit ${commitHash}: ${_error instanceof Error ? _error.message : String(_error)}`
+                  );
                 }
               }
             }
-          } catch (error) {
+          } catch (_error) {
             // If project creation fails, continue anyway
           }
         }
       }
     }
-  } catch (error) {
+  } catch (_error) {
     // Silently fail - repo detection is optional
   }
 
@@ -280,7 +292,7 @@ export async function closeSession(
     projectsCreated: context.projectsCreated,
     relatedTopics: relatedContent.topics,
     relatedDecisions: relatedContent.decisions,
-    relatedProjects: relatedContent.projects
+    relatedProjects: relatedContent.projects,
   });
 
   // Write session file
@@ -346,7 +358,9 @@ export async function closeSession(
 
   // Run vault custodian on files created/updated during this session
   const editedOrCreatedFiles = context.filesAccessed
-    .filter(f => (f.action === 'edit' || f.action === 'create') && f.path.startsWith(context.vaultPath))
+    .filter(
+      f => (f.action === 'edit' || f.action === 'create') && f.path.startsWith(context.vaultPath)
+    )
     .map(f => f.path);
 
   const filesToCheck: string[] = [
@@ -368,7 +382,9 @@ export async function closeSession(
         vaultCustodianReport = '\n\n' + (custodianResult.content[0] as { text: string }).text;
       }
     } catch (error) {
-      vaultCustodianReport = '\n\n⚠️  Vault custodian check failed: ' + (error instanceof Error ? error.message : String(error));
+      vaultCustodianReport =
+        '\n\n⚠️  Vault custodian check failed: ' +
+        (error instanceof Error ? error.message : String(error));
     }
   }
 
