@@ -239,9 +239,12 @@ export class IndexedSearch {
       const metadata = metadataMap.get(score.docId);
       if (!metadata) continue;
 
-      // Extract matching lines (snippets) from metadata
-      // In production, we'd fetch full content only when needed
-      const matchingLines: string[] = [];
+      // Extract matching lines (snippets) from document content
+      const matchingLines = await this.extractMatchingLines(
+        score.docId,
+        queryTerms,
+        options.query
+      );
 
       results.push({
         file: metadata.path,
@@ -398,5 +401,64 @@ export class IndexedSearch {
 
     // Re-sort after applying bonuses
     return scores.sort((a, b) => b.score - a.score);
+  }
+
+  /**
+   * Extract matching lines from a document
+   *
+   * Reads the file content and extracts lines that contain any of the query terms.
+   * Returns up to 10 matching lines to avoid excessive token usage.
+   *
+   * @param docId - Absolute path to the document (used as document ID)
+   * @param queryTerms - Array of query terms to search for
+   * @param fullQuery - Full query string for exact phrase matching
+   * @returns Array of matching lines (snippets)
+   */
+  private async extractMatchingLines(
+    docId: string,
+    queryTerms: string[],
+    fullQuery: string
+  ): Promise<string[]> {
+    try {
+      // Read file content (docId is the absolute path)
+      const content = await fs.readFile(docId, 'utf-8');
+      const lines = content.split('\n');
+      const matchingLines: string[] = [];
+      const queryLower = fullQuery.toLowerCase();
+
+      // First priority: Find lines with exact phrase match
+      for (const line of lines) {
+        const lineLower = line.toLowerCase();
+        if (lineLower.includes(queryLower) && line.trim().length > 0) {
+          matchingLines.push(line.trim());
+          if (matchingLines.length >= 10) {
+            return matchingLines;
+          }
+        }
+      }
+
+      // Second priority: Find lines with any query term
+      for (const line of lines) {
+        const lineLower = line.toLowerCase();
+        const hasMatch = queryTerms.some(term => lineLower.includes(term));
+
+        if (hasMatch && line.trim().length > 0) {
+          // Avoid duplicates
+          if (!matchingLines.includes(line.trim())) {
+            matchingLines.push(line.trim());
+            if (matchingLines.length >= 10) {
+              return matchingLines;
+            }
+          }
+        }
+      }
+
+      return matchingLines;
+    } catch (_error) {
+      logger.error('Failed to extract matching lines', _error as Error, {
+        docId,
+      });
+      return [];
+    }
   }
 }
