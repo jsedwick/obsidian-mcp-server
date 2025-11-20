@@ -3,7 +3,7 @@
     "obsidian-context-manager": {
       "command": "node",
       "args": [
-        "/Users/jsedwick/Documents/Obsidian/Claude/Claude/obsidian-mcp-server/dist/index.js"
+        "/Users/jsedwick/Projects/obsidian-mcp-server/dist/index.js"
       ],
       "env": {
         "OBSIDIAN_VAULT_PATH": "/Users/jsedwick/Documents/Obsidian/Claude/Claude/"
