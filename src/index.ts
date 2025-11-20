@@ -46,19 +46,25 @@ function loadConfig(): ServerConfig {
       throw new Error('Invalid config: primaryVault.path is required');
     }
 
+    // Helper to normalize paths (remove trailing slashes)
+    const normalizePath = (p: string): string => p.replace(/\/+$/, '');
+
     return {
       primaryVault: {
-        path: config.primaryVault.path,
+        path: normalizePath(config.primaryVault.path as string),
         name: config.primaryVault.name || 'Primary Vault',
         readonly: false,
       },
-      secondaryVaults: (config.secondaryVaults || []).map((v: any) => ({
-        path: v.path,
+      secondaryVaults: (config.secondaryVaults || []).map((v: { path: string; name?: string }) => ({
+        path: normalizePath(v.path),
         name: v.name || path.basename(v.path),
         readonly: true,
       })),
     };
-  } catch (error) {
+  } catch (_error) {
+    // Helper to normalize paths (remove trailing slashes)
+    const normalizePath = (p: string): string => p.replace(/\/+$/, '');
+
     // Fall back to environment variables
     const primaryPath = process.env.OBSIDIAN_VAULT_PATH || path.join(process.env.HOME || '', 'obsidian-vault');
 
@@ -69,12 +75,12 @@ function loadConfig(): ServerConfig {
 
     return {
       primaryVault: {
-        path: primaryPath,
+        path: normalizePath(primaryPath),
         name: process.env.OBSIDIAN_VAULT_NAME || 'Primary Vault',
         readonly: false,
       },
       secondaryVaults: secondaryPaths.map((p, idx) => ({
-        path: p,
+        path: normalizePath(p),
         name: `Secondary Vault ${idx + 1}`,
         readonly: true,
       })),
