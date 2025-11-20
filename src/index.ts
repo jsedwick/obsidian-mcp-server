@@ -9,6 +9,7 @@ import {
 import fs from 'fs/promises';
 import fssync from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import { pipeline } from '@xenova/transformers';
@@ -36,7 +37,7 @@ interface ServerConfig {
 // Load configuration
 function loadConfig(): ServerConfig {
   // Try to load from config file in MCP server directory
-  const configPath = path.join(path.dirname(new URL(import.meta.url).pathname), '.obsidian-mcp.json');
+  const configPath = path.join(path.dirname(fileURLToPath(import.meta.url)), '.obsidian-mcp.json');
   try {
     const configData = fssync.readFileSync(configPath, 'utf-8');
     const config = JSON.parse(configData);
@@ -203,9 +204,12 @@ class ObsidianMCPServer {
 
     // Initialize IndexBuilder and IndexedSearch for each vault if enabled
     if (DEFAULT_INDEX_CONFIG.enabled) {
+      console.error('[Init] Initializing search indexes for vaults...');
+
       // Primary vault
       const primaryCacheDir = path.join(this.config.primaryVault.path, DEFAULT_INDEX_CONFIG.cacheDir);
       const primaryBuilder = new IndexBuilder(primaryCacheDir);
+      console.error(`[Init] Primary vault: ${this.config.primaryVault.name} at path: ${this.config.primaryVault.path}`);
       this.indexBuilders.set(this.config.primaryVault.path, primaryBuilder);
       this.indexedSearches.set(this.config.primaryVault.path, new IndexedSearch(primaryBuilder, primaryCacheDir));
 
@@ -213,9 +217,14 @@ class ObsidianMCPServer {
       for (const vault of this.config.secondaryVaults) {
         const cacheDir = path.join(vault.path, DEFAULT_INDEX_CONFIG.cacheDir);
         const builder = new IndexBuilder(cacheDir);
+        console.error(`[Init] Secondary vault: ${vault.name} at path: ${vault.path}`);
         this.indexBuilders.set(vault.path, builder);
         this.indexedSearches.set(vault.path, new IndexedSearch(builder, cacheDir));
       }
+
+      console.error('[Init] Final Map keys:');
+      console.error('[Init] - IndexBuilders:', Array.from(this.indexBuilders.keys()));
+      console.error('[Init] - IndexedSearches:', Array.from(this.indexedSearches.keys()));
     }
 
     this.setupHandlers();

@@ -104,12 +104,20 @@ export async function searchVault(
       const allIndexedResults: any[] = [];
       const allVaults = context.getAllVaults();
 
+      // Debug logging
+      console.error('[Search] All vaults:', allVaults.map(v => ({ name: v.name, path: v.path })));
+      console.error('[Search] IndexBuilders keys:', Array.from(context.indexBuilders.keys()));
+      console.error('[Search] IndexedSearches keys:', Array.from(context.indexedSearches.keys()));
+
       for (const vault of allVaults) {
+        console.error(`[Search] Looking up vault: ${vault.name} at path: ${vault.path}`);
         const builder = context.indexBuilders.get(vault.path);
         const searcher = context.indexedSearches.get(vault.path);
 
+        console.error(`[Search] Found builder: ${!!builder}, Found searcher: ${!!searcher}`);
+
         if (!builder || !searcher) {
-          console.log(`[Search] No index for vault ${vault.name}, skipping`);
+          console.error(`[Search] No index for vault ${vault.name}, skipping`);
           continue;
         }
 

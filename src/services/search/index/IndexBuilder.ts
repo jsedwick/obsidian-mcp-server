@@ -153,6 +153,7 @@ export class IndexBuilder {
       vaults: opts.vaults.map(v => v.name),
     });
 
+
     try {
       // 1. Scan all vault files
       const scannedFiles = await this.scanner.scanVaults(opts.vaults);
@@ -191,6 +192,7 @@ export class IndexBuilder {
         filesProcessed: result.filesProcessed,
         totalDocuments: result.totalDocuments,
       });
+
 
       return result;
     } catch (error) {

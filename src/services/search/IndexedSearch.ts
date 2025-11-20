@@ -13,6 +13,7 @@
  */
 
 import * as fs from 'fs/promises';
+import * as fss from 'fs';
 import { createLogger } from '../../utils/logger.js';
 import type { InternalSearchMatch, DateRange } from '../../models/Search.js';
 import { IndexBuilder } from './index/IndexBuilder.js';
@@ -26,6 +27,16 @@ import type { DocumentMetadata } from '../../models/IndexModels.js';
 import type { DocumentScore } from './index/BM25Scorer.js';
 
 const logger = createLogger('IndexedSearch');
+
+// Debug log file path
+const DEBUG_LOG_PATH = '/tmp/obsidian-mcp-search-debug.log';
+
+// Helper function to write debug logs to file
+function writeDebugLog(message: string, data?: any) {
+  const timestamp = new Date().toISOString();
+  const logEntry = `[${timestamp}] ${message}${data ? `: ${JSON.stringify(data, null, 2)}` : ''}\n`;
+  fss.appendFileSync(DEBUG_LOG_PATH, logEntry);
+}
 
 /**
  * Options for indexed search
@@ -83,20 +94,44 @@ export class IndexedSearch {
       maxResults: options.maxResults,
     });
 
+    writeDebugLog('=== INDEXED SEARCH START ===');
+    writeDebugLog('Search options', options);
+
     // Get current index from builder
     const stats = await this.indexBuilder.getIndexStats();
+    writeDebugLog('Index stats', stats);
+
     if (!stats) {
       logger.warn('No index available, returning empty results');
+      writeDebugLog('ERROR: No index stats available');
       return [];
     }
 
     // Load index components (this should be cached/reused in real implementation)
     const { invertedIndex, documentStore } = await this.loadIndex();
+    writeDebugLog('Index loaded', {
+      invertedIndexExists: !!invertedIndex,
+      documentStoreExists: !!documentStore,
+      totalDocs: documentStore?.getTotalDocuments(),
+      totalTerms: invertedIndex?.getTermCount()
+    });
 
     if (!invertedIndex || !documentStore) {
       logger.error('Failed to load index components');
+      writeDebugLog('ERROR: Failed to load index components');
       return [];
     }
+
+    // DEBUG: List all documents in the store
+    const allDocs = documentStore.getAll();
+    writeDebugLog('All documents in store', {
+      totalCount: allDocs.length,
+      sampleDocs: allDocs.slice(0, 10).map((d: DocumentMetadata) => ({ path: d.path, vault: d.vault, category: d.category })),
+      vaultBreakdown: allDocs.reduce((acc: Record<string, number>, doc: DocumentMetadata) => {
+        acc[doc.vault] = (acc[doc.vault] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>)
+    });
 
     // Tokenize query
     const queryTerms = options.queryTerms.map(term => term.toLowerCase());
@@ -105,6 +140,7 @@ export class IndexedSearch {
       queryTerms,
       termCount: queryTerms.length,
     });
+    writeDebugLog('Query tokenized', { queryTerms });
 
     // Query index for matching documents
     const termPostings = new Map();
@@ -112,13 +148,24 @@ export class IndexedSearch {
       const postings = invertedIndex.getPostings(term);
       if (postings.length > 0) {
         termPostings.set(term, postings);
+        writeDebugLog(`Term "${term}" found in ${postings.length} postings`, {
+          samplePostings: postings.slice(0, 5).map((p: any) => ({ docId: p.docId, tf: p.termFrequency }))
+        });
+      } else {
+        writeDebugLog(`Term "${term}" not found in index`);
       }
     }
 
     if (termPostings.size === 0) {
       logger.info('No matching documents found');
+      writeDebugLog('ERROR: No matching documents found for any query term');
       return [];
     }
+
+    writeDebugLog('Term postings summary', {
+      termsWithMatches: termPostings.size,
+      totalQueryTerms: queryTerms.length
+    });
 
     logger.debug('Term postings retrieved', {
       termsWithPostings: termPostings.size,
@@ -263,6 +310,12 @@ export class IndexedSearch {
       query: options.query,
       resultsReturned: results.length,
       documentsScored: documentScores.length,
+    });
+
+    writeDebugLog('=== INDEXED SEARCH COMPLETE ===', {
+      resultsReturned: results.length,
+      documentsScored: documentScores.length,
+      topResults: results.slice(0, 5).map(r => ({ file: r.file, score: r.score }))
     });
 
     return results;
