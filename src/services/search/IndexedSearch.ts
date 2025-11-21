@@ -22,9 +22,11 @@ import type { DocumentStore } from './index/DocumentStore.js';
 import { BM25Scorer } from './index/BM25Scorer.js';
 import { FieldBooster } from './index/FieldBooster.js';
 import { RecencyScorer } from './index/RecencyScorer.js';
+import { AuthorityScorer } from './index/AuthorityScorer.js';
 import { IndexPersistence } from './index/IndexPersistence.js';
 import type { DocumentMetadata } from '../../models/IndexModels.js';
 import type { DocumentScore } from './index/BM25Scorer.js';
+import type { VaultAuthority } from '../../models/Vault.js';
 
 const logger = createLogger('IndexedSearch');
 
@@ -67,19 +69,28 @@ export class IndexedSearch {
   private bm25Scorer: BM25Scorer;
   private fieldBooster: FieldBooster;
   private recencyScorer: RecencyScorer;
+  private authorityScorer: AuthorityScorer;
 
   // In-memory cache of loaded index
   private cachedIndex: InvertedIndex | null = null;
   private cachedStore: DocumentStore | null = null;
   private cacheTimestamp: number = 0;
 
-  constructor(indexBuilder: IndexBuilder, cacheDir: string) {
+  constructor(
+    indexBuilder: IndexBuilder,
+    cacheDir: string,
+    vaultAuthorities: Map<string, VaultAuthority> = new Map()
+  ) {
     this.indexBuilder = indexBuilder;
     this.indexPersistence = new IndexPersistence(cacheDir);
     this.bm25Scorer = new BM25Scorer();
     this.fieldBooster = new FieldBooster();
     this.recencyScorer = new RecencyScorer();
-    logger.info('IndexedSearch initialized', { cacheDir });
+    this.authorityScorer = new AuthorityScorer(vaultAuthorities);
+    logger.info('IndexedSearch initialized', {
+      cacheDir,
+      vaultAuthorities: Array.from(vaultAuthorities.entries()),
+    });
   }
 
   /**
@@ -227,13 +238,24 @@ export class IndexedSearch {
     }
 
     // Apply recency scoring
-    const finalScores = this.recencyScorer.applyRecencyBoosts(
+    const recencyScores = this.recencyScorer.applyRecencyBoosts(
       boostedScores.slice(0, 100), // Only apply to top 100 for performance
       metadataMap
     );
 
     logger.debug('Recency scoring complete', {
+      topScore: recencyScores[0]?.score || 0,
+    });
+
+    // Apply authority scoring (vault and directory-based ranking)
+    const finalScores = this.authorityScorer.applyAuthorityBoosts(
+      recencyScores,
+      metadataMap
+    );
+
+    logger.debug('Authority scoring complete', {
       topScore: finalScores[0]?.score || 0,
+      authorityBoostedDocs: finalScores.filter(s => s.authorityBoost > 0).length,
     });
 
     // Filter by directories if specified

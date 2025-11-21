@@ -5,11 +5,29 @@
  */
 
 /**
+ * Vault authority level for search ranking
+ *
+ * - curated: All content treated as authoritative (e.g., professional documentation)
+ * - default: Use directory-based ranking (topics > decisions > sessions)
+ * - conversational: All content treated as historical/lower priority
+ */
+export type VaultAuthority = 'curated' | 'default' | 'conversational';
+
+/**
  * Configuration for a single vault
  */
 export interface VaultConfig {
   path: string;
   name: string;
+  /**
+   * Content authority level for search ranking.
+   * Defaults to 'default' if not specified.
+   *
+   * - curated: Professional/curated content (ranks with topics)
+   * - default: Use directory-based ranking
+   * - conversational: Historical/draft content (ranks with sessions)
+   */
+  authority?: VaultAuthority;
 }
 
 /**

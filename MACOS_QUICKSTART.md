@@ -51,7 +51,45 @@ ls ~/claude-code-hooks
 
 **Note:** Both repositories should be cloned to stable locations that won't be moved, as Claude Code may reference them by path. Using your home directory (`~`) is recommended.
 
-### 2. Clone or Download the MCP Server Repository
+### 2. Install Configuration Files
+
+**CRITICAL:** Claude Code looks for configuration in specific locations. Move the cloned repositories to where Claude expects them.
+
+```bash
+# Move configuration repository contents to ~/.claude/
+# This includes: commands/, CLAUDE.md, and settings.json
+mv ~/claude-code-config ~/.claude
+
+# Create hooks directory and move hooks repository contents
+mkdir -p ~/.config/claude
+mv ~/claude-code-hooks ~/.config/claude/hooks
+
+# Make all hooks executable
+chmod +x ~/.config/claude/hooks/*.sh
+```
+
+**Verify installation:**
+```bash
+# Check .claude directory structure
+ls -l ~/.claude/
+# Should show: commands/, CLAUDE.md, settings.json
+
+# Check hooks directory
+ls -l ~/.config/claude/hooks/
+# Should show: *.sh files
+
+# Verify hooks are executable (should show -rwxr-xr-x)
+ls -l ~/.config/claude/hooks/*.sh
+```
+
+**Key locations explained:**
+- `~/.claude/` - User-scope Claude Code configuration directory containing:
+  - `settings.json` - Permissions, hooks configuration, model settings
+  - `CLAUDE.md` - Global instructions Claude reads at startup
+  - `commands/` - Custom slash commands (like `/close`, `/sessions`, `/projects`)
+- `~/.config/claude/hooks/` - Hook scripts that run at various points in Claude's workflow
+
+### 3. Clone or Download the MCP Server Repository
 
 ```bash
 # Option A: Clone with git
@@ -62,7 +100,7 @@ cd obsidian-mcp-server
 cd /path/to/obsidian-mcp-server
 ```
 
-### 3. Install Dependencies
+### 4. Install Dependencies
 
 ```bash
 npm install
@@ -72,7 +110,7 @@ This installs the required packages:
 - `@modelcontextprotocol/sdk` - MCP protocol implementation
 - `@xenova/transformers` - Local AI for semantic search (no API calls!)
 
-### 4. Build the Server
+### 5. Build the Server
 
 ```bash
 npm run build
@@ -86,7 +124,7 @@ ls dist/index.js
 # Should show: dist/index.js
 ```
 
-### 5. Create Your Obsidian Vault Directory
+### 6. Create Your Obsidian Vault Directory
 
 Choose where you want your vault (or use an existing Obsidian vault):
 
@@ -98,7 +136,7 @@ mkdir -p ~/Documents/ObsidianVault
 # Just note the path, e.g., ~/Documents/Obsidian/MyVault
 ```
 
-### 6. Configure Claude Code
+### 7. Configure Claude Code MCP Server
 
 Find your Claude Code configuration file:
 
@@ -156,7 +194,7 @@ pwd
 # Copy this path for OBSIDIAN_VAULT_PATH
 ```
 
-### 7. Restart Claude Code
+### 8. Restart Claude Code
 
 Quit and restart Claude Code to load the new MCP server.
 
@@ -168,7 +206,7 @@ killall "Claude"
 open -a "Claude"
 ```
 
-### 8. Test the Installation
+### 9. Test the Installation
 
 Start a conversation with Claude Code and try:
 
@@ -184,7 +222,7 @@ Search my vault for "testing"
 
 Claude should find and return the topic you just created.
 
-### 9. Close Your First Session
+### 10. Close Your First Session
 
 When you're done testing, run:
 
@@ -252,9 +290,13 @@ This lets you search across multiple vaults while keeping one as the primary for
 
 ### Disable Semantic Search (Optional)
 
-If you want faster searches without AI-powered semantic understanding:
+If you want faster searches without AI-powered semantic understanding, you can disable embeddings.
 
-Edit your Claude Code config and add:
+**Note:** This configuration works for both Claude Code CLI and Claude Desktop - just use the appropriate config file for your application.
+
+#### For Claude Code CLI
+
+Edit `~/Library/Application Support/Claude/config.json`:
 ```json
 {
   "mcpServers": {
@@ -270,7 +312,31 @@ Edit your Claude Code config and add:
 }
 ```
 
-You can also toggle this on/off at runtime:
+#### For Claude Desktop
+
+Edit `~/Library/Application Support/Claude/claude_desktop_config.json`:
+```json
+{
+  "mcpServers": {
+    "obsidian-context-manager": {
+      "command": "node",
+      "args": ["/Users/YOUR_USERNAME/obsidian-mcp-server/dist/index.js"],
+      "env": {
+        "OBSIDIAN_VAULT_PATH": "/Users/YOUR_USERNAME/Documents/ObsidianVault",
+        "ENABLE_EMBEDDINGS": "false"
+      }
+    }
+  }
+}
+```
+
+**Key Differences:**
+- **Claude Code CLI**: Uses `config.json`, supports MCP servers AND hooks
+- **Claude Desktop**: Uses `claude_desktop_config.json`, supports ONLY MCP servers (no hooks)
+
+#### Runtime Toggle
+
+You can also toggle embeddings on/off at runtime without restarting:
 - Ask Claude: "Disable embeddings"
 - Or ask: "Enable embeddings"
 

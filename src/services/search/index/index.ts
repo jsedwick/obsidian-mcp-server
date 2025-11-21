@@ -13,3 +13,4 @@ export { IndexBuilder, BuildMode, type BuildResult, type BuildOptions } from './
 export { BM25Scorer, DEFAULT_BM25_PARAMETERS, type DocumentScore, type ScoreExplanation } from './BM25Scorer.js';
 export { FieldBooster, type BoostedScore } from './FieldBooster.js';
 export { RecencyScorer, DEFAULT_RECENCY_CONFIG, type RecencyScore, type RecencyConfig } from './RecencyScorer.js';
+export { AuthorityScorer, DEFAULT_AUTHORITY_CONFIG, type AuthorityScore, type AuthorityConfig } from './AuthorityScorer.js';

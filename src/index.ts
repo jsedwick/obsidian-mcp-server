@@ -19,15 +19,9 @@ import { validateToolArgs, ValidationError } from './validation/index.js';
 import { IndexBuilder } from './services/search/index/IndexBuilder.js';
 import { IndexedSearch } from './services/search/IndexedSearch.js';
 import { DEFAULT_INDEX_CONFIG } from './models/IndexModels.js';
+import type { VaultConfig, VaultAuthority } from './models/Vault.js';
 
 const execAsync = promisify(exec);
-
-// Configuration types
-interface VaultConfig {
-  path: string;
-  name: string;
-  readonly: boolean;
-}
 
 interface ServerConfig {
   primaryVault: VaultConfig;
@@ -54,12 +48,12 @@ function loadConfig(): ServerConfig {
       primaryVault: {
         path: normalizePath(config.primaryVault.path as string),
         name: config.primaryVault.name || 'Primary Vault',
-        readonly: false,
+        authority: (config.primaryVault.authority as VaultAuthority | undefined) || 'default',
       },
-      secondaryVaults: (config.secondaryVaults || []).map((v: { path: string; name?: string }) => ({
+      secondaryVaults: (config.secondaryVaults || []).map((v: { path: string; name?: string; authority?: string }) => ({
         path: normalizePath(v.path),
         name: v.name || path.basename(v.path),
-        readonly: true,
+        authority: (v.authority as VaultAuthority | undefined) || 'default',
       })),
     };
   } catch (_error) {
@@ -78,12 +72,12 @@ function loadConfig(): ServerConfig {
       primaryVault: {
         path: normalizePath(primaryPath),
         name: process.env.OBSIDIAN_VAULT_NAME || 'Primary Vault',
-        readonly: false,
+        authority: 'default',
       },
       secondaryVaults: secondaryPaths.map((p, idx) => ({
         path: normalizePath(p),
         name: `Secondary Vault ${idx + 1}`,
-        readonly: true,
+        authority: 'default',
       })),
     };
   }
@@ -206,12 +200,15 @@ class ObsidianMCPServer {
     if (DEFAULT_INDEX_CONFIG.enabled) {
       console.error('[Init] Initializing search indexes for vaults...');
 
+      // Build vault authorities map for all vaults
+      const vaultAuthorities = this.buildVaultAuthoritiesMap();
+
       // Primary vault
       const primaryCacheDir = path.join(this.config.primaryVault.path, DEFAULT_INDEX_CONFIG.cacheDir);
       const primaryBuilder = new IndexBuilder(primaryCacheDir);
       console.error(`[Init] Primary vault: ${this.config.primaryVault.name} at path: ${this.config.primaryVault.path}`);
       this.indexBuilders.set(this.config.primaryVault.path, primaryBuilder);
-      this.indexedSearches.set(this.config.primaryVault.path, new IndexedSearch(primaryBuilder, primaryCacheDir));
+      this.indexedSearches.set(this.config.primaryVault.path, new IndexedSearch(primaryBuilder, primaryCacheDir, vaultAuthorities));
 
       // Secondary vaults
       for (const vault of this.config.secondaryVaults) {
@@ -219,7 +216,7 @@ class ObsidianMCPServer {
         const builder = new IndexBuilder(cacheDir);
         console.error(`[Init] Secondary vault: ${vault.name} at path: ${vault.path}`);
         this.indexBuilders.set(vault.path, builder);
-        this.indexedSearches.set(vault.path, new IndexedSearch(builder, cacheDir));
+        this.indexedSearches.set(vault.path, new IndexedSearch(builder, cacheDir, vaultAuthorities));
       }
 
       console.error('[Init] Final Map keys:');
@@ -251,6 +248,28 @@ class ObsidianMCPServer {
 
   private getPrimaryVaultPath(): string {
     return this.config.primaryVault.path;
+  }
+
+  /**
+   * Build a map of vault names to their authority levels
+   * Used for search ranking to prioritize curated content
+   *
+   * @returns Map of vault name to authority level
+   */
+  private buildVaultAuthoritiesMap(): Map<string, VaultAuthority> {
+    const authorities = new Map<string, VaultAuthority>();
+
+    // Add primary vault
+    const primaryAuthority = this.config.primaryVault.authority || 'default';
+    authorities.set(this.config.primaryVault.name, primaryAuthority);
+
+    // Add secondary vaults
+    for (const vault of this.config.secondaryVaults) {
+      const authority = vault.authority || 'default';
+      authorities.set(vault.name, authority);
+    }
+
+    return authorities;
   }
 
   private setupHandlers(): void {
