@@ -127,6 +127,7 @@ interface CloseSessionContext {
   setCurrentSession: (sessionId: string, sessionFile: string) => void;
   clearSessionState: () => void;
   getMostRecentSessionDate: (repoSlug: string) => Promise<Date | null>;
+  appendToMemoryBase?: (args: { summary: string; session_topic?: string }) => Promise<any>;
 }
 
 export async function closeSession(
@@ -388,6 +389,26 @@ export async function closeSession(
     }
   }
 
+  // Append session summary to rolling memory base
+  let memoryBaseMessage = '';
+  if (context.appendToMemoryBase) {
+    try {
+      const memoryResult = await context.appendToMemoryBase({
+        summary: args.summary,
+        session_topic: args.topic,
+      });
+      memoryBaseMessage = '\n\n🧠 Memory base updated';
+      if (memoryResult.haiku_used) {
+        memoryBaseMessage += ` (summarized by Haiku: ${memoryResult.haiku_tokens?.input}→${memoryResult.haiku_tokens?.output} tokens)`;
+      }
+      if (memoryResult.trimmed) {
+        memoryBaseMessage += `\n   ${memoryResult.sessions_removed} old session(s) trimmed`;
+      }
+    } catch (error) {
+      memoryBaseMessage = '\n\n⚠️  Memory base update failed: ' + (error instanceof Error ? error.message : String(error));
+    }
+  }
+
   // Clear state for next conversation
   context.clearSessionState();
 
@@ -395,7 +416,7 @@ export async function closeSession(
     content: [
       {
         type: 'text',
-        text: summary + repoDetectionMessage + vaultCustodianReport,
+        text: summary + repoDetectionMessage + vaultCustodianReport + memoryBaseMessage,
       },
     ],
   };

@@ -373,6 +373,7 @@ class ObsidianMCPServer {
               setCurrentSession: this.setCurrentSession.bind(this),
               clearSessionState: this.clearSessionState.bind(this),
               getMostRecentSessionDate: this.getMostRecentSessionDate.bind(this),
+              appendToMemoryBase: async (args) => tools.appendToMemoryBase(args, this.config.primaryVault.path),
             });
 
           case 'find_stale_topics':
@@ -499,6 +500,18 @@ class ObsidianMCPServer {
               gitService: this.gitService,
               searchVault: this.searchVaultWrapper.bind(this),
             });
+
+          case 'get_memory_base':
+            return await tools.getMemoryBase(
+              validatedArgs as tools.GetMemoryBaseArgs,
+              this.config.primaryVault.path
+            );
+
+          case 'append_to_memory_base':
+            return await tools.appendToMemoryBase(
+              validatedArgs as tools.AppendToMemoryBaseArgs,
+              this.config.primaryVault.path
+            );
 
           default:
             throw new Error(`Unknown tool: ${name}`);
@@ -1403,6 +1416,36 @@ SCOPE: Decisions can be vault-level (affecting the MCP system itself) or project
             },
           },
           required: ['repo_path', 'commit_hash'],
+        },
+      },
+      {
+        name: 'get_memory_base',
+        description: 'Retrieve the current contents of the rolling memory file. Used at session start to provide continuity from recent conversations.',
+        inputSchema: {
+          type: 'object',
+          properties: {},
+        },
+      },
+      {
+        name: 'append_to_memory_base',
+        description: 'Append a session summary to the rolling memory file. Automatically trims old content when the file exceeds the size limit.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            summary: {
+              type: 'string',
+              description: 'Session summary to append',
+            },
+            session_topic: {
+              type: 'string',
+              description: 'Optional topic/title for the session',
+            },
+            max_size_bytes: {
+              type: 'number',
+              description: 'Maximum file size in bytes (default: 10240)',
+            },
+          },
+          required: ['summary'],
         },
       },
     ];

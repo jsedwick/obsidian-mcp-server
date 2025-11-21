@@ -26,6 +26,9 @@ export * from './decisions/index.js';
 // Maintenance tools (2)
 export * from './maintenance/index.js';
 
+// Memory tools (2)
+export * from './memory/index.js';
+
 /**
  * Tool Summary:
  *
