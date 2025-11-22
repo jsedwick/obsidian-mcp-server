@@ -40,8 +40,8 @@ INTERACTIVE=true
 USERNAME=$(whoami)
 
 # Repository URLs (update these if using different hosting)
-CONFIG_REPO="${CONFIG_REPO:-https://git.uoregon.edu/projects/JSDEV/repos/claude-code-config/browse}"
-HOOKS_REPO="${HOOKS_REPO:-https://git.uoregon.edu/projects/JSDEV/repos/claude-code-hooks/browse}"
+CONFIG_REPO="${CONFIG_REPO:-ssh://git@git.uoregon.edu/jsdev/claude-code-config.git}"
+HOOKS_REPO="${HOOKS_REPO:-ssh://git@git.uoregon.edu/jsdev/claude-code-hooks.git}"
 
 #############################################################################
 # Helper Functions
