@@ -16,7 +16,7 @@ Use this checklist to track your progress implementing the Obsidian MCP Server.
 - [ ] Navigated to project directory
 - [ ] Ran `npm install`
 - [ ] Ran `npm run build`
-- [ ] Ran `./setup.sh`
+- [ ] Ran `./install-macos.sh`
 - [ ] Provided vault path when prompted
 - [ ] Setup completed successfully
 
@@ -254,7 +254,7 @@ You're ready to use the Obsidian MCP Server for all your coding conversations!
 
 ```bash
 cd obsidian-mcp-server
-./setup.sh
+./install-macos.sh
 # Follow prompts, restart Claude Code
 # Start coding! 🎉
 ```

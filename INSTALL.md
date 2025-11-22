@@ -42,7 +42,7 @@ npm install
 npm run build
 
 # 4. Run the automated setup
-./setup.sh
+./install-macos.sh
 ```
 
 The setup script will:

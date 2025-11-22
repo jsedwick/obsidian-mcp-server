@@ -24,13 +24,48 @@ An MCP (Model Context Protocol) server that enables Claude Code to automatically
 
 ## Installation
 
-### Prerequisites
+### Quick Install (macOS)
+
+**Automated installer** - Sets up everything in one command:
+
+```bash
+git clone https://git.uoregon.edu/projects/JSDEV/repos/obsidian-mcp-server/browse obsidian-mcp-server
+cd obsidian-mcp-server
+./install-macos.sh
+```
+
+The installer will:
+- ✅ Clone configuration and hooks repositories
+- ✅ Install Claude Code settings and slash commands
+- ✅ Set up hooks for extended functionality
+- ✅ Build the MCP server
+- ✅ Create vault directory structure
+- ✅ Configure Claude Code MCP integration
+- ✅ Provide detailed explanations for every file created
+
+**Options:**
+```bash
+./install-macos.sh --help              # Show help
+./install-macos.sh --dry-run           # Preview without making changes
+./install-macos.sh --vault-path PATH   # Custom vault location
+./install-macos.sh --skip-clone        # Skip cloning repos (if already done)
+```
+
+**Note:** The installer provides verbose output explaining every file created and its purpose. Perfect for understanding the system architecture!
+
+---
+
+### Manual Installation
+
+For Linux/Windows or if you prefer manual setup:
+
+#### Prerequisites
 
 - Node.js >= 18.0.0
 - Claude Code installed
 - An Obsidian vault (or directory to use as one)
 
-### Essential Repositories to Clone
+#### Essential Repositories to Clone
 
 Before setting up the MCP server, clone these two repositories:
 

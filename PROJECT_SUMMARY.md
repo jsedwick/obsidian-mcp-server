@@ -10,7 +10,7 @@ A complete, production-ready MCP (Model Context Protocol) server that enables Cl
 cd obsidian-mcp-server
 npm install
 npm run build
-./setup.sh
+./install-macos.sh
 ```
 
 Then restart Claude Code and start chatting!
@@ -76,7 +76,7 @@ obsidian-mcp-server/
 │   └── test.ts           # Test utility
 ├── package.json          # Dependencies and scripts
 ├── tsconfig.json         # TypeScript configuration
-├── setup.sh              # Automated setup script
+├── install-macos.sh      # macOS automated installer
 ├── README.md             # Complete documentation
 ├── QUICKSTART.md         # 5-minute getting started guide
 ├── INSTALL.md            # Detailed installation guide
@@ -94,12 +94,16 @@ After npm install & build:
 ## How It Works
 
 ### 1. Installation
-The `setup.sh` script:
-- Detects your OS
-- Finds Claude Code config location
-- Creates vault structure
-- Generates configuration
-- Initializes vault with index
+The `install-macos.sh` installer (macOS):
+- Checks prerequisites (Node.js, git, Claude Code)
+- Prompts for vault configuration (primary + secondary)
+- Clones configuration and hooks repositories
+- Installs Claude Code settings and slash commands
+- Builds the MCP server
+- Creates vault directory structures
+- Configures MCP integration with correct `cwd`
+- Cleans up redundant configuration files
+- Provides verbose explanations for every step
 
 ### 2. Integration
 Claude Code connects to the MCP server via stdio:
@@ -349,7 +353,7 @@ Text is incredibly compact!
 
 ## Next Steps
 
-1. **Install**: Run `./setup.sh`
+1. **Install**: Run `./install-macos.sh`
 2. **Test**: Run `npm test`
 3. **Use**: Start a conversation with Claude Code
 4. **Explore**: Open vault in Obsidian
@@ -388,4 +392,4 @@ Contributions welcome! Ideas for improvements:
 
 **You're all set!** 🚀
 
-Run `./setup.sh` to get started, then open Claude Code and start a conversation. Claude will automatically manage your context in the Obsidian vault.
+Run `./install-macos.sh` to get started, then open Claude Code and start a conversation. Claude will automatically manage your context in the Obsidian vault.

@@ -23,8 +23,7 @@
     "typecheck": "tsc --noEmit",
     "quality": "npm run lint && npm run format:check && npm run typecheck && npm run test",
     "prepare": "husky",
-    "clean": "rm -rf dist",
-    "setup": "./setup.sh"
+    "clean": "rm -rf dist"
   },
   "lint-staged": {
     "*.ts": [

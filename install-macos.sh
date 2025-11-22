@@ -1,0 +1,1112 @@
+#!/usr/bin/env bash
+
+#############################################################################
+# Obsidian MCP Server - macOS Installer
+#############################################################################
+#
+# This script installs the Obsidian MCP Server and all required components
+# for Claude Code on macOS. It provides verbose output explaining every step.
+#
+# Usage: ./install-macos.sh [options]
+#
+# Options:
+#   --primary-vault PATH      Specify primary vault path (enables non-interactive mode)
+#   --primary-vault-name NAME Specify primary vault name
+#   --skip-clone              Skip cloning config/hooks repos (use if already cloned)
+#   --non-interactive         Run without prompts (requires --primary-vault)
+#   --dry-run                 Show what would be done without making changes
+#   --help                    Show this help message
+#
+#############################################################################
+
+set -e  # Exit on error
+
+# Color codes for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+MAGENTA='\033[0;35m'
+CYAN='\033[0;36m'
+NC='\033[0m' # No Color
+
+# Configuration
+PRIMARY_VAULT_PATH=""
+PRIMARY_VAULT_NAME=""
+SECONDARY_VAULTS=()
+SKIP_CLONE=false
+DRY_RUN=false
+INTERACTIVE=true
+USERNAME=$(whoami)
+
+# Repository URLs (update these if using different hosting)
+CONFIG_REPO="${CONFIG_REPO:-https://git.uoregon.edu/projects/JSDEV/repos/claude-code-config/browse}"
+HOOKS_REPO="${HOOKS_REPO:-https://git.uoregon.edu/projects/JSDEV/repos/claude-code-hooks/browse}"
+
+#############################################################################
+# Helper Functions
+#############################################################################
+
+print_header() {
+    echo -e "\n${MAGENTA}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${MAGENTA}$1${NC}"
+    echo -e "${MAGENTA}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
+}
+
+print_step() {
+    echo -e "${BLUE}▶${NC} $1"
+}
+
+print_success() {
+    echo -e "${GREEN}✓${NC} $1"
+}
+
+print_warning() {
+    echo -e "${YELLOW}⚠${NC} $1"
+}
+
+print_error() {
+    echo -e "${RED}✗${NC} $1"
+}
+
+print_info() {
+    echo -e "${CYAN}ℹ${NC} $1"
+}
+
+print_file_created() {
+    echo -e "${GREEN}  Created:${NC} $1"
+    echo -e "${CYAN}  Purpose:${NC} $2"
+}
+
+print_file_exists() {
+    echo -e "${YELLOW}  Exists:${NC} $1"
+    echo -e "${CYAN}  Purpose:${NC} $2"
+}
+
+execute_or_dry_run() {
+    if [ "$DRY_RUN" = true ]; then
+        echo -e "${CYAN}[DRY RUN]${NC} Would execute: $*"
+    else
+        "$@"
+    fi
+}
+
+#############################################################################
+# Parse Command Line Arguments
+#############################################################################
+
+parse_args() {
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            --primary-vault)
+                PRIMARY_VAULT_PATH="$2"
+                INTERACTIVE=false
+                shift 2
+                ;;
+            --primary-vault-name)
+                PRIMARY_VAULT_NAME="$2"
+                shift 2
+                ;;
+            --skip-clone)
+                SKIP_CLONE=true
+                shift
+                ;;
+            --dry-run)
+                DRY_RUN=true
+                shift
+                ;;
+            --non-interactive)
+                INTERACTIVE=false
+                shift
+                ;;
+            --help)
+                sed -n '3,18p' "$0" | sed 's/^# //' | sed 's/^#//'
+                exit 0
+                ;;
+            *)
+                print_error "Unknown option: $1"
+                echo "Use --help for usage information"
+                exit 1
+                ;;
+        esac
+    done
+}
+
+#############################################################################
+# Prompt for Vault Configuration
+#############################################################################
+
+prompt_vault_config() {
+    if [ "$INTERACTIVE" = false ]; then
+        print_info "Non-interactive mode - using provided configuration"
+        return
+    fi
+
+    print_header "Vault Configuration"
+
+    print_info "The MCP server needs to know where your Obsidian vault(s) are located."
+    print_info "You can configure one primary vault and optionally add secondary vaults."
+    echo ""
+
+    # Primary vault path
+    if [ -z "$PRIMARY_VAULT_PATH" ]; then
+        print_step "Primary vault configuration:"
+        echo ""
+
+        while true; do
+            read -p "$(echo -e "${BLUE}Primary vault path${NC} (e.g., ~/Documents/ObsidianVault): ")" PRIMARY_VAULT_PATH
+
+            # Expand tilde
+            PRIMARY_VAULT_PATH="${PRIMARY_VAULT_PATH/#\~/$HOME}"
+
+            # Validate path
+            if [ -z "$PRIMARY_VAULT_PATH" ]; then
+                print_error "Vault path cannot be empty"
+                continue
+            fi
+
+            # Check if directory exists
+            if [ -d "$PRIMARY_VAULT_PATH" ]; then
+                print_success "Found existing directory: $PRIMARY_VAULT_PATH"
+                break
+            else
+                print_warning "Directory does not exist: $PRIMARY_VAULT_PATH"
+                read -p "$(echo -e "${YELLOW}Create this directory?${NC} (y/n): ")" CREATE_DIR
+                if [[ "$CREATE_DIR" =~ ^[Yy]$ ]]; then
+                    if [ "$DRY_RUN" = false ]; then
+                        mkdir -p "$PRIMARY_VAULT_PATH"
+                        print_success "Created directory: $PRIMARY_VAULT_PATH"
+                    else
+                        print_info "[DRY RUN] Would create: $PRIMARY_VAULT_PATH"
+                    fi
+                    break
+                fi
+            fi
+        done
+    fi
+
+    # Primary vault name
+    if [ -z "$PRIMARY_VAULT_NAME" ]; then
+        DEFAULT_NAME=$(basename "$PRIMARY_VAULT_PATH")
+        read -p "$(echo -e "${BLUE}Primary vault name${NC} (default: $DEFAULT_NAME): ")" PRIMARY_VAULT_NAME
+
+        if [ -z "$PRIMARY_VAULT_NAME" ]; then
+            PRIMARY_VAULT_NAME="$DEFAULT_NAME"
+        fi
+
+        print_success "Primary vault name: $PRIMARY_VAULT_NAME"
+    fi
+
+    echo ""
+
+    # Secondary vaults
+    print_step "Secondary vault configuration (optional):"
+    print_info "Secondary vaults allow you to search multiple Obsidian vaults simultaneously."
+    print_info "You can add as many secondary vaults as you like (or none)."
+    echo ""
+
+    while true; do
+        read -p "$(echo -e "${BLUE}Add a secondary vault?${NC} (y/n): ")" ADD_SECONDARY
+
+        if [[ ! "$ADD_SECONDARY" =~ ^[Yy]$ ]]; then
+            break
+        fi
+
+        # Get secondary vault path
+        while true; do
+            read -p "$(echo -e "${BLUE}Secondary vault path${NC}: ")" SEC_PATH
+
+            # Expand tilde
+            SEC_PATH="${SEC_PATH/#\~/$HOME}"
+
+            if [ -z "$SEC_PATH" ]; then
+                print_error "Path cannot be empty"
+                continue
+            fi
+
+            if [ ! -d "$SEC_PATH" ]; then
+                print_warning "Directory does not exist: $SEC_PATH"
+                read -p "$(echo -e "${YELLOW}Create this directory?${NC} (y/n): ")" CREATE_SEC
+                if [[ "$CREATE_SEC" =~ ^[Yy]$ ]]; then
+                    if [ "$DRY_RUN" = false ]; then
+                        mkdir -p "$SEC_PATH"
+                        print_success "Created directory: $SEC_PATH"
+                    else
+                        print_info "[DRY RUN] Would create: $SEC_PATH"
+                    fi
+                    break
+                fi
+            else
+                break
+            fi
+        done
+
+        # Get secondary vault name
+        DEFAULT_SEC_NAME=$(basename "$SEC_PATH")
+        read -p "$(echo -e "${BLUE}Secondary vault name${NC} (default: $DEFAULT_SEC_NAME): ")" SEC_NAME
+
+        if [ -z "$SEC_NAME" ]; then
+            SEC_NAME="$DEFAULT_SEC_NAME"
+        fi
+
+        # Get authority level
+        echo ""
+        print_info "Authority levels control search result ranking:"
+        print_info "  - 'curated' (recommended): Results ranked highly but below primary vault"
+        print_info "  - 'default': Standard ranking equal to primary vault"
+        print_info "  - 'reference': Lower ranking, treated as reference material"
+        read -p "$(echo -e "${BLUE}Authority level${NC} (curated/default/reference, default: curated): ")" AUTHORITY
+
+        if [ -z "$AUTHORITY" ]; then
+            AUTHORITY="curated"
+        fi
+
+        # Validate authority
+        if [[ ! "$AUTHORITY" =~ ^(curated|default|reference)$ ]]; then
+            print_warning "Invalid authority level, using 'curated'"
+            AUTHORITY="curated"
+        fi
+
+        # Store secondary vault info (format: path|name|authority)
+        SECONDARY_VAULTS+=("$SEC_PATH|$SEC_NAME|$AUTHORITY")
+        print_success "Added secondary vault: $SEC_NAME ($AUTHORITY)"
+        echo ""
+    done
+
+    # Summary
+    echo ""
+    print_info "Vault configuration summary:"
+    echo -e "  ${GREEN}Primary:${NC} $PRIMARY_VAULT_NAME"
+    echo -e "    Path: $PRIMARY_VAULT_PATH"
+
+    if [ ${#SECONDARY_VAULTS[@]} -gt 0 ]; then
+        echo -e "  ${GREEN}Secondary vaults:${NC}"
+        for vault in "${SECONDARY_VAULTS[@]}"; do
+            IFS='|' read -r path name authority <<< "$vault"
+            echo -e "    - $name ($authority)"
+            echo -e "      Path: $path"
+        done
+    else
+        echo -e "  ${YELLOW}No secondary vaults${NC}"
+    fi
+    echo ""
+}
+
+#############################################################################
+# Prerequisite Checks
+#############################################################################
+
+check_prerequisites() {
+    print_header "Checking Prerequisites"
+
+    # Check for Node.js
+    print_step "Checking for Node.js..."
+    if command -v node &> /dev/null; then
+        NODE_VERSION=$(node --version)
+        print_success "Node.js found: $NODE_VERSION"
+
+        # Verify version is 18+
+        MAJOR_VERSION=$(echo "$NODE_VERSION" | sed 's/v//' | cut -d. -f1)
+        if [ "$MAJOR_VERSION" -lt 18 ]; then
+            print_error "Node.js version 18+ required (found $NODE_VERSION)"
+            exit 1
+        fi
+    else
+        print_error "Node.js not found. Install with: brew install node"
+        exit 1
+    fi
+
+    # Check for git
+    print_step "Checking for git..."
+    if command -v git &> /dev/null; then
+        GIT_VERSION=$(git --version)
+        print_success "Git found: $GIT_VERSION"
+    else
+        print_error "Git not found. Please install git first."
+        exit 1
+    fi
+
+    # Check for Claude Code config directory
+    print_step "Checking for Claude Code installation..."
+    CLAUDE_CONFIG_DIR="$HOME/Library/Application Support/Claude"
+    if [ -d "$CLAUDE_CONFIG_DIR" ]; then
+        print_success "Claude Code installation detected"
+        print_info "Config directory: $CLAUDE_CONFIG_DIR"
+    else
+        print_warning "Claude Code config directory not found"
+        print_info "Claude Code may not be installed or hasn't been run yet"
+        print_info "Download from: https://claude.com/claude-code"
+    fi
+}
+
+#############################################################################
+# Clone Configuration Repositories
+#############################################################################
+
+clone_repositories() {
+    if [ "$SKIP_CLONE" = true ]; then
+        print_header "Skipping Repository Clone (--skip-clone flag set)"
+        return
+    fi
+
+    print_header "Cloning Configuration Repositories"
+
+    # Clone claude-code-config
+    print_step "Cloning claude-code-config repository..."
+    if [ -d "$HOME/claude-code-config" ]; then
+        print_warning "Directory already exists: $HOME/claude-code-config"
+        print_info "Using existing directory (update manually if needed)"
+    else
+        print_info "Repository: $CONFIG_REPO"
+        print_info "Destination: $HOME/claude-code-config"
+        execute_or_dry_run git clone "$CONFIG_REPO" "$HOME/claude-code-config"
+        print_success "Configuration repository cloned"
+        print_info "Contains: CLAUDE.md, settings.json, slash commands"
+    fi
+
+    # Clone claude-code-hooks
+    print_step "Cloning claude-code-hooks repository..."
+    if [ -d "$HOME/claude-code-hooks" ]; then
+        print_warning "Directory already exists: $HOME/claude-code-hooks"
+        print_info "Using existing directory (update manually if needed)"
+    else
+        print_info "Repository: $HOOKS_REPO"
+        print_info "Destination: $HOME/claude-code-hooks"
+        execute_or_dry_run git clone "$HOOKS_REPO" "$HOME/claude-code-hooks"
+        print_success "Hooks repository cloned"
+        print_info "Contains: session-start.sh, user-prompt-submit.sh, etc."
+    fi
+}
+
+#############################################################################
+# Install Claude Code Configuration
+#############################################################################
+
+install_claude_config() {
+    print_header "Installing Claude Code Configuration"
+
+    CLAUDE_USER_CONFIG="$HOME/.claude"
+
+    print_step "Setting up ~/.claude/ directory..."
+
+    if [ -d "$CLAUDE_USER_CONFIG" ]; then
+        print_warning "Configuration directory already exists: $CLAUDE_USER_CONFIG"
+        print_info "Backing up to: $CLAUDE_USER_CONFIG.backup.$(date +%s)"
+        execute_or_dry_run mv "$CLAUDE_USER_CONFIG" "$CLAUDE_USER_CONFIG.backup.$(date +%s)"
+    fi
+
+    if [ "$DRY_RUN" = false ]; then
+        cp -R "$HOME/claude-code-config" "$CLAUDE_USER_CONFIG"
+        print_success "Configuration directory created"
+    else
+        print_info "[DRY RUN] Would copy: $HOME/claude-code-config → $CLAUDE_USER_CONFIG"
+    fi
+
+    # Describe what was installed
+    print_info "Installed configuration files:"
+    echo ""
+
+    if [ -f "$CLAUDE_USER_CONFIG/CLAUDE.md" ]; then
+        print_file_created "$CLAUDE_USER_CONFIG/CLAUDE.md" \
+            "Global instructions Claude reads at every session start"
+    fi
+
+    if [ -f "$CLAUDE_USER_CONFIG/settings.json" ]; then
+        print_file_created "$CLAUDE_USER_CONFIG/settings.json" \
+            "User-scope settings: file permissions, hooks, model preferences"
+    fi
+
+    if [ -d "$CLAUDE_USER_CONFIG/commands" ]; then
+        print_file_created "$CLAUDE_USER_CONFIG/commands/" \
+            "Custom slash commands directory"
+
+        # List individual commands
+        for cmd in "$CLAUDE_USER_CONFIG/commands"/*.md; do
+            if [ -f "$cmd" ]; then
+                CMD_NAME=$(basename "$cmd" .md)
+                echo -e "    ${GREEN}/${CMD_NAME}${NC}"
+            fi
+        done
+    fi
+}
+
+#############################################################################
+# Install Hooks
+#############################################################################
+
+install_hooks() {
+    print_header "Installing Claude Code Hooks"
+
+    HOOKS_DIR="$HOME/.config/claude/hooks"
+
+    print_step "Setting up hooks directory..."
+    execute_or_dry_run mkdir -p "$HOME/.config/claude"
+
+    if [ -d "$HOOKS_DIR" ]; then
+        print_warning "Hooks directory already exists: $HOOKS_DIR"
+        print_info "Backing up to: $HOOKS_DIR.backup.$(date +%s)"
+        execute_or_dry_run mv "$HOOKS_DIR" "$HOOKS_DIR.backup.$(date +%s)"
+    fi
+
+    if [ "$DRY_RUN" = false ]; then
+        cp -R "$HOME/claude-code-hooks" "$HOOKS_DIR"
+        print_success "Hooks directory created"
+    else
+        print_info "[DRY RUN] Would copy: $HOME/claude-code-hooks → $HOOKS_DIR"
+    fi
+
+    # Make all hooks executable
+    print_step "Making hooks executable..."
+    if [ "$DRY_RUN" = false ]; then
+        chmod +x "$HOOKS_DIR"/*.sh
+        print_success "All hooks are now executable"
+    else
+        print_info "[DRY RUN] Would execute: chmod +x $HOOKS_DIR/*.sh"
+    fi
+
+    # List installed hooks
+    print_info "Installed hooks:"
+    echo ""
+    for hook in "$HOOKS_DIR"/*.sh; do
+        if [ -f "$hook" ]; then
+            HOOK_NAME=$(basename "$hook")
+            case "$HOOK_NAME" in
+                session-start.sh)
+                    print_file_created "$hook" \
+                        "Runs when Claude Code session starts"
+                    ;;
+                user-prompt-submit.sh)
+                    print_file_created "$hook" \
+                        "Runs before user input is sent to Claude"
+                    ;;
+                *)
+                    print_file_created "$hook" \
+                        "Claude Code extension hook"
+                    ;;
+            esac
+        fi
+    done
+}
+
+#############################################################################
+# Build MCP Server
+#############################################################################
+
+build_mcp_server() {
+    print_header "Building Obsidian MCP Server"
+
+    # Get the directory where this script lives (the repo root)
+    SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
+    print_step "Installing npm dependencies..."
+    print_info "Location: $SCRIPT_DIR"
+
+    cd "$SCRIPT_DIR"
+
+    if [ "$DRY_RUN" = false ]; then
+        npm install
+        print_success "Dependencies installed"
+    else
+        print_info "[DRY RUN] Would execute: npm install"
+    fi
+
+    print_step "Building TypeScript to JavaScript..."
+    if [ "$DRY_RUN" = false ]; then
+        npm run build
+        print_success "Build completed"
+
+        if [ -f "$SCRIPT_DIR/dist/index.js" ]; then
+            print_file_created "$SCRIPT_DIR/dist/index.js" \
+                "MCP server entry point (executed by Claude Code)"
+        fi
+    else
+        print_info "[DRY RUN] Would execute: npm run build"
+    fi
+}
+
+#############################################################################
+# Create Vault Structure
+#############################################################################
+
+create_vault_structure() {
+    print_header "Creating Vault Directory Structure"
+
+    # Create primary vault structure
+    create_single_vault_structure "$PRIMARY_VAULT_PATH" "$PRIMARY_VAULT_NAME"
+
+    # Create secondary vault structures
+    if [ ${#SECONDARY_VAULTS[@]} -gt 0 ]; then
+        for vault in "${SECONDARY_VAULTS[@]}"; do
+            IFS='|' read -r path name authority <<< "$vault"
+            create_single_vault_structure "$path" "$name"
+        done
+    fi
+}
+
+create_single_vault_structure() {
+    local VAULT_PATH="$1"
+    local VAULT_NAME="$2"
+
+    print_step "Creating vault structure: $VAULT_NAME"
+    print_info "Location: $VAULT_PATH"
+
+    # Create main vault directory (should already exist from prompt)
+    if [ ! -d "$VAULT_PATH" ] && [ "$DRY_RUN" = false ]; then
+        mkdir -p "$VAULT_PATH"
+    fi
+
+    # Create subdirectories
+    DIRS=(
+        "sessions"
+        "topics"
+        "decisions"
+        "decisions/vault"
+        "projects"
+        "archive"
+        "archive/topics"
+    )
+
+    for dir in "${DIRS[@]}"; do
+        FULL_PATH="$VAULT_PATH/$dir"
+        if [ -d "$FULL_PATH" ]; then
+            print_file_exists "$FULL_PATH" \
+                "$(get_dir_purpose "$dir")"
+        else
+            execute_or_dry_run mkdir -p "$FULL_PATH"
+            print_file_created "$FULL_PATH" \
+                "$(get_dir_purpose "$dir")"
+        fi
+    done
+
+    # Create index.md if it doesn't exist
+    if [ ! -f "$VAULT_PATH/index.md" ] && [ "$DRY_RUN" = false ]; then
+        cat > "$VAULT_PATH/index.md" << EOF
+# Knowledge Vault: $VAULT_NAME
+
+Welcome to your Obsidian MCP knowledge vault! This vault is managed by Claude Code and contains:
+
+## Structure
+
+- **sessions/** - Conversation logs organized by month
+- **topics/** - Technical documentation and how-to guides
+- **decisions/** - Architectural Decision Records (ADRs)
+- **projects/** - Git repository tracking and commit history
+- **archive/** - Stale or deprecated content
+
+## Getting Started
+
+Use Claude Code to interact with this vault:
+
+- Create topics: "Create a topic about..."
+- Search: "Search my vault for..."
+- Create decisions: "Document the decision to..."
+- Close session: \`/close\`
+
+The vault grows with your conversations!
+EOF
+        print_file_created "$VAULT_PATH/index.md" \
+            "Vault overview and navigation guide"
+    elif [ "$DRY_RUN" = true ]; then
+        print_info "[DRY RUN] Would create: $VAULT_PATH/index.md"
+    fi
+
+    echo ""
+}
+
+get_dir_purpose() {
+    case "$1" in
+        "sessions")
+            echo "Conversation logs organized by year-month"
+            ;;
+        "topics")
+            echo "Technical documentation and implementation guides"
+            ;;
+        "decisions")
+            echo "Architectural Decision Records (ADRs)"
+            ;;
+        "decisions/vault")
+            echo "Vault-level ADRs (MCP system decisions)"
+            ;;
+        "projects")
+            echo "Git repository tracking and metadata"
+            ;;
+        "archive")
+            echo "Deprecated or stale content"
+            ;;
+        "archive/topics")
+            echo "Archived topic pages"
+            ;;
+        *)
+            echo "Vault subdirectory"
+            ;;
+    esac
+}
+
+#############################################################################
+# Configure Claude Code MCP Integration
+#############################################################################
+
+configure_claude_mcp() {
+    print_header "Configuring Claude Code MCP Integration"
+
+    CLAUDE_CONFIG_FILE="$HOME/Library/Application Support/Claude/config.json"
+    SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
+    print_step "Configuring MCP server in Claude Code..."
+    print_info "Config file: $CLAUDE_CONFIG_FILE"
+
+    # Create directory if it doesn't exist
+    execute_or_dry_run mkdir -p "$(dirname "$CLAUDE_CONFIG_FILE")"
+
+    # Check if config file exists
+    if [ -f "$CLAUDE_CONFIG_FILE" ]; then
+        print_warning "Claude config file already exists"
+        print_info "Backing up to: $CLAUDE_CONFIG_FILE.backup.$(date +%s)"
+        execute_or_dry_run cp "$CLAUDE_CONFIG_FILE" "$CLAUDE_CONFIG_FILE.backup.$(date +%s)"
+    fi
+
+    # Generate new config
+    if [ "$DRY_RUN" = false ]; then
+        cat > "$CLAUDE_CONFIG_FILE" << EOF
+{
+  "mcpServers": {
+    "obsidian-context-manager": {
+      "command": "node",
+      "args": ["$SCRIPT_DIR/dist/index.js"],
+      "cwd": "$SCRIPT_DIR",
+      "env": {}
+    }
+  }
+}
+EOF
+        print_success "Claude Code configuration updated"
+    else
+        print_info "[DRY RUN] Would create config at: $CLAUDE_CONFIG_FILE"
+    fi
+
+    echo ""
+    print_info "MCP Server Configuration:"
+    echo -e "  ${CYAN}Server name:${NC} obsidian-context-manager"
+    echo -e "  ${CYAN}Command:${NC} node"
+    echo -e "  ${CYAN}Entry point:${NC} $SCRIPT_DIR/dist/index.js"
+    echo -e "  ${CYAN}Working directory (cwd):${NC} $SCRIPT_DIR"
+    echo -e "  ${CYAN}Environment variables:${NC} none (vault config in .obsidian-mcp.json)"
+    echo ""
+    print_info "The MCP server will read vault configuration from:"
+    echo -e "  ${CYAN}$SCRIPT_DIR/.obsidian-mcp.json${NC}"
+}
+
+#############################################################################
+# Create Multi-Vault Config (Optional)
+#############################################################################
+
+create_multi_vault_config() {
+    print_header "Creating Vault Configuration"
+
+    SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+    VAULT_CONFIG="$SCRIPT_DIR/.obsidian-mcp.json"
+
+    print_step "Creating .obsidian-mcp.json in MCP server directory..."
+    print_info "Location: $VAULT_CONFIG"
+
+    # Backup existing config
+    if [ -f "$VAULT_CONFIG" ] && [ "$DRY_RUN" = false ]; then
+        BACKUP_FILE="$VAULT_CONFIG.backup.$(date +%s)"
+        cp "$VAULT_CONFIG" "$BACKUP_FILE"
+        print_warning "Backed up existing config to: $BACKUP_FILE"
+    fi
+
+    # Build secondary vaults JSON array
+    SECONDARY_JSON="[]"
+    if [ ${#SECONDARY_VAULTS[@]} -gt 0 ]; then
+        SECONDARY_JSON="["
+        FIRST=true
+        for vault in "${SECONDARY_VAULTS[@]}"; do
+            IFS='|' read -r path name authority <<< "$vault"
+
+            if [ "$FIRST" = true ]; then
+                FIRST=false
+            else
+                SECONDARY_JSON+=","
+            fi
+
+            SECONDARY_JSON+="
+    {
+      \"path\": \"$path\",
+      \"name\": \"$name\",
+      \"authority\": \"$authority\"
+    }"
+        done
+        SECONDARY_JSON+="
+  ]"
+    fi
+
+    # Create config file
+    if [ "$DRY_RUN" = false ]; then
+        cat > "$VAULT_CONFIG" << EOF
+{
+  "primaryVault": {
+    "path": "$PRIMARY_VAULT_PATH",
+    "name": "$PRIMARY_VAULT_NAME",
+    "authority": "default"
+  },
+  "secondaryVaults": $SECONDARY_JSON
+}
+EOF
+        print_file_created "$VAULT_CONFIG" \
+            "Vault configuration (primary + secondary vaults)"
+    else
+        print_info "[DRY RUN] Would create: $VAULT_CONFIG"
+        print_info "[DRY RUN] Content preview:"
+        echo -e "${CYAN}{"
+        echo -e "  \"primaryVault\": {"
+        echo -e "    \"path\": \"$PRIMARY_VAULT_PATH\","
+        echo -e "    \"name\": \"$PRIMARY_VAULT_NAME\","
+        echo -e "    \"authority\": \"default\""
+        echo -e "  },"
+        echo -e "  \"secondaryVaults\": $SECONDARY_JSON"
+        echo -e "}${NC}"
+    fi
+
+    echo ""
+    print_info "Vault configuration details:"
+    echo -e "  ${CYAN}Primary vault:${NC} $PRIMARY_VAULT_NAME"
+    echo -e "    Path: $PRIMARY_VAULT_PATH"
+    echo -e "    Authority: default"
+
+    if [ ${#SECONDARY_VAULTS[@]} -gt 0 ]; then
+        echo -e "  ${CYAN}Secondary vaults:${NC}"
+        for vault in "${SECONDARY_VAULTS[@]}"; do
+            IFS='|' read -r path name authority <<< "$vault"
+            echo -e "    - $name (authority: $authority)"
+            echo -e "      Path: $path"
+        done
+    fi
+}
+
+#############################################################################
+# Verification
+#############################################################################
+
+verify_installation() {
+    print_header "Verifying Installation"
+
+    SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+    ERRORS=0
+
+    # Check MCP server build
+    print_step "Checking MCP server build..."
+    if [ -f "$SCRIPT_DIR/dist/index.js" ]; then
+        print_success "MCP server built successfully"
+    else
+        print_error "MCP server build not found: $SCRIPT_DIR/dist/index.js"
+        ((ERRORS++))
+    fi
+
+    # Check Claude config
+    print_step "Checking Claude Code configuration..."
+    if [ -d "$HOME/.claude" ]; then
+        print_success "Claude config directory exists: ~/.claude/"
+
+        if [ -f "$HOME/.claude/CLAUDE.md" ]; then
+            print_success "Global instructions found: ~/.claude/CLAUDE.md"
+        else
+            print_error "CLAUDE.md not found"
+            ((ERRORS++))
+        fi
+
+        if [ -f "$HOME/.claude/settings.json" ]; then
+            print_success "Settings file found: ~/.claude/settings.json"
+        else
+            print_error "settings.json not found"
+            ((ERRORS++))
+        fi
+    else
+        print_error "Claude config directory not found: ~/.claude/"
+        ((ERRORS++))
+    fi
+
+    # Check hooks
+    print_step "Checking hooks installation..."
+    if [ -d "$HOME/.config/claude/hooks" ]; then
+        print_success "Hooks directory exists: ~/.config/claude/hooks/"
+
+        HOOK_COUNT=$(find "$HOME/.config/claude/hooks" -name "*.sh" -type f | wc -l | tr -d ' ')
+        print_success "Found $HOOK_COUNT hook script(s)"
+
+        # Check if hooks are executable
+        NON_EXEC=$(find "$HOME/.config/claude/hooks" -name "*.sh" -type f ! -perm +111 | wc -l | tr -d ' ')
+        if [ "$NON_EXEC" -gt 0 ]; then
+            print_warning "$NON_EXEC hook(s) are not executable"
+        else
+            print_success "All hooks are executable"
+        fi
+    else
+        print_error "Hooks directory not found: ~/.config/claude/hooks/"
+        ((ERRORS++))
+    fi
+
+    # Check vault
+    print_step "Checking vault structure..."
+    if [ -d "$PRIMARY_VAULT_PATH" ]; then
+        print_success "Primary vault directory exists: $PRIMARY_VAULT_PATH"
+
+        # Count expected subdirectories
+        EXPECTED_DIRS=("sessions" "topics" "decisions" "projects" "archive")
+        for dir in "${EXPECTED_DIRS[@]}"; do
+            if [ -d "$PRIMARY_VAULT_PATH/$dir" ]; then
+                print_success "  ✓ $dir/"
+            else
+                print_error "  ✗ $dir/ not found"
+                ((ERRORS++))
+            fi
+        done
+    else
+        print_error "Primary vault directory not found: $PRIMARY_VAULT_PATH"
+        ((ERRORS++))
+    fi
+
+    # Check secondary vaults if any
+    if [ ${#SECONDARY_VAULTS[@]} -gt 0 ]; then
+        print_step "Checking secondary vaults..."
+        for vault in "${SECONDARY_VAULTS[@]}"; do
+            IFS='|' read -r path name authority <<< "$vault"
+            if [ -d "$path" ]; then
+                print_success "  ✓ $name: $path"
+            else
+                print_error "  ✗ $name not found: $path"
+                ((ERRORS++))
+            fi
+        done
+    fi
+
+    # Check Claude MCP config
+    print_step "Checking Claude MCP configuration..."
+    CLAUDE_MCP_CONFIG="$HOME/Library/Application Support/Claude/config.json"
+    if [ -f "$CLAUDE_MCP_CONFIG" ]; then
+        print_success "Claude MCP config exists: $CLAUDE_MCP_CONFIG"
+
+        # Validate JSON
+        if command -v python3 &> /dev/null; then
+            if python3 -m json.tool "$CLAUDE_MCP_CONFIG" > /dev/null 2>&1; then
+                print_success "Config JSON is valid"
+            else
+                print_error "Config JSON is invalid"
+                ((ERRORS++))
+            fi
+        fi
+    else
+        print_error "Claude MCP config not found: $CLAUDE_MCP_CONFIG"
+        ((ERRORS++))
+    fi
+
+    echo ""
+    if [ $ERRORS -eq 0 ]; then
+        print_success "All verification checks passed!"
+    else
+        print_error "Verification found $ERRORS error(s)"
+        return 1
+    fi
+}
+
+#############################################################################
+# Cleanup Redundant Files
+#############################################################################
+
+cleanup_redundant_files() {
+    print_header "Cleaning Up Redundant Configuration Files"
+
+    SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+    CLEANUP_COUNT=0
+
+    print_info "Checking for unnecessary configuration files..."
+    echo ""
+
+    # Check for .mcp.json (redundant - should only be in ~/Library/Application Support/Claude/config.json)
+    if [ -f "$SCRIPT_DIR/.mcp.json" ]; then
+        print_warning "Found redundant file: .mcp.json"
+        print_info "This duplicates the MCP config in ~/Library/Application Support/Claude/config.json"
+        print_info "Reason: Claude Code doesn't check project directory for MCP config"
+
+        if [ "$DRY_RUN" = false ]; then
+            read -p "$(echo -e "${YELLOW}Delete .mcp.json?${NC} (y/n): ")" DELETE_MCP
+            if [[ "$DELETE_MCP" =~ ^[Yy]$ ]]; then
+                mv "$SCRIPT_DIR/.mcp.json" "$SCRIPT_DIR/.mcp.json.backup"
+                print_success "Moved to .mcp.json.backup"
+                ((CLEANUP_COUNT++))
+            fi
+        else
+            print_info "[DRY RUN] Would move: .mcp.json → .mcp.json.backup"
+            ((CLEANUP_COUNT++))
+        fi
+        echo ""
+    fi
+
+    # Check for .env (only needed for ANTHROPIC_API_KEY)
+    if [ -f "$SCRIPT_DIR/.env" ]; then
+        print_warning "Found .env file"
+
+        # Check if it contains only OBSIDIAN_VAULT_PATH
+        if grep -q "^OBSIDIAN_VAULT_PATH=" "$SCRIPT_DIR/.env" && ! grep -q "^ANTHROPIC_API_KEY=" "$SCRIPT_DIR/.env"; then
+            print_info "Contains only OBSIDIAN_VAULT_PATH (redundant with .obsidian-mcp.json)"
+
+            if [ "$DRY_RUN" = false ]; then
+                read -p "$(echo -e "${YELLOW}Delete .env?${NC} (y/n): ")" DELETE_ENV
+                if [[ "$DELETE_ENV" =~ ^[Yy]$ ]]; then
+                    mv "$SCRIPT_DIR/.env" "$SCRIPT_DIR/.env.backup"
+                    print_success "Moved to .env.backup"
+                    ((CLEANUP_COUNT++))
+                fi
+            else
+                print_info "[DRY RUN] Would move: .env → .env.backup"
+                ((CLEANUP_COUNT++))
+            fi
+        else
+            print_info "Contains ANTHROPIC_API_KEY or other variables - keeping file"
+            print_info "Recommendation: Remove OBSIDIAN_VAULT_PATH line (use .obsidian-mcp.json instead)"
+        fi
+        echo ""
+    fi
+
+    # Check for old setup.sh (superseded by install-macos.sh)
+    if [ -f "$SCRIPT_DIR/setup.sh" ]; then
+        print_warning "Found old setup script: setup.sh"
+        print_info "Superseded by install-macos.sh"
+
+        if [ "$DRY_RUN" = false ]; then
+            read -p "$(echo -e "${YELLOW}Archive setup.sh?${NC} (y/n): ")" ARCHIVE_SETUP
+            if [[ "$ARCHIVE_SETUP" =~ ^[Yy]$ ]]; then
+                mv "$SCRIPT_DIR/setup.sh" "$SCRIPT_DIR/setup.sh.old"
+                print_success "Moved to setup.sh.old"
+                ((CLEANUP_COUNT++))
+            fi
+        else
+            print_info "[DRY RUN] Would move: setup.sh → setup.sh.old"
+            ((CLEANUP_COUNT++))
+        fi
+        echo ""
+    fi
+
+    if [ $CLEANUP_COUNT -eq 0 ]; then
+        print_success "No redundant files found - configuration is clean!"
+    else
+        print_success "Cleaned up $CLEANUP_COUNT redundant file(s)"
+    fi
+}
+
+#############################################################################
+# Print Next Steps
+#############################################################################
+
+print_next_steps() {
+    print_header "Installation Complete!"
+
+    echo -e "${GREEN}✓ Installation successful!${NC}\n"
+
+    echo -e "${CYAN}What was installed:${NC}\n"
+
+    echo -e "  ${GREEN}1. Claude Code Configuration${NC}"
+    echo -e "     Location: ~/.claude/"
+    echo -e "     Files: CLAUDE.md, settings.json, commands/*.md"
+    echo ""
+
+    echo -e "  ${GREEN}2. Claude Code Hooks${NC}"
+    echo -e "     Location: ~/.config/claude/hooks/"
+    echo -e "     Purpose: Extend Claude Code functionality"
+    echo ""
+
+    echo -e "  ${GREEN}3. Obsidian MCP Server${NC}"
+    SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+    echo -e "     Location: $SCRIPT_DIR/dist/index.js"
+    echo -e "     Purpose: Provides vault management tools to Claude"
+    echo ""
+
+    echo -e "  ${GREEN}4. Knowledge Vault${NC}"
+    echo -e "     Location: $VAULT_PATH"
+    echo -e "     Structure: sessions/, topics/, decisions/, projects/"
+    echo ""
+
+    echo -e "  ${GREEN}5. MCP Integration Config${NC}"
+    echo -e "     Location: ~/Library/Application Support/Claude/config.json"
+    echo -e "     Purpose: Connects Claude Code to the MCP server"
+    echo ""
+
+    echo -e "${CYAN}Next Steps:${NC}\n"
+
+    echo -e "  ${YELLOW}1. Restart Claude Code${NC}"
+    echo -e "     ${BLUE}killall \"Claude\" && open -a \"Claude\"${NC}"
+    echo ""
+
+    echo -e "  ${YELLOW}2. Test the Installation${NC}"
+    echo -e "     In Claude Code, try:"
+    echo -e "     ${BLUE}\"Can you create a topic page about testing the MCP integration?\"${NC}"
+    echo ""
+
+    echo -e "  ${YELLOW}3. Search Your Vault${NC}"
+    echo -e "     ${BLUE}\"Search my vault for testing\"${NC}"
+    echo ""
+
+    echo -e "  ${YELLOW}4. Close Your First Session${NC}"
+    echo -e "     ${BLUE}/close${NC}"
+    echo ""
+
+    echo -e "  ${YELLOW}5. View Your Vault${NC}"
+    echo -e "     ${BLUE}ls -la $VAULT_PATH${NC}"
+    echo ""
+
+    echo -e "${CYAN}Useful Commands:${NC}\n"
+    echo -e "  ${BLUE}/sessions${NC}     - View recent conversation sessions"
+    echo -e "  ${BLUE}/projects${NC}     - View tracked Git repositories"
+    echo -e "  ${BLUE}/close${NC}        - Save session and update vault"
+    echo ""
+
+    echo -e "${CYAN}Documentation:${NC}\n"
+    echo -e "  README.md         - Full feature documentation"
+    echo -e "  MACOS_QUICKSTART.md - Quick start guide"
+    echo -e "  INSTALL.md        - Detailed installation guide"
+    echo ""
+
+    echo -e "${GREEN}Happy coding with Claude! 🚀${NC}\n"
+}
+
+#############################################################################
+# Main Installation Flow
+#############################################################################
+
+main() {
+    # Parse command line arguments
+    parse_args "$@"
+
+    # Print banner
+    echo ""
+    echo -e "${MAGENTA}╔════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${MAGENTA}║                                                            ║${NC}"
+    echo -e "${MAGENTA}║         Obsidian MCP Server - macOS Installer              ║${NC}"
+    echo -e "${MAGENTA}║                                                            ║${NC}"
+    echo -e "${MAGENTA}╚════════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+
+    if [ "$DRY_RUN" = true ]; then
+        print_warning "DRY RUN MODE - No changes will be made"
+        echo ""
+    fi
+
+    # Run installation steps
+    check_prerequisites
+    prompt_vault_config
+    clone_repositories
+    install_claude_config
+    install_hooks
+    build_mcp_server
+    create_vault_structure
+    configure_claude_mcp
+    create_multi_vault_config
+    cleanup_redundant_files
+    verify_installation
+
+    # Print next steps
+    print_next_steps
+}
+
+# Run main function with all arguments
+main "$@"

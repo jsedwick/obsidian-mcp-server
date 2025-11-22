@@ -5,7 +5,7 @@
 cd obsidian-mcp-server
 npm install
 npm run build
-./setup.sh
+./install-macos.sh
 # Restart Claude Code
 ```
 
@@ -24,7 +24,7 @@ npm run build
 | Install | `npm install` |
 | Build | `npm run build` |
 | Test | `npm test` |
-| Setup | `./setup.sh` |
+| Setup | `./install-macos.sh` |
 | Dev Mode | `npm run watch` |
 | Clean | `npm run clean` |
 
@@ -187,7 +187,7 @@ Claude: [Creates topics/mcp-servers.md]
 ## 🎓 Learning Path
 
 1. Read 00-START-HERE.md
-2. Run `./setup.sh`
+2. Run `./install-macos.sh`
 3. Start using Claude Code
 4. Review CHECKLIST.md
 5. Explore in Obsidian
@@ -210,4 +210,4 @@ Claude: [Creates topics/mcp-servers.md]
 
 ---
 
-**Ready?** Run `./setup.sh` now! 🚀
+**Ready?** Run `./install-macos.sh` now! 🚀

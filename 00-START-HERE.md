@@ -19,30 +19,29 @@ All stored locally in plain Markdown files you can view in Obsidian.
 
 ## Quick Start (15 minutes)
 
-First, clone the essential repositories:
+**macOS - Automated Installation:**
 
 ```bash
-# 1. Clone the configuration repository (contains settings, commands, and instructions)
-git clone https://git.uoregon.edu/projects/JSDEV/repos/claude-code-config/browse ~/claude-code-config
+# Clone and run the installer
+git clone https://git.uoregon.edu/projects/JSDEV/repos/obsidian-mcp-server/browse obsidian-mcp-server
+cd obsidian-mcp-server
+./install-macos.sh
 
-# 2. Clone the hooks repository (contains hook configurations)
-git clone https://git.uoregon.edu/projects/JSDEV/repos/claude-code-hooks/browse ~/claude-code-hooks
+# The installer will:
+# - Clone configuration and hooks repositories
+# - Install Claude Code settings and slash commands
+# - Build the MCP server
+# - Configure your vault(s)
+# - Clean up redundant config files
+# - Provide detailed explanations for everything
 
-# 3. Install MCP server dependencies
-npm install
-
-# 4. Build the MCP server
-npm run build
-
-# 5. Run automated setup
-./setup.sh
-
-# 6. Restart Claude Code
-
-# 7. Start chatting!
+# Restart Claude Code when prompted
+# Start chatting!
 ```
 
 That's it! Claude will now automatically manage your conversation context.
+
+**For manual installation or other platforms,** see [INSTALL.md](INSTALL.md).
 
 ## 📖 Documentation Guide
 
@@ -55,7 +54,7 @@ Choose your path:
 
 ### 🏃‍♂️ I want to get started NOW (Any Platform)
 → Read **QUICKSTART.md** (5 minutes)
-→ Run `./setup.sh`
+→ Run `./install-macos.sh` (macOS) or see INSTALL.md for other platforms
 → Start using Claude Code
 
 ### 🔧 I want detailed installation instructions
@@ -89,28 +88,30 @@ Choose your path:
 
 ## 🎯 Your First Steps
 
-1. **Right now**: Run `./setup.sh`
-2. **2 minutes later**: Restart Claude Code
-3. **Have a conversation**: "Create a topic page about testing the Obsidian integration"
-4. **Close the session**: Run `/close` command
-5. **Verify**: Check `~/obsidian-vault/sessions/YYYY-MM/` for a new session file
-6. **Celebrate**: You have automatic context management! 🎉
+1. **Right now**: Run `./install-macos.sh` (see Quick Start above)
+2. **Follow prompts**: Configure your vault locations
+3. **Restart Claude Code**: When prompted by the installer
+4. **Have a conversation**: "Create a topic page about testing the Obsidian integration"
+5. **Close the session**: Run `/close` command
+6. **Verify**: Check your vault's `sessions/YYYY-MM/` directory for a new session file
+7. **Celebrate**: You have automatic context management! 🎉
 
 ## 📁 Project Structure
 
 ```
 obsidian-mcp-server/
 ├── 00-START-HERE.md      ← You are here
-├── QUICKSTART.md          ← 5-minute setup guide
+├── MACOS_QUICKSTART.md    ← macOS quick start guide
+├── QUICKSTART.md          ← General quick start guide
 ├── INSTALL.md             ← Detailed installation
 ├── README.md              ← Complete documentation
 ├── ARCHITECTURE.md        ← System diagrams
 ├── CHECKLIST.md           ← Implementation tracker
 ├── PROJECT_SUMMARY.md     ← High-level overview
-├── setup.sh               ← Automated setup script
+├── install-macos.sh       ← macOS automated installer
 ├── src/
 │   ├── index.ts          ← Main MCP server
-│   └── test.ts           ← Test utility
+│   └── tools/            ← MCP tool implementations
 ├── package.json           ← Dependencies
 └── tsconfig.json          ← TypeScript config
 ```
@@ -124,10 +125,10 @@ npm install
 # Build the project
 npm run build
 
-# Run automated setup
-./setup.sh
+# Run automated installer (macOS)
+./install-macos.sh
 
-# Test the installation
+# Test the MCP server
 npm test
 
 # Development mode (auto-rebuild)
@@ -164,8 +165,8 @@ A: Yes! Configure multiple MCP servers in Claude Code config.
 
 ### Beginner (First Time Setup)
 1. Read this file (you're doing it!)
-2. Read QUICKSTART.md
-3. Run `./setup.sh`
+2. Read MACOS_QUICKSTART.md (macOS) or QUICKSTART.md (other platforms)
+3. Run `./install-macos.sh` (macOS) or follow INSTALL.md
 4. Use Claude Code
 5. Check CHECKLIST.md
 
@@ -221,7 +222,7 @@ You'll know it's working when:
 
 ### Right Now
 ```bash
-./setup.sh
+./install-macos.sh
 ```
 
 ### In 5 Minutes
@@ -273,15 +274,20 @@ All existing functionality is preserved and enhanced. The codebase is now produc
 
 ## 🎉 You're Ready!
 
-Everything you need is in this folder. Start with QUICKSTART.md or MACOS_QUICKSTART.md, or just run:
+Everything you need is in this folder. Start with MACOS_QUICKSTART.md (macOS) or QUICKSTART.md (other platforms), or just run:
 
 ```bash
-# First clone the essential repositories:
-git clone https://git.uoregon.edu/projects/JSDEV/repos/claude-code-config/browse ~/claude-code-config
-git clone https://git.uoregon.edu/projects/JSDEV/repos/claude-code-hooks/browse ~/claude-code-hooks
+# Clone the repo and run the installer (macOS):
+git clone https://git.uoregon.edu/projects/JSDEV/repos/obsidian-mcp-server/browse obsidian-mcp-server
+cd obsidian-mcp-server
+./install-macos.sh
 
-# Then run setup:
-./setup.sh
+# The installer handles everything:
+# - Cloning config and hooks repositories
+# - Installing Claude Code settings
+# - Building the MCP server
+# - Configuring your vaults
+# - Cleaning up redundant files
 ```
 
 Then start using Claude Code. It will automatically manage your conversation context from now on.
@@ -292,7 +298,7 @@ Then start using Claude Code. It will automatically manage your conversation con
 
 **Pro Tips:**
 
-💡 Clone the config and hooks repositories first
+💡 Use the automated installer for easiest setup
 💡 Start every coding session with Claude Code
 💡 Let it manage context automatically
 💡 Review your vault in Obsidian weekly
@@ -301,4 +307,4 @@ Then start using Claude Code. It will automatically manage your conversation con
 
 **Questions?** → Check README.md or INSTALL.md
 **Issues?** → See CHECKLIST.md or INSTALL.md troubleshooting
-**Ready?** → Clone the repositories and run `./setup.sh` now!
+**Ready?** → Run `./install-macos.sh` now!

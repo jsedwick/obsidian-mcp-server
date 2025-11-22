@@ -59,7 +59,7 @@ npm run build
 ## 3. Run the Setup Script
 
 ```bash
-./setup.sh
+./install-macos.sh
 ```
 
 The setup script will:
@@ -130,7 +130,7 @@ This will:
 - Detects relevant Git repositories from file access
 - Session is now saved for future reference
 
-## Manual Configuration (Alternative to setup.sh)
+## Manual Configuration (Alternative to install-macos.sh)
 
 If you prefer to configure manually:
 
