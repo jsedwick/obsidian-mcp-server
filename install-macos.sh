@@ -39,9 +39,8 @@ DRY_RUN=false
 INTERACTIVE=true
 USERNAME=$(whoami)
 
-# Repository URLs (update these if using different hosting)
+# Repository URL (update this if using different hosting)
 CONFIG_REPO="${CONFIG_REPO:-ssh://git@git.uoregon.edu/jsdev/claude-code-config.git}"
-HOOKS_REPO="${HOOKS_REPO:-ssh://git@git.uoregon.edu/jsdev/claude-code-hooks.git}"
 
 #############################################################################
 # Helper Functions
@@ -343,15 +342,15 @@ check_prerequisites() {
 # Clone Configuration Repositories
 #############################################################################
 
-clone_repositories() {
+clone_config_repository() {
     if [ "$SKIP_CLONE" = true ]; then
         print_header "Skipping Repository Clone (--skip-clone flag set)"
         return
     fi
 
-    print_header "Cloning Configuration Repositories"
+    print_header "Cloning Configuration Repository"
 
-    # Clone claude-code-config
+    # Clone claude-code-config (now includes hooks)
     print_step "Cloning claude-code-config repository..."
     if [ -d "$HOME/claude-code-config" ]; then
         print_warning "Directory already exists: $HOME/claude-code-config"
@@ -361,20 +360,7 @@ clone_repositories() {
         print_info "Destination: $HOME/claude-code-config"
         execute_or_dry_run git clone "$CONFIG_REPO" "$HOME/claude-code-config"
         print_success "Configuration repository cloned"
-        print_info "Contains: CLAUDE.md, settings.json, slash commands"
-    fi
-
-    # Clone claude-code-hooks
-    print_step "Cloning claude-code-hooks repository..."
-    if [ -d "$HOME/claude-code-hooks" ]; then
-        print_warning "Directory already exists: $HOME/claude-code-hooks"
-        print_info "Using existing directory (update manually if needed)"
-    else
-        print_info "Repository: $HOOKS_REPO"
-        print_info "Destination: $HOME/claude-code-hooks"
-        execute_or_dry_run git clone "$HOOKS_REPO" "$HOME/claude-code-hooks"
-        print_success "Hooks repository cloned"
-        print_info "Contains: session-start.sh, user-prompt-submit.sh, etc."
+        print_info "Contains: CLAUDE.md, settings.json, slash commands, and hooks"
     fi
 }
 
@@ -428,6 +414,37 @@ install_claude_config() {
             fi
         done
     fi
+
+    if [ -d "$CLAUDE_USER_CONFIG/hooks" ]; then
+        print_file_created "$CLAUDE_USER_CONFIG/hooks/" \
+            "Claude Code hooks directory"
+
+        # Make all hooks executable
+        if [ "$DRY_RUN" = false ]; then
+            chmod +x "$CLAUDE_USER_CONFIG/hooks"/*.sh 2>/dev/null || true
+        fi
+
+        # List individual hooks
+        for hook in "$CLAUDE_USER_CONFIG/hooks"/*.sh; do
+            if [ -f "$hook" ]; then
+                HOOK_NAME=$(basename "$hook")
+                case "$HOOK_NAME" in
+                    session-start.sh)
+                        echo -e "    ${GREEN}$HOOK_NAME${NC} - Runs when session starts"
+                        ;;
+                    user-prompt-vault-search.sh)
+                        echo -e "    ${GREEN}$HOOK_NAME${NC} - Enforces vault search before tool use"
+                        ;;
+                    pretooluse-*.sh)
+                        echo -e "    ${GREEN}$HOOK_NAME${NC} - Validates tool usage"
+                        ;;
+                    *)
+                        echo -e "    ${GREEN}$HOOK_NAME${NC}"
+                        ;;
+                esac
+            fi
+        done
+    fi
 }
 
 #############################################################################
@@ -456,43 +473,54 @@ update_settings_json() {
     VAULT_PERMISSIONS=""
 
     # Add primary vault permissions
-    VAULT_PERMISSIONS+="      \"Read($PRIMARY_VAULT_PATH/**)\",\n"
-    VAULT_PERMISSIONS+="      \"Write($PRIMARY_VAULT_PATH/**)\",\n"
-    VAULT_PERMISSIONS+="      \"Edit($PRIMARY_VAULT_PATH/**)\",\n"
+    VAULT_PERMISSIONS+="Read($PRIMARY_VAULT_PATH/**)
+"
+    VAULT_PERMISSIONS+="Write($PRIMARY_VAULT_PATH/**)
+"
+    VAULT_PERMISSIONS+="Edit($PRIMARY_VAULT_PATH/**)
+"
 
     # Add secondary vault permissions
     for VAULT_KEY in "${!SECONDARY_VAULTS[@]}"; do
         VAULT_DATA="${SECONDARY_VAULTS[$VAULT_KEY]}"
         VAULT_PATH=$(echo "$VAULT_DATA" | cut -d'|' -f1)
 
-        VAULT_PERMISSIONS+="      \"Read($VAULT_PATH/**)\",\n"
-        VAULT_PERMISSIONS+="      \"Write($VAULT_PATH/**)\",\n"
-        VAULT_PERMISSIONS+="      \"Edit($VAULT_PATH/**)\",\n"
+        VAULT_PERMISSIONS+="Read($VAULT_PATH/**)
+"
+        VAULT_PERMISSIONS+="Write($VAULT_PATH/**)
+"
+        VAULT_PERMISSIONS+="Edit($VAULT_PATH/**)
+"
     done
 
     # Add MCP server directory permissions
-    VAULT_PERMISSIONS+="      \"Read($SCRIPT_DIR/**)\",\n"
-    VAULT_PERMISSIONS+="      \"Write($SCRIPT_DIR/**)\",\n"
-    VAULT_PERMISSIONS+="      \"Edit($SCRIPT_DIR/**)\",\n"
+    VAULT_PERMISSIONS+="Read($SCRIPT_DIR/**)
+"
+    VAULT_PERMISSIONS+="Write($SCRIPT_DIR/**)
+"
+    VAULT_PERMISSIONS+="Edit($SCRIPT_DIR/**)
+"
 
     # Build additionalDirectories array
     ADDITIONAL_DIRS=""
 
     # Add primary vault
-    ADDITIONAL_DIRS+="      \"$PRIMARY_VAULT_PATH\",\n"
+    ADDITIONAL_DIRS+="$PRIMARY_VAULT_PATH
+"
 
     # Add secondary vaults
     for VAULT_KEY in "${!SECONDARY_VAULTS[@]}"; do
         VAULT_DATA="${SECONDARY_VAULTS[$VAULT_KEY]}"
         VAULT_PATH=$(echo "$VAULT_DATA" | cut -d'|' -f1)
-        ADDITIONAL_DIRS+="      \"$VAULT_PATH\",\n"
+        ADDITIONAL_DIRS+="$VAULT_PATH
+"
     done
 
     # Add current directory (as user suggested)
-    ADDITIONAL_DIRS+="      \".\"\n"
+    ADDITIONAL_DIRS+="."
 
     # Replace hook paths with actual user paths
-    HOOK_DIR="$HOME/.config/claude/hooks"
+    HOOK_DIR="$HOME/.claude/hooks"
 
     if [ "$DRY_RUN" = false ]; then
         # Export variables for Python script
@@ -576,7 +604,7 @@ if HOOK_DIR:
                         if 'command' in hook:
                             # Replace hardcoded hook paths
                             hook['command'] = re.sub(
-                                r'/Users/[^/]+/.config/claude/hooks/',
+                                r'/Users/[^/]+/\.claude/hooks/',
                                 HOOK_DIR + '/',
                                 hook['command']
                             )
@@ -626,71 +654,13 @@ EOF
 }
 
 #############################################################################
-# Install Hooks
-#############################################################################
-
-install_hooks() {
-    print_header "Installing Claude Code Hooks"
-
-    HOOKS_DIR="$HOME/.config/claude/hooks"
-
-    print_step "Setting up hooks directory..."
-    execute_or_dry_run mkdir -p "$HOME/.config/claude"
-
-    if [ -d "$HOOKS_DIR" ]; then
-        print_warning "Hooks directory already exists: $HOOKS_DIR"
-        print_info "Backing up to: $HOOKS_DIR.backup.$(date +%s)"
-        execute_or_dry_run mv "$HOOKS_DIR" "$HOOKS_DIR.backup.$(date +%s)"
-    fi
-
-    if [ "$DRY_RUN" = false ]; then
-        cp -R "$HOME/claude-code-hooks" "$HOOKS_DIR"
-        print_success "Hooks directory created"
-    else
-        print_info "[DRY RUN] Would copy: $HOME/claude-code-hooks → $HOOKS_DIR"
-    fi
-
-    # Make all hooks executable
-    print_step "Making hooks executable..."
-    if [ "$DRY_RUN" = false ]; then
-        chmod +x "$HOOKS_DIR"/*.sh
-        print_success "All hooks are now executable"
-    else
-        print_info "[DRY RUN] Would execute: chmod +x $HOOKS_DIR/*.sh"
-    fi
-
-    # List installed hooks
-    print_info "Installed hooks:"
-    echo ""
-    for hook in "$HOOKS_DIR"/*.sh; do
-        if [ -f "$hook" ]; then
-            HOOK_NAME=$(basename "$hook")
-            case "$HOOK_NAME" in
-                session-start.sh)
-                    print_file_created "$hook" \
-                        "Runs when Claude Code session starts"
-                    ;;
-                user-prompt-submit.sh)
-                    print_file_created "$hook" \
-                        "Runs before user input is sent to Claude"
-                    ;;
-                *)
-                    print_file_created "$hook" \
-                        "Claude Code extension hook"
-                    ;;
-            esac
-        fi
-    done
-}
-
-#############################################################################
 # Update Hook Files with User-Specific Paths
 #############################################################################
 
 update_hook_paths() {
     print_header "Configuring Hook File Paths"
 
-    HOOKS_DIR="$HOME/.config/claude/hooks"
+    HOOKS_DIR="$HOME/.claude/hooks"
     SESSION_START_HOOK="$HOOKS_DIR/session-start.sh"
 
     if [ ! -f "$SESSION_START_HOOK" ]; then
@@ -1075,21 +1045,21 @@ verify_installation() {
 
     # Check hooks
     print_step "Checking hooks installation..."
-    if [ -d "$HOME/.config/claude/hooks" ]; then
-        print_success "Hooks directory exists: ~/.config/claude/hooks/"
+    if [ -d "$HOME/.claude/hooks" ]; then
+        print_success "Hooks directory exists: ~/.claude/hooks/"
 
-        HOOK_COUNT=$(find "$HOME/.config/claude/hooks" -name "*.sh" -type f | wc -l | tr -d ' ')
+        HOOK_COUNT=$(find "$HOME/.claude/hooks" -name "*.sh" -type f | wc -l | tr -d ' ')
         print_success "Found $HOOK_COUNT hook script(s)"
 
         # Check if hooks are executable
-        NON_EXEC=$(find "$HOME/.config/claude/hooks" -name "*.sh" -type f ! -perm +111 | wc -l | tr -d ' ')
+        NON_EXEC=$(find "$HOME/.claude/hooks" -name "*.sh" -type f ! -perm +111 | wc -l | tr -d ' ')
         if [ "$NON_EXEC" -gt 0 ]; then
             print_warning "$NON_EXEC hook(s) are not executable"
         else
             print_success "All hooks are executable"
         fi
     else
-        print_error "Hooks directory not found: ~/.config/claude/hooks/"
+        print_error "Hooks directory not found: ~/.claude/hooks/"
         ((ERRORS++))
     fi
 
@@ -1252,7 +1222,7 @@ print_next_steps() {
     echo ""
 
     echo -e "  ${GREEN}2. Claude Code Hooks${NC}"
-    echo -e "     Location: ~/.config/claude/hooks/"
+    echo -e "     Location: ~/.claude/hooks/"
     echo -e "     Purpose: Extend Claude Code functionality"
     echo ""
 
@@ -1335,10 +1305,9 @@ main() {
     # Run installation steps
     check_prerequisites
     prompt_vault_config
-    clone_repositories
+    clone_config_repository
     install_claude_config
     update_settings_json
-    install_hooks
     update_hook_paths
     build_mcp_server
     create_vault_structure
