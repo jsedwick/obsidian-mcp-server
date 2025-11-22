@@ -56,6 +56,17 @@ ls ~/claude-code-hooks
 **CRITICAL:** Claude Code looks for configuration in specific locations. Move the cloned repositories to where Claude expects them.
 
 ```bash
+# NOTE FROM JASON:
+#   The move command below is scary! Perhaps instead, setup.sh should do something like:
+# 
+#   cd claude-code-config
+#   for F in .git .gitignore CLAUDE.md commands/close.md commands/projects.md commands/sessions.md settings.json ; do
+#       Confirm that ~/.claude/$F does not currently exist (for all the files).
+#       If any do, perhaps abort.
+#       If doesn't exist, then just:
+#           cp -a $F to the proper place in ~/.claude/, for example:
+#                   cp -a claude-code-config/.git ~/.claude/
+#                   cp -a claude-code-config/commands/close.md ~/.claude/commands/
 # Move configuration repository contents to ~/.claude/
 # This includes: commands/, CLAUDE.md, and settings.json
 mv ~/claude-code-config ~/.claude
