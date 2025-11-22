@@ -1280,7 +1280,7 @@ print_next_steps() {
     echo -e "${CYAN}Next Steps:${NC}\n"
 
     echo -e "  ${YELLOW}1. Restart Claude Code${NC}"
-    echo -e "     ${BLUE}killall \"Claude\" && open -a \"Claude\"${NC}"
+    echo -e "     Close and start a new Claude Code session"
     echo ""
 
     echo -e "  ${YELLOW}2. Test the Installation${NC}"
