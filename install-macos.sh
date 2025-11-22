@@ -431,6 +431,206 @@ install_claude_config() {
 }
 
 #############################################################################
+# Update Settings.json with User-Specific Paths
+#############################################################################
+
+update_settings_json() {
+    print_header "Configuring User-Specific Paths"
+
+    SETTINGS_FILE="$HOME/.claude/settings.json"
+
+    if [ ! -f "$SETTINGS_FILE" ]; then
+        print_error "Settings file not found: $SETTINGS_FILE"
+        return 1
+    fi
+
+    print_step "Updating settings.json with your vault and system paths..."
+
+    # Create backup
+    if [ "$DRY_RUN" = false ]; then
+        cp "$SETTINGS_FILE" "$SETTINGS_FILE.backup.$(date +%s)"
+        print_info "Created backup: $SETTINGS_FILE.backup.$(date +%s)"
+    fi
+
+    # Build permissions array for all vaults
+    VAULT_PERMISSIONS=""
+
+    # Add primary vault permissions
+    VAULT_PERMISSIONS+="      \"Read($PRIMARY_VAULT_PATH/**)\",\n"
+    VAULT_PERMISSIONS+="      \"Write($PRIMARY_VAULT_PATH/**)\",\n"
+    VAULT_PERMISSIONS+="      \"Edit($PRIMARY_VAULT_PATH/**)\",\n"
+
+    # Add secondary vault permissions
+    for VAULT_KEY in "${!SECONDARY_VAULTS[@]}"; do
+        VAULT_DATA="${SECONDARY_VAULTS[$VAULT_KEY]}"
+        VAULT_PATH=$(echo "$VAULT_DATA" | cut -d'|' -f1)
+
+        VAULT_PERMISSIONS+="      \"Read($VAULT_PATH/**)\",\n"
+        VAULT_PERMISSIONS+="      \"Write($VAULT_PATH/**)\",\n"
+        VAULT_PERMISSIONS+="      \"Edit($VAULT_PATH/**)\",\n"
+    done
+
+    # Add MCP server directory permissions
+    VAULT_PERMISSIONS+="      \"Read($SCRIPT_DIR/**)\",\n"
+    VAULT_PERMISSIONS+="      \"Write($SCRIPT_DIR/**)\",\n"
+    VAULT_PERMISSIONS+="      \"Edit($SCRIPT_DIR/**)\",\n"
+
+    # Build additionalDirectories array
+    ADDITIONAL_DIRS=""
+
+    # Add primary vault
+    ADDITIONAL_DIRS+="      \"$PRIMARY_VAULT_PATH\",\n"
+
+    # Add secondary vaults
+    for VAULT_KEY in "${!SECONDARY_VAULTS[@]}"; do
+        VAULT_DATA="${SECONDARY_VAULTS[$VAULT_KEY]}"
+        VAULT_PATH=$(echo "$VAULT_DATA" | cut -d'|' -f1)
+        ADDITIONAL_DIRS+="      \"$VAULT_PATH\",\n"
+    done
+
+    # Add current directory (as user suggested)
+    ADDITIONAL_DIRS+="      \".\"\n"
+
+    # Replace hook paths with actual user paths
+    HOOK_DIR="$HOME/.config/claude/hooks"
+
+    if [ "$DRY_RUN" = false ]; then
+        # Use python for JSON manipulation to preserve structure
+        python3 << EOF
+import json
+import re
+
+# Read current settings
+with open('$SETTINGS_FILE', 'r') as f:
+    settings = json.load(f)
+
+# Update permissions.allow
+settings['permissions']['allow'] = [
+$(echo -e "$VAULT_PERMISSIONS" | sed 's/,$//' | sed 's/^/    /g' | sed 's/$/,/g' | sed '$ s/,$//')
+    "Tool(mcp__obsidian-context-manager__*)",
+    "Bash(npm run lint)",
+    "Bash(npm run test:*)",
+    "Bash(npm run build:*)",
+    "Bash(git add:*)",
+    "Read(~/.zshrc)",
+    "Bash(npm run typecheck:*)",
+    "Bash(npm run test:coverage:*)",
+    "Bash(npm run lint:fix:*)",
+    "mcp__obsidian-context-manager__search_vault",
+    "Bash(git add:*)",
+    "Bash(git commit:*)",
+    "mcp__obsidian-context-manager__get_session_context",
+    "mcp__obsidian-context-manager__record_commit",
+    "mcp__obsidian-context-manager__create_project_page",
+    "mcp__obsidian-context-manager__create_topic_page",
+    "mcp__obsidian-context-manager__get_topic_context",
+    "Bash(npm run build:*)",
+    "mcp__obsidian-context-manager__close_session",
+    "Bash(npm run lint:*)",
+    "Bash(git checkout:*)",
+    "Bash(git merge:*)",
+    "mcp__obsidian-context-manager__list_recent_sessions",
+    "mcp__obsidian-context-manager__review_topic",
+    "mcp__obsidian-context-manager__approve_topic_update",
+    "mcp__obsidian-context-manager__analyze_topic_content",
+    "WebSearch",
+    "WebFetch(domain:github.com)",
+    "Bash(touch:*)",
+    "Bash(npm test:*)",
+    "mcp__obsidian-context-manager__update_topic_page",
+    "Bash(node -e:*)",
+    "Bash(npx tsx:*)",
+    "Bash(python3:*)",
+    "Bash(tee:*)",
+    "Bash(timeout 60 npx tsx:*)",
+    "Bash(echo:*)",
+    "Bash(node --check:*)",
+    "Bash(npx tsc:*)",
+    "Bash(node --loader ts-node/esm:*)",
+    "Bash(find:*)",
+    "Bash(while read file)",
+    "Bash(do awk '/^---\$/,/^---\$/ {next} /^# / {if (NR > 1 && prev ~ /^# /) print FILENAME \":\" NR-1 \":\" prev \"\\n\" FILENAME \":\" NR \":\" \$0 \"\\n\"; prev=\$0; next} {prev=\"\"}' \"\$file\")",
+    "Bash(done)",
+    "Bash(while read f)",
+    "Bash(do awk 'BEGIN {in_fm=0; fm_end=0; h1_count=0} /^---\$/ {if (in_fm==0) {in_fm=1} else if (fm_end==0) {fm_end=1; in_fm=0} next} fm_end==1 && /^# / {h1_count++; if (h1_count>1 && NR<20) {print FILENAME \":\" NR \":\" \$0; exit}}' "\$f")",
+    "mcp__obsidian-context-manager__analyze_commit_impact",
+    "Bash(git pull:*)",
+    "Bash(git push:*)",
+    "mcp__obsidian-context-manager__create_decision",
+    "Bash(mkdir:*)",
+    "Bash(npm run build:server:*)",
+    "Bash($HOOK_DIR/session-start.sh:*)",
+    "Bash(npm install:*)",
+    "mcp__obsidian-context-manager__get_memory_base",
+    "Bash(git restore:*)",
+    "Bash(git reset:*)",
+    "mcp__obsidian-context-manager__toggle_embeddings",
+    "Bash(cat:*)",
+    "Bash(chmod:*)",
+    "Bash(./install-macos.sh:*)"
+]
+
+# Update additionalDirectories
+settings['permissions']['additionalDirectories'] = [
+$(echo -e "$ADDITIONAL_DIRS" | sed 's/^/    /g')
+]
+
+# Update hook paths
+for hook_type in ['SessionStart', 'UserPromptSubmit', 'PreToolUse']:
+    if hook_type in settings['hooks']:
+        for hook_group in settings['hooks'][hook_type]:
+            if 'hooks' in hook_group:
+                for hook in hook_group['hooks']:
+                    if 'command' in hook:
+                        # Replace hardcoded hook paths
+                        hook['command'] = re.sub(
+                            r'/Users/[^/]+/.config/claude/hooks/',
+                            '$HOOK_DIR/',
+                            hook['command']
+                        )
+
+# Write updated settings
+with open('$SETTINGS_FILE', 'w') as f:
+    json.dump(settings, f, indent=2)
+    f.write('\n')
+
+print("Settings updated successfully")
+EOF
+
+        if [ $? -eq 0 ]; then
+            print_success "Updated settings.json with your paths"
+        else
+            print_error "Failed to update settings.json"
+            print_info "Restoring from backup..."
+            mv "$SETTINGS_FILE.backup.$(date +%s)" "$SETTINGS_FILE"
+            return 1
+        fi
+    else
+        print_info "[DRY RUN] Would update settings.json with:"
+        echo -e "${CYAN}  - Vault permissions for all configured vaults${NC}"
+        echo -e "${CYAN}  - additionalDirectories: vaults + '.'${NC}"
+        echo -e "${CYAN}  - Hook paths: $HOOK_DIR${NC}"
+    fi
+
+    echo ""
+    print_info "Configuration details:"
+    echo -e "  ${CYAN}Primary vault:${NC} $PRIMARY_VAULT_PATH"
+
+    if [ ${#SECONDARY_VAULTS[@]} -gt 0 ]; then
+        echo -e "  ${CYAN}Secondary vaults:${NC}"
+        for VAULT_KEY in "${!SECONDARY_VAULTS[@]}"; do
+            VAULT_DATA="${SECONDARY_VAULTS[$VAULT_KEY]}"
+            VAULT_PATH=$(echo "$VAULT_DATA" | cut -d'|' -f1)
+            echo -e "    - $VAULT_PATH"
+        done
+    fi
+
+    echo -e "  ${CYAN}Hooks directory:${NC} $HOOK_DIR"
+    echo -e "  ${CYAN}Additional directories:${NC} Includes '.'"
+    echo ""
+}
+
+#############################################################################
 # Install Hooks
 #############################################################################
 
@@ -486,6 +686,58 @@ install_hooks() {
             esac
         fi
     done
+}
+
+#############################################################################
+# Update Hook Files with User-Specific Paths
+#############################################################################
+
+update_hook_paths() {
+    print_header "Configuring Hook File Paths"
+
+    HOOKS_DIR="$HOME/.config/claude/hooks"
+    SESSION_START_HOOK="$HOOKS_DIR/session-start.sh"
+
+    if [ ! -f "$SESSION_START_HOOK" ]; then
+        print_error "session-start.sh not found: $SESSION_START_HOOK"
+        return 1
+    fi
+
+    print_step "Updating session-start.sh with your vault path..."
+
+    # Create backup
+    if [ "$DRY_RUN" = false ]; then
+        cp "$SESSION_START_HOOK" "$SESSION_START_HOOK.backup.$(date +%s)"
+        print_info "Created backup: $SESSION_START_HOOK.backup.$(date +%s)"
+    fi
+
+    if [ "$DRY_RUN" = false ]; then
+        # Use sed to replace hardcoded paths
+        # 1. Replace VAULT_PATH variable (line 8)
+        # 2. Replace Python script paths (lines 37-38)
+        sed -i.tmp \
+            -e "s|^VAULT_PATH=\"/Users/[^/]*/Documents/Obsidian/Claude/Claude\"|VAULT_PATH=\"$PRIMARY_VAULT_PATH\"|" \
+            -e "s|claude_md_path = \"/Users/[^/]*/.claude/CLAUDE.md\"|claude_md_path = \"$HOME/.claude/CLAUDE.md\"|" \
+            -e "s|memory_file_path = \"/Users/[^/]*/Documents/Obsidian/Claude/Claude/memory-base.md\"|memory_file_path = \"$PRIMARY_VAULT_PATH/memory-base.md\"|" \
+            "$SESSION_START_HOOK"
+
+        # Remove sed backup file
+        rm -f "$SESSION_START_HOOK.tmp"
+
+        print_success "Updated session-start.sh hook"
+    else
+        print_info "[DRY RUN] Would update session-start.sh with:"
+        echo -e "${CYAN}  - VAULT_PATH: $PRIMARY_VAULT_PATH${NC}"
+        echo -e "${CYAN}  - claude_md_path: $HOME/.claude/CLAUDE.md${NC}"
+        echo -e "${CYAN}  - memory_file_path: $PRIMARY_VAULT_PATH/memory-base.md${NC}"
+    fi
+
+    echo ""
+    print_info "Hook configuration:"
+    echo -e "  ${CYAN}Primary vault:${NC} $PRIMARY_VAULT_PATH"
+    echo -e "  ${CYAN}Memory file:${NC} $PRIMARY_VAULT_PATH/memory-base.md"
+    echo -e "  ${CYAN}CLAUDE.md:${NC} $HOME/.claude/CLAUDE.md"
+    echo ""
 }
 
 #############################################################################
@@ -942,28 +1194,22 @@ cleanup_redundant_files() {
         echo ""
     fi
 
-    # Check for .env (only needed for ANTHROPIC_API_KEY)
+    # Check for .env (redundant - vault path should be in .obsidian-mcp.json)
     if [ -f "$SCRIPT_DIR/.env" ]; then
         print_warning "Found .env file"
+        print_info "Vault configuration should be in .obsidian-mcp.json, not .env"
+        print_info "Reason: .env is not the primary config mechanism for this MCP server"
 
-        # Check if it contains only OBSIDIAN_VAULT_PATH
-        if grep -q "^OBSIDIAN_VAULT_PATH=" "$SCRIPT_DIR/.env" && ! grep -q "^ANTHROPIC_API_KEY=" "$SCRIPT_DIR/.env"; then
-            print_info "Contains only OBSIDIAN_VAULT_PATH (redundant with .obsidian-mcp.json)"
-
-            if [ "$DRY_RUN" = false ]; then
-                read -p "$(echo -e "${YELLOW}Delete .env?${NC} (y/n): ")" DELETE_ENV
-                if [[ "$DELETE_ENV" =~ ^[Yy]$ ]]; then
-                    mv "$SCRIPT_DIR/.env" "$SCRIPT_DIR/.env.backup"
-                    print_success "Moved to .env.backup"
-                    ((CLEANUP_COUNT++))
-                fi
-            else
-                print_info "[DRY RUN] Would move: .env → .env.backup"
+        if [ "$DRY_RUN" = false ]; then
+            read -p "$(echo -e "${YELLOW}Delete .env?${NC} (y/n): ")" DELETE_ENV
+            if [[ "$DELETE_ENV" =~ ^[Yy]$ ]]; then
+                mv "$SCRIPT_DIR/.env" "$SCRIPT_DIR/.env.backup"
+                print_success "Moved to .env.backup"
                 ((CLEANUP_COUNT++))
             fi
         else
-            print_info "Contains ANTHROPIC_API_KEY or other variables - keeping file"
-            print_info "Recommendation: Remove OBSIDIAN_VAULT_PATH line (use .obsidian-mcp.json instead)"
+            print_info "[DRY RUN] Would move: .env → .env.backup"
+            ((CLEANUP_COUNT++))
         fi
         echo ""
     fi
@@ -1096,7 +1342,9 @@ main() {
     prompt_vault_config
     clone_repositories
     install_claude_config
+    update_settings_json
     install_hooks
+    update_hook_paths
     build_mcp_server
     create_vault_structure
     configure_claude_mcp
