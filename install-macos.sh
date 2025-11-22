@@ -495,106 +495,101 @@ update_settings_json() {
     HOOK_DIR="$HOME/.config/claude/hooks"
 
     if [ "$DRY_RUN" = false ]; then
+        # Export variables for Python script
+        export PRIMARY_VAULT_PATH
+        export SCRIPT_DIR
+        export HOOK_DIR
+        export ADDITIONAL_DIRS
+        export VAULT_PERMISSIONS
+
         # Use python for JSON manipulation to preserve structure
-        python3 << EOF
+        # We'll load existing permissions and update only the vault paths
+        python3 << 'EOF'
 import json
 import re
+import os
+import sys
+
+SETTINGS_FILE = os.path.expanduser('~/.claude/settings.json')
+PRIMARY_VAULT_PATH = os.getenv('PRIMARY_VAULT_PATH', '')
+SCRIPT_DIR = os.getenv('SCRIPT_DIR', '')
+HOOK_DIR = os.getenv('HOOK_DIR', '')
+ADDITIONAL_DIRS = os.getenv('ADDITIONAL_DIRS', '')
+VAULT_PERMISSIONS = os.getenv('VAULT_PERMISSIONS', '')
 
 # Read current settings
-with open('$SETTINGS_FILE', 'r') as f:
-    settings = json.load(f)
+try:
+    with open(SETTINGS_FILE, 'r') as f:
+        settings = json.load(f)
+except Exception as e:
+    print(f"Error reading settings file: {e}", file=sys.stderr)
+    sys.exit(1)
 
-# Update permissions.allow
-settings['permissions']['allow'] = [
-$(echo -e "$VAULT_PERMISSIONS" | sed 's/,$//' | sed 's/^/    /g' | sed 's/$/,/g' | sed '$ s/,$//')
-    "Tool(mcp__obsidian-context-manager__*)",
-    "Bash(npm run lint)",
-    "Bash(npm run test:*)",
-    "Bash(npm run build:*)",
-    "Bash(git add:*)",
-    "Read(~/.zshrc)",
-    "Bash(npm run typecheck:*)",
-    "Bash(npm run test:coverage:*)",
-    "Bash(npm run lint:fix:*)",
-    "mcp__obsidian-context-manager__search_vault",
-    "Bash(git add:*)",
-    "Bash(git commit:*)",
-    "mcp__obsidian-context-manager__get_session_context",
-    "mcp__obsidian-context-manager__record_commit",
-    "mcp__obsidian-context-manager__create_project_page",
-    "mcp__obsidian-context-manager__create_topic_page",
-    "mcp__obsidian-context-manager__get_topic_context",
-    "Bash(npm run build:*)",
-    "mcp__obsidian-context-manager__close_session",
-    "Bash(npm run lint:*)",
-    "Bash(git checkout:*)",
-    "Bash(git merge:*)",
-    "mcp__obsidian-context-manager__list_recent_sessions",
-    "mcp__obsidian-context-manager__review_topic",
-    "mcp__obsidian-context-manager__approve_topic_update",
-    "mcp__obsidian-context-manager__analyze_topic_content",
-    "WebSearch",
-    "WebFetch(domain:github.com)",
-    "Bash(touch:*)",
-    "Bash(npm test:*)",
-    "mcp__obsidian-context-manager__update_topic_page",
-    "Bash(node -e:*)",
-    "Bash(npx tsx:*)",
-    "Bash(python3:*)",
-    "Bash(tee:*)",
-    "Bash(timeout 60 npx tsx:*)",
-    "Bash(echo:*)",
-    "Bash(node --check:*)",
-    "Bash(npx tsc:*)",
-    "Bash(node --loader ts-node/esm:*)",
-    "Bash(find:*)",
-    "Bash(while read file)",
-    "Bash(do awk '/^---\$/,/^---\$/ {next} /^# / {if (NR > 1 && prev ~ /^# /) print FILENAME \":\" NR-1 \":\" prev \"\\n\" FILENAME \":\" NR \":\" \$0 \"\\n\"; prev=\$0; next} {prev=\"\"}' \"\$file\")",
-    "Bash(done)",
-    "Bash(while read f)",
-    "Bash(do awk 'BEGIN {in_fm=0; fm_end=0; h1_count=0} /^---\$/ {if (in_fm==0) {in_fm=1} else if (fm_end==0) {fm_end=1; in_fm=0} next} fm_end==1 && /^# / {h1_count++; if (h1_count>1 && NR<20) {print FILENAME \":\" NR \":\" \$0; exit}}' "\$f")",
-    "mcp__obsidian-context-manager__analyze_commit_impact",
-    "Bash(git pull:*)",
-    "Bash(git push:*)",
-    "mcp__obsidian-context-manager__create_decision",
-    "Bash(mkdir:*)",
-    "Bash(npm run build:server:*)",
-    "Bash($HOOK_DIR/session-start.sh:*)",
-    "Bash(npm install:*)",
-    "mcp__obsidian-context-manager__get_memory_base",
-    "Bash(git restore:*)",
-    "Bash(git reset:*)",
-    "mcp__obsidian-context-manager__toggle_embeddings",
-    "Bash(cat:*)",
-    "Bash(chmod:*)",
-    "Bash(./install-macos.sh:*)"
-]
+# Parse vault permissions from environment variable
+vault_perms = []
+if VAULT_PERMISSIONS:
+    # Split by newline and clean up
+    for line in VAULT_PERMISSIONS.strip().split('\n'):
+        line = line.strip()
+        if line:
+            # Remove leading/trailing quotes and commas
+            line = line.strip(',').strip().strip('"')
+            if line:
+                vault_perms.append(line)
+
+# Get existing permissions and filter out old vault paths
+existing_perms = settings.get('permissions', {}).get('allow', [])
+filtered_perms = []
+
+# Keep all permissions that don't start with Read/Write/Edit of /Users paths
+for perm in existing_perms:
+    # Check if this is a vault-related permission we need to replace
+    if perm.startswith(('Read(/Users/', 'Write(/Users/', 'Edit(/Users/')):
+        # Skip - we'll add the new vault permissions
+        continue
+    filtered_perms.append(perm)
+
+# Add new vault permissions at the beginning
+new_perms = vault_perms + filtered_perms
+
+# Update permissions
+if 'permissions' not in settings:
+    settings['permissions'] = {}
+settings['permissions']['allow'] = new_perms
 
 # Update additionalDirectories
-settings['permissions']['additionalDirectories'] = [
-$(echo -e "$ADDITIONAL_DIRS" | sed 's/^/    /g')
-]
+if ADDITIONAL_DIRS:
+    add_dirs = []
+    for line in ADDITIONAL_DIRS.strip().split('\n'):
+        line = line.strip().strip(',').strip().strip('"')
+        if line:
+            add_dirs.append(line)
+    settings['permissions']['additionalDirectories'] = add_dirs
 
 # Update hook paths
-for hook_type in ['SessionStart', 'UserPromptSubmit', 'PreToolUse']:
-    if hook_type in settings['hooks']:
-        for hook_group in settings['hooks'][hook_type]:
-            if 'hooks' in hook_group:
-                for hook in hook_group['hooks']:
-                    if 'command' in hook:
-                        # Replace hardcoded hook paths
-                        hook['command'] = re.sub(
-                            r'/Users/[^/]+/.config/claude/hooks/',
-                            '$HOOK_DIR/',
-                            hook['command']
-                        )
+if HOOK_DIR:
+    for hook_type in ['SessionStart', 'UserPromptSubmit', 'PreToolUse']:
+        if hook_type in settings.get('hooks', {}):
+            for hook_group in settings['hooks'][hook_type]:
+                if 'hooks' in hook_group:
+                    for hook in hook_group['hooks']:
+                        if 'command' in hook:
+                            # Replace hardcoded hook paths
+                            hook['command'] = re.sub(
+                                r'/Users/[^/]+/.config/claude/hooks/',
+                                HOOK_DIR + '/',
+                                hook['command']
+                            )
 
 # Write updated settings
-with open('$SETTINGS_FILE', 'w') as f:
-    json.dump(settings, f, indent=2)
-    f.write('\n')
-
-print("Settings updated successfully")
+try:
+    with open(SETTINGS_FILE, 'w') as f:
+        json.dump(settings, f, indent=2)
+        f.write('\n')
+    print("Settings updated successfully")
+except Exception as e:
+    print(f"Error writing settings file: {e}", file=sys.stderr)
+    sys.exit(1)
 EOF
 
         if [ $? -eq 0 ]; then
