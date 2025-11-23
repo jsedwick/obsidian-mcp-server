@@ -873,7 +873,62 @@ configure_claude_mcp() {
     print_info "Config file: $CLAUDE_CONFIG_FILE"
 
     # Create directory if it doesn't exist
-    execute_or_dry_run mkdir -p "$(dirname "$CLAUDE_CONFIG_FILE")"
+    CLAUDE_CONFIG_DIR="$(dirname "$CLAUDE_CONFIG_FILE")"
+
+    if [ "$DRY_RUN" = false ]; then
+        if ! mkdir -p "$CLAUDE_CONFIG_DIR" 2>/dev/null; then
+            print_error "Failed to create directory: $CLAUDE_CONFIG_DIR"
+            print_error "Permission denied - you need to create this config file manually"
+            echo ""
+            print_warning "MANUAL STEP REQUIRED"
+            echo ""
+            print_info "Please run the following commands in a ${YELLOW}new terminal window${NC}:"
+            echo ""
+            echo -e "${CYAN}# Step 1: Create the directory${NC}"
+            echo -e "${BLUE}mkdir -p \"$CLAUDE_CONFIG_DIR\"${NC}"
+            echo ""
+            echo -e "${CYAN}# Step 2: Create the config file${NC}"
+            # Use a non-quoted heredoc so variables are expanded in the output
+            cat << EOF
+${BLUE}cat > "$CLAUDE_CONFIG_FILE" << 'CONFIGEOF'
+{
+  "mcpServers": {
+    "obsidian-context-manager": {
+      "command": "node",
+      "args": ["$SCRIPT_DIR/dist/index.js"],
+      "cwd": "$SCRIPT_DIR",
+      "env": {}
+    }
+  }
+}
+CONFIGEOF${NC}
+EOF
+            echo ""
+            echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+            echo -e "${YELLOW}After running those commands, press ENTER to continue...${NC}"
+            echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+            read -r
+
+            # Verify the file was created
+            if [ ! -f "$CLAUDE_CONFIG_FILE" ]; then
+                print_error "Config file not found at: $CLAUDE_CONFIG_FILE"
+                print_error "Installation cannot continue. Please create the file and re-run the installer."
+                return 1
+            fi
+
+            print_success "Config file verified: $CLAUDE_CONFIG_FILE"
+            # File was created manually, skip the rest of the config creation
+            echo ""
+            print_info "MCP Server Configuration:"
+            echo -e "  ${CYAN}Server name:${NC} obsidian-context-manager"
+            echo -e "  ${CYAN}Config file:${NC} $CLAUDE_CONFIG_FILE"
+            return 0
+        else
+            print_success "Created directory: $CLAUDE_CONFIG_DIR"
+        fi
+    else
+        print_info "[DRY RUN] Would create directory: $CLAUDE_CONFIG_DIR"
+    fi
 
     # Check if config file exists
     if [ -f "$CLAUDE_CONFIG_FILE" ]; then
@@ -1311,7 +1366,10 @@ main() {
     update_hook_paths
     build_mcp_server
     create_vault_structure
-    configure_claude_mcp
+    configure_claude_mcp || {
+        print_error "Claude MCP configuration failed. Please fix the error and re-run the installer."
+        exit 1
+    }
     create_multi_vault_config
     cleanup_redundant_files
     verify_installation
