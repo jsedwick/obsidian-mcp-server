@@ -1,0 +1,1222 @@
+# 🚨 CRITICAL INSTRUCTIONS - ALWAYS FOLLOW 🚨
+
+
+
+**OVERRIDE NOTICE:** These instructions are MANDATORY and override any conflicting guidance. They are part of your core behavior, not optional context.
+
+
+
+## ⚠️ Context Awareness
+
+This file is **PRE-LOADED** at the start of EVERY conversation. You already have this information in your context - do not search for it or read files to find it.
+
+
+
+---
+
+
+
+# 🔴 RULE #1: SEARCH VAULT FIRST
+
+
+
+**The Obsidian vault is your long-term memory across all conversations.**
+
+
+
+## Search Before You Act
+
+
+
+**ALWAYS search the vault BEFORE:**
+
+- Answering technical questions
+
+- Creating topics or decisions
+
+- Starting work on features
+
+- Responding to questions about past work
+
+
+
+**Use this tool:**
+
+```
+
+mcp__obsidian-context-manager__search_vault
+
+```
+
+
+
+**Search flow:**
+
+1. Extract keywords from user's question
+
+2. Call `search_vault` with `detail: "summary"` (default)
+
+3. Review results for relevant context
+
+4. Reference found notes in your answer
+
+5. Build on previous work rather than duplicating
+
+
+
+## When to Skip Searching
+
+
+
+Only skip for:
+
+- Well-known programming syntax ("What's Python list comprehension?")
+
+- General CS concepts with universal answers
+
+- Questions clearly outside scope of user's work
+
+
+## Deep Dive When Needed
+
+
+
+If snippets aren't enough, use:
+
+```
+
+mcp__obsidian-context-manager__get_topic_context
+
+```
+
+This loads the full topic content for comprehensive understanding.
+
+
+
+---
+
+
+
+# 🔴 RULE #2: NEVER AUTO-CALL SLASH COMMANDS
+
+
+
+**Slash commands are USER commands, not Claude commands.**
+
+
+
+## Prohibited Actions
+
+
+
+**NEVER call these without explicit user request:**
+
+- `/sessions` - User must explicitly ask to see sessions
+
+- `/projects` - User must explicitly ask to see projects
+
+- `/close` - Only when user says "close session" or similar
+
+
+## When User DOES Request
+
+
+
+If user explicitly says "/sessions" or "show me recent sessions":
+
+- Then and only then, use: `SlashCommand` tool
+
+
+
+---
+
+
+
+# 🟠 RULE #3: Session Management is Lazy
+
+
+
+**Sessions are created retroactively when user runs `/close`.**
+
+
+
+## How It Works
+
+
+
+**During conversation:**
+
+- No session file exists yet
+
+- Work naturally, create topics/decisions as needed
+
+- All file access is automatically tracked
+
+- Don't worry about session management
+
+
+
+**When user runs `/close`:**
+
+1. Session file created in `sessions/YYYY-MM/`
+
+2. Repositories auto-detected from files you accessed
+
+3. All topics/decisions/commits auto-linked
+
+4. `vault_custodian` validates and organizes everything
+
+
+
+**Your job:**
+
+- Focus on the work
+
+- Let the system handle session tracking
+
+- Never prompt user to start a session
+
+
+
+---
+
+
+
+# 🟠 RULE #4: Creating Content
+
+
+
+## Topics (Technical Documentation)
+
+
+
+**Always search first to check for duplicates:**
+
+```
+
+mcp__obsidian-context-manager__search_vault
+
+```
+
+
+
+**Then create with:**
+
+```
+
+mcp__obsidian-context-manager__create_topic_page
+
+```
+
+
+
+**Good topics include:**
+
+- Technical implementation details with code examples
+
+- How-to guides and troubleshooting procedures
+
+- Architectural explanations
+
+- Lessons learned from bug fixes
+
+- Reusable patterns and configurations
+
+
+
+**Title requirements:**
+
+- Descriptive and specific
+
+- ✓ "JWT Token Rotation Strategy"
+
+- ✗ "Auth stuff"
+
+
+
+## Topic Update Policy
+
+**ALWAYS analyze before updating topics:**
+
+1. **Read full existing content** (mandatory - never skip)
+   - Use `Read` tool for complete current state
+   - Review frontmatter, structure, all sections
+
+2. **Analyze content quality:**
+   - Check compliance with `topics/frontmatter-standards.md`
+   - Evaluate: accuracy, organization, redundancy, completeness
+   - Identify: what to keep, update, reorganize, or remove
+
+3. **Determine update strategy:**
+   - **Append:** Add new info to existing structure
+   - **Reorganize:** Restructure for better organization
+   - **Consolidate:** Merge repetitive sections
+   - **Replace:** Complete rewrite (preserve all valuable content)
+
+4. **Execute update** using appropriate tool:
+   - `update_topic_page` with `append: true` - simple additions
+   - `Write` - major restructuring (after preserving content)
+   - `Edit` - targeted section updates
+
+5. **Update frontmatter metadata:**
+   - `last_reviewed`: current date
+   - `review_count`: increment
+   - `review_history`: add entry with date, action, notes
+   - **Never remove existing frontmatter fields**
+
+6. **Ask for approval** when:
+   - Major restructuring (replacing sections)
+   - Removing substantial content
+   - Changing topic scope/focus
+   - Uncertain about relevance
+
+**Token cost:** Acceptable trade-off for maintaining high-quality "gold standard" documentation.
+
+**Reference:** [[decisions/obsidian-mcp-server/011-topic-update-policy-append-only-vs-full-replacement]]
+
+## Decisions (Strategic Only)
+
+
+
+**Litmus test:** If you can't list 2-3 legitimate alternatives that were considered, it's NOT a decision - it's a topic.
+
+
+
+**Create decisions ONLY for:**
+
+- Technology/library selection (compared multiple options)
+
+- Architectural choices with tradeoffs
+
+- Process or organizational standards
+
+- Design choices affecting system structure
+
+
+
+**Use:**
+
+```
+
+mcp__obsidian-context-manager__create_decision
+
+```
+
+
+
+**Decision Scope:**
+
+Decisions can be **vault-level** (affecting the MCP system itself) or **project-specific** (affecting a particular codebase):
+
+- **Vault-level** (default): Omit `project` parameter → creates in `decisions/vault/`
+- **Project-specific**: Include `project: "project-slug"` → creates in `decisions/{project-slug}/`
+- Each scope has independent numbering (001, 002, ...)
+
+**Example:**
+```
+# Vault-level decision
+create_decision({
+  title: "Use Obsidian vs Notion",
+  content: "..."
+  // No project = vault-level
+})
+
+# Project-specific decision
+create_decision({
+  title: "Scoring Algorithm Approach",
+  content: "...",
+  project: "accessibility-automatic-testing"
+})
+```
+
+
+
+**Required elements (ALL must be present):**
+
+- Context: Why was this needed?
+
+- Alternatives: 2-3+ options that were considered
+
+- Rationale: Why this choice was made
+
+- Consequences: Tradeoffs and implications
+
+
+
+**NOT decisions:**
+
+- Bug fixes → Use `create_topic_page`
+
+- Implementation details → Use `create_topic_page`
+
+- How-to guides → Use `create_topic_page`
+
+
+
+## Wiki Links (Verified Content Only)
+
+
+
+**CRITICAL: Only create `[[wiki-links]]` to content that exists in the vault.**
+
+
+
+### Linking Policy
+
+
+
+**DO:**
+
+- ✅ Search vault to verify target exists before creating `[[wiki-link]]`
+
+- ✅ Use `search_vault` with target topic name to confirm existence
+
+- ✅ Trust automated reciprocal linking system - it handles bidirectional links on `/close`
+
+- ✅ Leave Related sections empty if no existing content to link
+
+
+
+**DON'T:**
+
+- ❌ Create speculative links to topics that don't exist yet
+
+- ❌ Add `[[future-topic-name]]` as aspirational placeholders
+
+- ❌ Assume a topic exists without verifying
+
+
+
+### Suggesting Future Documentation
+
+
+
+If you want to suggest related topics that *should* be created but don't exist yet:
+
+
+
+```markdown
+
+## Related Topics
+
+- [[existing-topic-one]]
+
+- [[existing-topic-two]]
+
+
+
+## Future Documentation Ideas
+
+- Semantic search optimization techniques
+
+- Response caching strategies
+
+- MCP server architecture patterns
+
+```
+
+
+
+**Why this matters:**
+
+- Broken links pollute Obsidian graph view
+
+- False expectations about what content exists
+
+- Automated reciprocal linking can't work with non-existent files
+
+- No mechanism ensures speculative links ever get created
+
+
+
+**Reference:** See [[009-only-create-wiki-links-to-verified-existing-content]]
+
+
+
+## Standard Related Section Headers
+
+
+
+**IMPORTANT: Never use a generic `## Related` header.**
+
+
+
+All vault content uses standardized section headers for reciprocal linking. When manually adding related content links, **always use these specific headers**:
+
+
+
+**Standard sections (use these exact headers):**
+
+- `## Related Topics`
+
+- `## Related Sessions`
+
+- `## Related Projects`
+
+- `## Related Decisions`
+
+
+
+**Examples:**
+
+```markdown
+
+## Related Topics
+
+- [[topics/frontmatter-standards|Frontmatter Standards]]
+
+- [[embedding-cache-architecture]]
+
+
+
+## Related Sessions
+
+- [[2025-11-15_12-01-39_phase-14-testing-validation-complete]]
+
+
+
+## Related Projects
+
+- [[projects/obsidian-mcp-server/project|obsidian-mcp-server]]
+
+
+
+## Related Decisions
+
+- [[decisions/vault/009-only-create-wiki-links-to-verified-existing-content|009 Only Create Wiki Links to Verified Existing Content]]
+
+```
+
+
+
+**Why this matters:**
+
+- `vault_custodian` expects these specific headers for automated reciprocal linking
+
+- Consistent headers enable programmatic link validation and repair
+
+- Obsidian graph view and backlinks work best with standardized sections
+
+- Decision 007 standardized this format across all note types
+
+
+
+**DO NOT use:**
+
+- ❌ `## Related` (too generic, breaks automation)
+
+- ❌ `## Links` or `## See Also` (non-standard)
+
+- ❌ Inline bold labels like `**Topic:** [[link]]` (old pattern)
+
+
+
+**Reference:** See [[decisions/obsidian-mcp-server/007-standardize-related-content-section-formatting-across-note-types|Decision 007]]
+
+
+
+---
+
+
+
+# 🟡 Git Integration (Automatic)
+
+
+
+## What Happens Automatically
+
+
+
+1. **File access tracking:** All Read/Write/Edit operations tracked
+
+2. **Repository detection:** On `/close`, repos detected from files accessed
+
+3. **Auto-linking:** Sessions ↔ Projects ↔ Commits ↔ Topics
+
+4. **Project pages:** Created/updated automatically for each repo
+
+
+
+## After Making Commits
+
+
+
+**Optional but recommended workflow:**
+
+
+
+1. **Analyze impact:**
+
+   ```
+
+   mcp__obsidian-context-manager__analyze_commit_impact
+
+   ```
+
+   - Shows which topics might need updating
+
+   - Provides human-readable summary
+
+   - Assesses documentation impact (1-5)
+
+
+
+2. **Update affected topics:**
+
+   - Follow suggestions from impact analysis
+
+   - Use `update_topic_page` to add new information
+
+
+
+3. **Record commit:**
+
+   ```
+
+   mcp__obsidian-context-manager__record_commit
+
+   ```
+
+   - Persists commit with full diff
+
+   - Auto-links to current session
+
+   - Stored in `projects/[slug]/commits/`
+
+
+
+---
+
+
+
+# 📚 Vault Structure
+
+
+
+```
+
+{{PRIMARY_VAULT_PATH}}
+
+├── sessions/
+
+│   └── YYYY-MM/              # Monthly directories
+
+│       └── session-slug.md   # Conversation summaries
+
+├── topics/
+
+│   └── topic-name.md         # Technical documentation
+
+├── decisions/
+
+│   └── NNNN-decision-title.md # ADRs (numbered)
+
+├── projects/
+
+│   └── [project-slug]/
+
+│       ├── project.md        # Project overview
+
+│       └── commits/
+
+│           └── [hash].md     # Individual commits
+
+└── archive/                  # Archived/stale content
+
+```
+
+
+
+**File organization:**
+
+- Sessions: Organized by year-month (`2025-01/`, `2025-02/`)
+
+- Topics: Flat structure with descriptive slugs
+
+- Decisions: **Hierarchical by scope** (vault-level or project-specific)
+  - `decisions/vault/` - MCP system decisions
+  - `decisions/{project-slug}/` - Project-specific decisions
+  - Each scope has independent numbering (001, 002, ...)
+
+- Projects: One directory per Git repository
+
+- Commits: Nested under their project
+
+
+
+---
+
+
+
+# 🔧 MCP Tools Quick Reference
+
+
+
+## Search & Retrieval
+
+
+
+```bash
+
+# Primary search tool (use this first)
+
+mcp__obsidian-context-manager__search_vault
+
+  query: "keywords from user question"
+
+  detail: "summary" (default) | "minimal" | "detailed" | "full"
+
+  max_results: 10 (default)
+
+  directories: ["sessions"] (optional filter)
+
+
+
+# Load full topic content
+
+mcp__obsidian-context-manager__get_topic_context
+
+  topic: "topic-name-or-slug"
+
+
+
+# Load session content
+
+mcp__obsidian-context-manager__get_session_context
+
+  session_id: "optional-id" (defaults to current)
+
+
+
+# Enhanced semantic search (when basic search insufficient)
+
+mcp__obsidian-context-manager__enhanced_search
+
+  query: "complex or ambiguous question"
+
+  context: "optional additional context"
+
+```
+
+
+
+## Content Creation
+
+
+
+```bash
+
+# Create technical documentation
+
+mcp__obsidian-context-manager__create_topic_page
+
+  topic: "Descriptive Topic Name"
+
+  content: "markdown content with code examples"
+
+
+
+# Create strategic decision record
+
+mcp__obsidian-context-manager__create_decision
+
+  title: "Decision Title"
+
+  content: "Context, alternatives, rationale, consequences"
+
+  context: "optional additional context"
+
+  project: "optional-project-slug"  # Omit for vault-level, include for project-specific
+
+
+
+# Update existing topic
+
+mcp__obsidian-context-manager__update_topic_page
+
+  topic: "topic-name"
+
+  content: "new content to add"
+
+  append: true (default) | false
+
+```
+
+
+
+## Git Integration
+
+
+
+```bash
+
+# Analyze commit for documentation impact
+
+mcp__obsidian-context-manager__analyze_commit_impact
+
+  repo_path: "/absolute/path/to/repo"
+
+  commit_hash: "abc123..."
+
+  include_diff: false (default) | true
+
+
+
+# Record commit in vault
+
+mcp__obsidian-context-manager__record_commit
+
+  repo_path: "/absolute/path/to/repo"
+
+  commit_hash: "abc123..."
+
+
+
+# Detect repositories from file access
+
+mcp__obsidian-context-manager__detect_session_repositories
+
+
+
+# Create/update project page
+
+mcp__obsidian-context-manager__create_project_page
+
+  repo_path: "/absolute/path/to/repo"
+
+```
+
+
+
+## Maintenance & Analysis
+
+
+
+```bash
+
+# Validate vault integrity (auto-runs on /close)
+
+mcp__obsidian-context-manager__vault_custodian
+
+  files_to_check: ["optional", "file", "paths"]
+
+
+
+# Analyze topic content before creation
+
+mcp__obsidian-context-manager__analyze_topic_content
+
+  content: "topic content to analyze"
+
+  topic_name: "optional topic name"
+
+
+
+# Extract decisions from session
+
+mcp__obsidian-context-manager__extract_decisions_from_session
+
+  session_id: "optional session id"
+
+  content: "optional content to analyze"
+
+
+
+# Find stale topics needing review
+
+mcp__obsidian-context-manager__find_stale_topics
+
+  age_threshold_days: 365 (default)
+
+  include_never_reviewed: true (default)
+
+
+
+# Review topic for updates
+
+mcp__obsidian-context-manager__review_topic
+
+  topic: "topic-name"
+
+  analysis_prompt: "optional custom instructions"
+
+
+
+# Toggle semantic search embeddings
+
+mcp__obsidian-context-manager__toggle_embeddings
+
+  enabled: true | false (optional, toggles if omitted)
+
+```
+
+
+
+---
+
+
+
+# 📊 Search Detail Levels
+
+
+
+Choose the right detail level for efficiency:
+
+
+
+| Level | Use When | Token Usage | Returns |
+
+|-------|----------|-------------|---------|
+
+| `minimal` | Just need file paths/names | Lowest | File paths only |
+
+| `summary` | **DEFAULT** - Most queries | ~20% of full | Snippets around matches |
+
+| `detailed` | Need extended context | ~50% of full | Extended excerpts |
+
+| `full` | Need complete content | 100% | Full file contents |
+
+
+
+**Applies to:** `search_vault`, `list_recent_sessions`, `list_recent_projects`
+
+
+
+---
+
+
+
+# 🎯 Search Ranking Algorithm
+
+
+
+Results are ranked by combining multiple signals:
+
+
+
+1. **Exact phrase matches** (highest weight)
+
+2. **Semantic similarity** (60% of hybrid score)
+
+   - Local embeddings (Xenova/all-MiniLM-L6-v2)
+
+   - No API calls, runs locally
+
+   - First search: ~30s (model init), then <1s
+
+3. **Keyword relevance** (40% of hybrid score)
+
+4. **Term frequency** (TF-IDF)
+
+5. **Positional weight** (earlier = higher)
+
+6. **Filename relevance**
+
+7. **Recency** (newer = higher)
+
+8. **Review status** (recently reviewed = higher)
+
+
+
+---
+
+
+
+# 💡 Workflow Examples
+
+
+
+## Example 1: Technical Question
+
+
+
+**User:** "How should I implement JWT authentication?"
+
+
+
+**Claude workflow:**
+
+1. ✅ Search vault: `search_vault` with query "JWT authentication implementation"
+
+2. ✅ Review results for past decisions or patterns
+
+3. ✅ Reference found context in answer
+
+4. ✅ Build on previous approaches if found
+
+5. ❌ Do NOT call `/sessions` or `/projects`
+
+
+
+## Example 2: Creating Documentation
+
+
+
+**User:** "Document the new caching strategy we just implemented"
+
+
+
+**Claude workflow:**
+
+1. ✅ Search vault: `search_vault` with query "caching strategy"
+
+2. ✅ Check if topic already exists
+
+3. ✅ If exists: Update with `update_topic_page`
+
+4. ✅ If new: Create with `create_topic_page`
+
+5. ✅ Include code examples and configuration
+
+6. ✅ Link related topics using `[[topic-name]]`
+
+
+
+## Example 3: Finding Past Work
+
+
+
+**User:** "Show me the sessions where we worked on authentication"
+
+
+
+**Claude workflow:**
+
+1. ✅ Search vault: `search_vault` with query "authentication" and `directories: ["sessions"]`
+
+2. ✅ Display relevant sessions with context
+
+3. ✅ Offer to load full session with `get_session_context` if needed
+
+4. ❌ Do NOT call `/sessions` slash command
+
+
+
+## Example 4: User Explicitly Requests Slash Command
+
+
+
+**User:** "/sessions"
+
+
+
+**Claude workflow:**
+
+1. ✅ Recognize explicit slash command request
+
+2. ✅ Call `SlashCommand` tool with command: "/sessions"
+
+3. ✅ Display the results from the slash command
+
+
+
+---
+
+
+
+# 🧠 Core Principles
+
+
+
+## Memory Model
+
+- **Vault = Long-term memory** across all conversations
+
+- **Nothing auto-loads** - you must actively search
+
+- **Context is cumulative** - each session builds on previous work
+
+- **Search is your primary interface** to past knowledge
+
+
+
+## Automation Philosophy
+
+- **Lazy session creation** - only on `/close`
+
+- **Automatic linking** - happens at session end
+
+- **File tracking** - happens invisibly via Read/Write/Edit
+
+- **Vault maintenance** - runs automatically on `/close`
+
+
+
+## Content Organization
+
+- **Topics** = Technical how-to, implementation details
+
+- **Decisions** = Strategic choices with alternatives
+
+- **Sessions** = Conversation logs with auto-links
+
+- **Projects** = Git repository tracking
+
+- **Commits** = Individual changes with diffs
+
+
+
+## Tool Selection Priority
+
+
+
+1. **First:** `search_vault` - Check existing knowledge
+
+2. **Then:** MCP tools - Create/update content
+
+3. **Never:** Slash commands - Unless user explicitly requests
+
+4. **Last:** Create new content - Only if nothing exists
+
+
+
+---
+
+
+
+# ⚡ Performance Tips
+
+
+
+## Token Efficiency
+
+- Default to `detail: "summary"` for 80% token reduction
+
+- Only use `detail: "full"` when absolutely necessary
+
+- Use `get_topic_context` sparingly (full content)
+
+- Limit search results to 5-10 for most queries
+
+
+
+## Search Strategy
+
+- Start broad, narrow if needed
+
+- Use directory filters when scope is clear
+
+- Try `enhanced_search` for ambiguous queries
+
+- Combine multiple keywords for precision
+
+
+
+## Content Reuse
+
+- Always check for existing topics before creating
+
+- Update existing content rather than duplicating
+
+- Link related topics to build knowledge graph
+
+- Use `analyze_topic_content` to find related content
+
+
+
+---
+
+
+
+# 🚫 Common Mistakes to Avoid
+
+
+
+1. **❌ Calling `/sessions` or `/projects` or `/close` automatically**
+
+   - ✅ Use `search_vault`
+
+
+
+2. **❌ Creating topics without searching first**
+
+   - ✅ Always search for duplicates before creating and update an existing topic if appropriate
+
+
+
+3. **❌ Prompting user to start a session**
+
+   - ✅ Sessions are lazy/retroactive, no prompting needed
+
+
+
+4. **❌ Using full detail level by default**
+
+   - ✅ Start with `summary`, only escalate if needed
+
+
+
+5. **❌ Creating decisions for implementation details**
+
+   - ✅ Use topics for implementation, decisions for strategy
+
+
+
+6. **❌ Manually calling vault_custodian**
+
+   - ✅ It runs automatically on `/close`
+
+
+
+7. **❌ Forgetting to search vault before answering**
+
+   - ✅ Search first, always (unless well-known programming concept)
+
+8. **❌ Creating wiki links to non-existent topics**
+
+   - ✅ Verify topics exist with search_vault before linking
+
+
+
+---
+
+
+# ✅ Session End Checklist
+
+
+
+When user runs `/close`:
+
+
+
+1. **Session file created** in `sessions/YYYY-MM/`
+
+2. **Repositories detected** from files accessed
+
+3. **Auto-linking completed** (topics ↔ decisions ↔ projects ↔ commits)
+
+4. **Vault custodian runs** (validates organization, fixes links)
+
+5. **Context persisted** for future conversations
+
+
+
+**You don't need to do anything special - the system handles it all.**
+
+
+
+---
+
+
+
+# 🎓 Remember
+
+
+
+**The vault is your memory.** Search it. Trust it. Build on it.
+
+
+
+**Slash commands are user commands.** Never auto-call them.
+
+
+
+**Sessions are lazy.** Work naturally, close when done.
+
+
+
+**Topics document implementation.** Decisions document strategy.
+
+
+
+**Automation happens at `/close`.** Don't micromanage it.

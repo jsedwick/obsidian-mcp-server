@@ -30,6 +30,9 @@ MAGENTA='\033[0;35m'
 CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
+# Get the directory where this script lives (the repo root)
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
 # Configuration
 PRIMARY_VAULT_PATH=""
 PRIMARY_VAULT_NAME=""
@@ -448,6 +451,44 @@ install_claude_config() {
 }
 
 #############################################################################
+# Process CLAUDE.md Template
+#############################################################################
+
+process_claude_md_template() {
+    print_header "Processing CLAUDE.md Template"
+
+    local TEMPLATE_FILE="$SCRIPT_DIR/templates/CLAUDE.md.template"
+    local OUTPUT_FILE="$HOME/.claude/CLAUDE.md"
+
+    if [ ! -f "$TEMPLATE_FILE" ]; then
+        print_error "Template file not found: $TEMPLATE_FILE"
+        return 1
+    fi
+
+    print_step "Generating CLAUDE.md from template..."
+
+    # Create backup if file exists
+    if [ -f "$OUTPUT_FILE" ] && [ "$DRY_RUN" = false ]; then
+        cp "$OUTPUT_FILE" "$OUTPUT_FILE.backup.$(date +%s)"
+        print_info "Created backup: $OUTPUT_FILE.backup.$(date +%s)"
+    fi
+
+    # Replace placeholders in template
+    if [ "$DRY_RUN" = false ]; then
+        sed "s|{{PRIMARY_VAULT_PATH}}|$PRIMARY_VAULT_PATH|g" "$TEMPLATE_FILE" > "$OUTPUT_FILE"
+        print_success "Generated CLAUDE.md with your vault path"
+    else
+        print_info "[DRY RUN] Would generate CLAUDE.md from template with:"
+    fi
+
+    # Show what was configured
+    echo -e "${CYAN}Configuration:${NC}"
+    echo -e "  ${CYAN}Primary Vault:${NC} $PRIMARY_VAULT_PATH"
+    echo -e "  ${CYAN}Output File:${NC} $OUTPUT_FILE"
+    echo -e "  ${CYAN}Memory File:${NC} $PRIMARY_VAULT_PATH/memory-base.md"
+}
+
+#############################################################################
 # Update Settings.json with User-Specific Paths
 #############################################################################
 
@@ -677,13 +718,10 @@ update_hook_paths() {
     fi
 
     if [ "$DRY_RUN" = false ]; then
-        # Use sed to replace hardcoded paths
-        # 1. Replace VAULT_PATH variable (line 8)
-        # 2. Replace Python script paths (lines 37-38)
+        # Use sed to replace hardcoded vault path
+        # Note: No Python script paths to update - hook now just instructs Claude to call get_memory_base
         sed -i.tmp \
             -e "s|^VAULT_PATH=\"/Users/[^/]*/Documents/Obsidian/Claude/Claude\"|VAULT_PATH=\"$PRIMARY_VAULT_PATH\"|" \
-            -e "s|claude_md_path = \"/Users/[^/]*/.claude/CLAUDE.md\"|claude_md_path = \"$HOME/.claude/CLAUDE.md\"|" \
-            -e "s|memory_file_path = \"/Users/[^/]*/Documents/Obsidian/Claude/Claude/memory-base.md\"|memory_file_path = \"$PRIMARY_VAULT_PATH/memory-base.md\"|" \
             "$SESSION_START_HOOK"
 
         # Remove sed backup file
@@ -693,8 +731,6 @@ update_hook_paths() {
     else
         print_info "[DRY RUN] Would update session-start.sh with:"
         echo -e "${CYAN}  - VAULT_PATH: $PRIMARY_VAULT_PATH${NC}"
-        echo -e "${CYAN}  - claude_md_path: $HOME/.claude/CLAUDE.md${NC}"
-        echo -e "${CYAN}  - memory_file_path: $PRIMARY_VAULT_PATH/memory-base.md${NC}"
     fi
 
     echo ""
@@ -711,9 +747,6 @@ update_hook_paths() {
 
 build_mcp_server() {
     print_header "Building Obsidian MCP Server"
-
-    # Get the directory where this script lives (the repo root)
-    SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
     print_step "Installing npm dependencies..."
     print_info "Location: $SCRIPT_DIR"
@@ -1488,6 +1521,7 @@ main() {
     prompt_vault_config
     clone_config_repository
     install_claude_config
+    process_claude_md_template
     update_settings_json
     update_hook_paths
     build_mcp_server
