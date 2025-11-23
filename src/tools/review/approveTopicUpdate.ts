@@ -26,6 +26,7 @@ export interface ApproveTopicUpdateContext {
   vaultPath: string;
   pendingReviews: Map<string, PendingReview>;
   archiveTopic: (args: { topic: string; reason?: string }) => Promise<ApproveTopicUpdateResult>;
+  vaultCustodian: (args: { files_to_check: string[] }) => Promise<ApproveTopicUpdateResult>;
 }
 
 export async function approveTopicUpdate(
@@ -76,11 +77,25 @@ export async function approveTopicUpdate(
 
         context.pendingReviews.delete(args.review_id);
 
+        // Run vault custodian on the updated topic
+        let custodianReport = '';
+        try {
+          const custodianResult = await context.vaultCustodian({
+            files_to_check: [topicFile]
+          });
+          if (custodianResult.content && custodianResult.content[0]) {
+            custodianReport = '\n\n' + (custodianResult.content[0] as { text: string }).text;
+          }
+        } catch (error) {
+          custodianReport = '\n\n⚠️  Vault custodian check failed: ' +
+            (error instanceof Error ? error.message : String(error));
+        }
+
         return {
           content: [
             {
               type: 'text',
-              text: `Topic updated: ${topic}\nFile: topics/${slug}.md\nReview count: ${reviewCount + 1}`,
+              text: `Topic updated: ${topic}\nFile: topics/${slug}.md\nReview count: ${reviewCount + 1}${custodianReport}`,
             },
           ],
         };
@@ -116,11 +131,25 @@ export async function approveTopicUpdate(
 
         context.pendingReviews.delete(args.review_id);
 
+        // Run vault custodian on the reviewed topic
+        let custodianReport = '';
+        try {
+          const custodianResult = await context.vaultCustodian({
+            files_to_check: [topicFile]
+          });
+          if (custodianResult.content && custodianResult.content[0]) {
+            custodianReport = '\n\n' + (custodianResult.content[0] as { text: string }).text;
+          }
+        } catch (error) {
+          custodianReport = '\n\n⚠️  Vault custodian check failed: ' +
+            (error instanceof Error ? error.message : String(error));
+        }
+
         return {
           content: [
             {
               type: 'text',
-              text: `Topic marked as reviewed: ${topic}\nNo content changes made.\nReview count: ${reviewCount + 1}`,
+              text: `Topic marked as reviewed: ${topic}\nNo content changes made.\nReview count: ${reviewCount + 1}${custodianReport}`,
             },
           ],
         };

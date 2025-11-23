@@ -50,6 +50,7 @@ export interface CreateTopicPageContext {
   }>;
   findRelatedProjects: (topicContent: string) => Promise<Array<{ link: string; name: string }>>;
   trackTopicCreation: (topic: { slug: string; title: string; file: string }) => void;
+  vaultCustodian: (args: { files_to_check: string[] }) => Promise<CreateTopicPageResult>;
 }
 
 export async function createTopicPage(
@@ -143,11 +144,25 @@ export async function createTopicPage(
     await fs.writeFile(topicFile, updatedContent);
   }
 
+  // Run vault custodian on the created topic
+  let custodianReport = '';
+  try {
+    const custodianResult = await context.vaultCustodian({
+      files_to_check: [topicFile]
+    });
+    if (custodianResult.content && custodianResult.content[0]) {
+      custodianReport = '\n\n' + (custodianResult.content[0] as { text: string }).text;
+    }
+  } catch (error) {
+    custodianReport = '\n\n⚠️  Vault custodian check failed: ' +
+      (error instanceof Error ? error.message : String(error));
+  }
+
   return {
     content: [
       {
         type: 'text',
-        text: `Topic page created: ${topicFile}\nObsidian link: [[topics/${slug}|${args.topic}]]${relatedProjects.length > 0 ? `\n\nFound ${relatedProjects.length} related project(s):` + relatedProjects.map(p => `\n- ${p.name}`).join('') : ''}`,
+        text: `Topic page created: ${topicFile}\nObsidian link: [[topics/${slug}|${args.topic}]]${relatedProjects.length > 0 ? `\n\nFound ${relatedProjects.length} related project(s):` + relatedProjects.map(p => `\n- ${p.name}`).join('') : ''}${custodianReport}`,
       },
     ],
   };

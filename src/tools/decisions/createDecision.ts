@@ -47,6 +47,7 @@ export interface CreateDecisionContext {
     projects: Array<{ link: string; name: string }>;
   }>;
   trackDecisionCreation: (decision: { slug: string; title: string; file: string }) => void;
+  vaultCustodian: (args: { files_to_check: string[] }) => Promise<CreateDecisionResult>;
 }
 
 export async function createDecision(
@@ -185,12 +186,26 @@ To proceed anyway, call create_decision again with force: true.`,
     await fs.writeFile(decisionFile, updatedContent);
   }
 
+  // Run vault custodian on the created decision
+  let custodianReport = '';
+  try {
+    const custodianResult = await context.vaultCustodian({
+      files_to_check: [decisionFile]
+    });
+    if (custodianResult.content && custodianResult.content[0]) {
+      custodianReport = '\n\n' + (custodianResult.content[0] as { text: string }).text;
+    }
+  } catch (error) {
+    custodianReport = '\n\n⚠️  Vault custodian check failed: ' +
+      (error instanceof Error ? error.message : String(error));
+  }
+
   const scopeMsg = scope === 'vault' ? ' (vault-level)' : ` (project: ${scope})`;
   return {
     content: [
       {
         type: 'text',
-        text: `Decision record created${scopeMsg}: ${decisionFile}\nDecision number: ${numberStr}${relatedContent.topics.length > 0 ? `\n\nFound ${relatedContent.topics.length} related topic(s):` + relatedContent.topics.map(t => `\n- ${t.title}`).join('') : ''}${relatedContent.projects.length > 0 ? `\n\nFound ${relatedContent.projects.length} related project(s):` + relatedContent.projects.map(p => `\n- ${p.name}`).join('') : ''}`,
+        text: `Decision record created${scopeMsg}: ${decisionFile}\nDecision number: ${numberStr}${relatedContent.topics.length > 0 ? `\n\nFound ${relatedContent.topics.length} related topic(s):` + relatedContent.topics.map(t => `\n- ${t.title}`).join('') : ''}${relatedContent.projects.length > 0 ? `\n\nFound ${relatedContent.projects.length} related project(s):` + relatedContent.projects.map(p => `\n- ${p.name}`).join('') : ''}${custodianReport}`,
       },
     ],
   };

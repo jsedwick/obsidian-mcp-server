@@ -315,6 +315,7 @@ class ObsidianMCPServer {
               analyzeTopicContentInternal: this.analyzeTopicContentInternal.bind(this),
               findRelatedProjects: this.findRelatedProjects.bind(this),
               trackTopicCreation: (topic) => this.topicsCreated.push(topic),
+              vaultCustodian: this.vaultCustodianWrapper.bind(this),
             });
 
           case 'create_decision':
@@ -325,6 +326,7 @@ class ObsidianMCPServer {
               ensureVaultStructure: this.ensureVaultStructure.bind(this),
               findRelatedContentInText: this.findRelatedContentInText.bind(this),
               trackDecisionCreation: (decision) => this.decisionsCreated.push(decision),
+              vaultCustodian: this.vaultCustodianWrapper.bind(this),
             });
 
           case 'update_topic_page':
@@ -332,6 +334,7 @@ class ObsidianMCPServer {
               vaultPath: this.config.primaryVault.path,
               slugify: this.slugify.bind(this),
               createTopicPage: this.createTopicPageWrapper.bind(this),
+              vaultCustodian: this.vaultCustodianWrapper.bind(this),
             });
 
           case 'get_session_context':
@@ -395,6 +398,7 @@ class ObsidianMCPServer {
               vaultPath: this.config.primaryVault.path,
               pendingReviews: this.pendingReviews,
               archiveTopic: this.archiveTopicWrapper.bind(this),
+              vaultCustodian: this.vaultCustodianWrapper.bind(this),
             });
 
           case 'archive_topic':
@@ -402,6 +406,7 @@ class ObsidianMCPServer {
               vaultPath: this.config.primaryVault.path,
               slugify: this.slugify.bind(this),
               ensureVaultStructure: this.ensureVaultStructure.bind(this),
+              vaultCustodian: this.vaultCustodianWrapper.bind(this),
             });
 
           case 'list_recent_sessions':
@@ -441,6 +446,7 @@ class ObsidianMCPServer {
               vaultPath: this.config.primaryVault.path,
               gitService: this.gitService,
               trackProjectCreation: (project) => this.projectsCreated.push(project),
+              vaultCustodian: this.vaultCustodianWrapper.bind(this),
             });
 
           case 'record_commit':
@@ -1502,6 +1508,7 @@ Check the sessions/ directory for recent conversations.
       analyzeTopicContentInternal: this.analyzeTopicContentInternal.bind(this),
       findRelatedProjects: this.findRelatedProjects.bind(this),
       trackTopicCreation: (topic) => this.topicsCreated.push(topic),
+      vaultCustodian: this.vaultCustodianWrapper.bind(this),
     });
   }
 
@@ -1510,6 +1517,7 @@ Check the sessions/ directory for recent conversations.
       vaultPath: this.config.primaryVault.path,
       gitService: this.gitService,
       trackProjectCreation: (project) => this.projectsCreated.push(project),
+      vaultCustodian: this.vaultCustodianWrapper.bind(this),
     });
   }
 
@@ -1526,6 +1534,7 @@ Check the sessions/ directory for recent conversations.
       vaultPath: this.config.primaryVault.path,
       slugify: this.slugify.bind(this),
       ensureVaultStructure: this.ensureVaultStructure.bind(this),
+      vaultCustodian: this.vaultCustodianWrapper.bind(this),
     });
   }
 
