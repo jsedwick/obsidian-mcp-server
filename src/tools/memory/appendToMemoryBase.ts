@@ -21,19 +21,18 @@ export interface AppendToMemoryBaseArgs {
 }
 
 export interface AppendToMemoryBaseResult {
-  success: boolean;
-  new_size_bytes: number;
-  trimmed: boolean;
-  sessions_removed: number;
-  haiku_used?: boolean;
-  haiku_tokens?: { input: number; output: number };
+  content: Array<{ type: string; text: string }>;
 }
 
 export async function appendToMemoryBase(
   args: AppendToMemoryBaseArgs,
   vaultPath: string
 ): Promise<AppendToMemoryBaseResult> {
-  const { session_topic: sessionTopic, max_size_bytes: maxSizeBytes = DEFAULT_MAX_SIZE_BYTES, use_haiku: useHaiku = false } = args;
+  const {
+    session_topic: sessionTopic,
+    max_size_bytes: maxSizeBytes = DEFAULT_MAX_SIZE_BYTES,
+    use_haiku: useHaiku = false,
+  } = args;
   let { summary } = args;
   const memoryFilePath = path.join(vaultPath, 'memory-base.md');
 
@@ -104,12 +103,29 @@ ${summary}
   // Write the updated content
   await fs.writeFile(memoryFilePath, newContent, 'utf-8');
 
+  const newSizeBytes = Buffer.byteLength(newContent, 'utf-8');
+
+  // Build result message
+  let resultText = '✅ Session summary appended to rolling memory base.\n\n';
+  resultText += `**Metadata:**\n`;
+  resultText += `- New size: ${newSizeBytes} bytes\n`;
+  resultText += `- Trimmed: ${trimmed ? 'Yes' : 'No'}\n`;
+  if (trimmed) {
+    resultText += `- Sessions removed: ${sessionsRemoved}\n`;
+  }
+  if (haikuUsed) {
+    resultText += `- Haiku summarization: Used\n`;
+    if (haikuTokens) {
+      resultText += `- Haiku tokens: ${haikuTokens.input} input, ${haikuTokens.output} output\n`;
+    }
+  }
+
   return {
-    success: true,
-    new_size_bytes: Buffer.byteLength(newContent, 'utf-8'),
-    trimmed,
-    sessions_removed: sessionsRemoved,
-    haiku_used: haikuUsed,
-    haiku_tokens: haikuTokens,
+    content: [
+      {
+        type: 'text',
+        text: resultText,
+      },
+    ],
   };
 }

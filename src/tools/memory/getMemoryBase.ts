@@ -14,10 +14,7 @@ export interface GetMemoryBaseArgs {
 }
 
 export interface GetMemoryBaseResult {
-  content: string;
-  size_bytes: number;
-  last_modified: string | null;
-  session_count: number;
+  content: Array<{ type: string; text: string }>;
 }
 
 export async function getMemoryBase(
@@ -32,20 +29,25 @@ export async function getMemoryBase(
 
     // Count session boundaries
     const sessionCount = (content.match(/### --- SESSION BOUNDARY/g) || []).length;
+    const sizeBytes = Buffer.byteLength(content, 'utf-8');
 
     return {
-      content,
-      size_bytes: Buffer.byteLength(content, 'utf-8'),
-      last_modified: stats.mtime.toISOString(),
-      session_count: sessionCount,
+      content: [
+        {
+          type: 'text',
+          text: `Rolling memory base contents:\n\n${content}\n\n---\nMetadata:\n- Size: ${sizeBytes} bytes\n- Last modified: ${stats.mtime.toISOString()}\n- Session count: ${sessionCount}`,
+        },
+      ],
     };
   } catch (error) {
     if ((error as { code?: string }).code === 'ENOENT') {
       return {
-        content: '',
-        size_bytes: 0,
-        last_modified: null,
-        session_count: 0,
+        content: [
+          {
+            type: 'text',
+            text: 'Rolling memory base is empty. No previous session context available.',
+          },
+        ],
       };
     }
     throw error;
