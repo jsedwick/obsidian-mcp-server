@@ -969,6 +969,132 @@ EOF
 }
 
 #############################################################################
+# Configure User-Scoped MCP (~/.claude.json)
+#############################################################################
+
+configure_user_scoped_mcp() {
+    print_header "Configuring User-Scoped MCP Integration"
+
+    USER_CLAUDE_CONFIG="$HOME/.claude.json"
+    SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
+    print_step "Configuring user-scoped MCP server..."
+    print_info "Config file: $USER_CLAUDE_CONFIG"
+    echo ""
+    print_info "This makes the MCP server available globally from any directory"
+
+    # Check if config file exists
+    if [ -f "$USER_CLAUDE_CONFIG" ]; then
+        print_warning "User config file already exists"
+
+        # Check if it already has our MCP server configured
+        if grep -q "obsidian-context-manager" "$USER_CLAUDE_CONFIG" 2>/dev/null; then
+            print_info "MCP server already configured in user scope"
+
+            # Ask if they want to update it
+            if [ "$NON_INTERACTIVE" = false ]; then
+                echo ""
+                read -p "Update existing configuration? (y/N): " -n 1 -r
+                echo
+                if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+                    print_info "Skipping user-scoped MCP configuration"
+                    return 0
+                fi
+            fi
+        fi
+
+        # Backup existing config
+        BACKUP_FILE="$USER_CLAUDE_CONFIG.backup.$(date +%s)"
+        print_info "Backing up to: $BACKUP_FILE"
+        execute_or_dry_run cp "$USER_CLAUDE_CONFIG" "$BACKUP_FILE"
+
+        # Use Python to merge the MCP server config
+        if [ "$DRY_RUN" = false ]; then
+            python3 << PYTHON_EOF
+import json
+import sys
+
+config_file = "$USER_CLAUDE_CONFIG"
+backup_file = "$BACKUP_FILE"
+
+try:
+    # Read existing config
+    with open(config_file, 'r') as f:
+        config = json.load(f)
+
+    # Ensure mcpServers exists
+    if 'mcpServers' not in config:
+        config['mcpServers'] = {}
+
+    # Add or update obsidian-context-manager
+    config['mcpServers']['obsidian-context-manager'] = {
+        "command": "node",
+        "args": ["$SCRIPT_DIR/dist/index.js"],
+        "cwd": "$SCRIPT_DIR",
+        "env": {}
+    }
+
+    # Write updated config
+    with open(config_file, 'w') as f:
+        json.dump(config, f, indent=2)
+
+    print("Successfully updated user-scoped MCP configuration")
+    sys.exit(0)
+
+except Exception as e:
+    print(f"Error updating config: {e}", file=sys.stderr)
+    # Restore backup on error
+    import shutil
+    try:
+        shutil.copy2(backup_file, config_file)
+        print(f"Restored backup from: {backup_file}", file=sys.stderr)
+    except:
+        pass
+    sys.exit(1)
+PYTHON_EOF
+
+            if [ $? -eq 0 ]; then
+                print_success "User-scoped MCP configuration updated"
+            else
+                print_error "Failed to update user-scoped MCP configuration"
+                return 1
+            fi
+        else
+            print_info "[DRY RUN] Would update existing config with MCP server"
+        fi
+    else
+        # Create new config file
+        if [ "$DRY_RUN" = false ]; then
+            cat > "$USER_CLAUDE_CONFIG" << EOF
+{
+  "mcpServers": {
+    "obsidian-context-manager": {
+      "command": "node",
+      "args": ["$SCRIPT_DIR/dist/index.js"],
+      "cwd": "$SCRIPT_DIR",
+      "env": {}
+    }
+  }
+}
+EOF
+            print_success "Created user-scoped MCP configuration"
+        else
+            print_info "[DRY RUN] Would create new config at: $USER_CLAUDE_CONFIG"
+        fi
+    fi
+
+    echo ""
+    print_info "User-Scoped MCP Configuration:"
+    echo -e "  ${CYAN}Server name:${NC} obsidian-context-manager"
+    echo -e "  ${CYAN}Command:${NC} node"
+    echo -e "  ${CYAN}Entry point:${NC} $SCRIPT_DIR/dist/index.js"
+    echo -e "  ${CYAN}Working directory (cwd):${NC} $SCRIPT_DIR"
+    echo -e "  ${CYAN}Scope:${NC} User (available globally from any directory)"
+    echo ""
+    print_success "The MCP server will now be available in all Claude Code sessions"
+}
+
+#############################################################################
 # Create Multi-Vault Config (Optional)
 #############################################################################
 
@@ -1369,6 +1495,10 @@ main() {
     configure_claude_mcp || {
         print_error "Claude MCP configuration failed. Please fix the error and re-run the installer."
         exit 1
+    }
+    configure_user_scoped_mcp || {
+        print_warning "User-scoped MCP configuration failed, but project-scoped config succeeded."
+        print_info "You can continue, but the MCP server will only work in this project directory."
     }
     create_multi_vault_config
     cleanup_redundant_files
