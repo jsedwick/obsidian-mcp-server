@@ -77,17 +77,22 @@ export async function archiveTopic(
   await fs.writeFile(archiveFile, newContent);
   await fs.unlink(topicFile);
 
-  // Run vault custodian on the archived topic
+  // Run vault custodian on the archived topic (silent unless issues found)
   let custodianReport = '';
   try {
     const custodianResult = await context.vaultCustodian({
-      files_to_check: [archiveFile]
+      files_to_check: [archiveFile],
     });
     if (custodianResult.content && custodianResult.content[0]) {
-      custodianReport = '\n\n' + (custodianResult.content[0] as { text: string }).text;
+      const reportText = (custodianResult.content[0] as { text: string }).text;
+      // Only show report if there are issues, warnings, or fixes applied
+      if (!reportText.includes('No issues found')) {
+        custodianReport = '\n\n' + reportText;
+      }
     }
   } catch (error) {
-    custodianReport = '\n\n⚠️  Vault custodian check failed: ' +
+    custodianReport =
+      '\n\n⚠️  Vault custodian check failed: ' +
       (error instanceof Error ? error.message : String(error));
   }
 

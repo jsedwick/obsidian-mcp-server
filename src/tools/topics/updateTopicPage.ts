@@ -23,7 +23,11 @@ export interface UpdateTopicPageResult {
 export interface UpdateTopicPageContext {
   vaultPath: string;
   slugify: (text: string) => string;
-  createTopicPage: (args: { topic: string; content: string; auto_analyze?: boolean | 'true' | 'smart' }) => Promise<UpdateTopicPageResult>;
+  createTopicPage: (args: {
+    topic: string;
+    content: string;
+    auto_analyze?: boolean | 'true' | 'smart';
+  }) => Promise<UpdateTopicPageResult>;
   vaultCustodian: (args: { files_to_check: string[] }) => Promise<UpdateTopicPageResult>;
 }
 
@@ -52,7 +56,8 @@ export async function updateTopicPage(
     const existingBody = frontmatterMatch ? frontmatterMatch[2] : existing;
 
     // Strip frontmatter from new content if present
-    const newBodyMatch = args.content.match(/^---\n[\s\S]*?\n---\n([\s\S]*)$/) || args.content.match(/^([\s\S]*)$/);
+    const newBodyMatch =
+      args.content.match(/^---\n[\s\S]*?\n---\n([\s\S]*)$/) || args.content.match(/^([\s\S]*)$/);
     const newBody = newBodyMatch ? newBodyMatch[1] : args.content;
 
     // Reconstruct file with preserved frontmatter + appended body
@@ -62,17 +67,22 @@ export async function updateTopicPage(
     await fs.writeFile(topicFile, args.content);
   }
 
-  // Run vault custodian on the updated topic
+  // Run vault custodian on the updated topic (silent unless issues found)
   let custodianReport = '';
   try {
     const custodianResult = await context.vaultCustodian({
-      files_to_check: [topicFile]
+      files_to_check: [topicFile],
     });
     if (custodianResult.content && custodianResult.content[0]) {
-      custodianReport = '\n\n' + (custodianResult.content[0] as { text: string }).text;
+      const reportText = (custodianResult.content[0] as { text: string }).text;
+      // Only show report if there are issues, warnings, or fixes applied
+      if (!reportText.includes('No issues found')) {
+        custodianReport = '\n\n' + reportText;
+      }
     }
   } catch (error) {
-    custodianReport = '\n\n⚠️  Vault custodian check failed: ' +
+    custodianReport =
+      '\n\n⚠️  Vault custodian check failed: ' +
       (error instanceof Error ? error.message : String(error));
   }
 

@@ -59,9 +59,18 @@ export async function createTopicPage(
 ): Promise<CreateTopicPageResult> {
   // Validate that this is appropriate for a topic (not session-specific content)
   const investigationKeywords = [
-    'investigation', 'investigating', 'bug fix', 'fixing', 'debugg',
-    'found issue', 'found problem', 'discovered', 'troubleshooting session',
-    'worked on', 'fixed issue', 'resolved bug'
+    'investigation',
+    'investigating',
+    'bug fix',
+    'fixing',
+    'debugg',
+    'found issue',
+    'found problem',
+    'discovered',
+    'troubleshooting session',
+    'worked on',
+    'fixed issue',
+    'resolved bug',
   ];
 
   const titleLower = args.topic.toLowerCase();
@@ -70,14 +79,14 @@ export async function createTopicPage(
   if (matchedKeyword) {
     throw new Error(
       `❌ Topic title contains "${matchedKeyword}" - this appears to be investigation/debugging details, not a topic.\n\n` +
-      `Topics should be persistent, reusable knowledge:\n` +
-      `  ✅ How-to guides\n` +
-      `  ✅ Architecture explanations\n` +
-      `  ✅ Troubleshooting procedures (generic)\n` +
-      `  ✅ Implementation patterns\n\n` +
-      `Investigation details belong in session notes instead.\n\n` +
-      `If this is genuinely reusable knowledge, rephrase the title to focus on the solution/pattern, not the investigation.\n` +
-      `Example: Instead of "Fixing search bug", use "Search Algorithm Implementation" or "Common Search Issues"`
+        `Topics should be persistent, reusable knowledge:\n` +
+        `  ✅ How-to guides\n` +
+        `  ✅ Architecture explanations\n` +
+        `  ✅ Troubleshooting procedures (generic)\n` +
+        `  ✅ Implementation patterns\n\n` +
+        `Investigation details belong in session notes instead.\n\n` +
+        `If this is genuinely reusable knowledge, rephrase the title to focus on the solution/pattern, not the investigation.\n` +
+        `Example: Instead of "Fixing search bug", use "Search Algorithm Implementation" or "Common Search Issues"`
     );
   }
 
@@ -144,17 +153,23 @@ export async function createTopicPage(
     await fs.writeFile(topicFile, updatedContent);
   }
 
-  // Run vault custodian on the created topic
+  // Run vault custodian on the created topic (silent unless issues found)
   let custodianReport = '';
   try {
     const custodianResult = await context.vaultCustodian({
-      files_to_check: [topicFile]
+      files_to_check: [topicFile],
     });
     if (custodianResult.content && custodianResult.content[0]) {
-      custodianReport = '\n\n' + (custodianResult.content[0] as { text: string }).text;
+      const reportText = (custodianResult.content[0] as { text: string }).text;
+      // Only show report if there are issues, warnings, or fixes applied
+      // (suppress "No issues found" success reports)
+      if (!reportText.includes('No issues found')) {
+        custodianReport = '\n\n' + reportText;
+      }
     }
   } catch (error) {
-    custodianReport = '\n\n⚠️  Vault custodian check failed: ' +
+    custodianReport =
+      '\n\n⚠️  Vault custodian check failed: ' +
       (error instanceof Error ? error.message : String(error));
   }
 

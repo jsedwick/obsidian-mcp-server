@@ -25,10 +25,10 @@ function extractRepoSlug(url: string): string | null {
 
   // Try to extract the repository name (last path component)
   const patterns = [
-    /\/repos\/([^\/]+)/,           // Bitbucket/Stash style: /repos/claude-code-hooks
-    /\/([^\/]+)\.git$/,             // Git clone URLs ending in .git
-    /\/([^\/]+)$/,                  // Last path component
-    /:([^\/]+\/[^\/]+)$/,           // SSH style: git@host:user/repo
+    /\/repos\/([^/]+)/, // Bitbucket/Stash style: /repos/claude-code-hooks
+    /\/([^/]+)\.git$/, // Git clone URLs ending in .git
+    /\/([^/]+)$/, // Last path component
+    /:([^/]+\/[^/]+)$/, // SSH style: git@host:user/repo
   ];
 
   for (const pattern of patterns) {
@@ -212,10 +212,7 @@ export async function createProjectPage(
     if (context.currentSessionId) {
       const sessionLink = `- [[${context.currentSessionId}]]`;
       if (!content.includes(sessionLink)) {
-        content = content.replace(
-          /## Related Sessions\n/,
-          `## Related Sessions\n${sessionLink}\n`
-        );
+        content = content.replace(/## Related Sessions\n/, `## Related Sessions\n${sessionLink}\n`);
       }
       await fs.writeFile(projectFile, content);
     }
@@ -227,7 +224,7 @@ export async function createProjectPage(
       repoUrl: remote || 'N/A',
       branch: branch || 'unknown',
       created: today,
-      currentSessionId: context.currentSessionId || undefined
+      currentSessionId: context.currentSessionId || undefined,
     });
     await fs.writeFile(projectFile, content);
   }
@@ -263,17 +260,22 @@ export async function createProjectPage(
     await fs.writeFile(projectFile, content);
   }
 
-  // Run vault custodian on the created/updated project page
+  // Run vault custodian on the created/updated project page (silent unless issues found)
   let custodianReport = '';
   try {
     const custodianResult = await context.vaultCustodian({
-      files_to_check: [projectFile]
+      files_to_check: [projectFile],
     });
     if (custodianResult.content && custodianResult.content[0]) {
-      custodianReport = '\n\n' + (custodianResult.content[0] as { text: string }).text;
+      const reportText = (custodianResult.content[0] as { text: string }).text;
+      // Only show report if there are issues, warnings, or fixes applied
+      if (!reportText.includes('No issues found')) {
+        custodianReport = '\n\n' + reportText;
+      }
     }
   } catch (error) {
-    custodianReport = '\n\n⚠️  Vault custodian check failed: ' +
+    custodianReport =
+      '\n\n⚠️  Vault custodian check failed: ' +
       (error instanceof Error ? error.message : String(error));
   }
 

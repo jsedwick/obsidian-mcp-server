@@ -72,16 +72,12 @@ export async function recordCommit(
   const body = lines.slice(6).join('\n');
 
   // Get diff
-  const { stdout: diff } = await execAsync(
-    `git show ${args.commit_hash}`,
-    { cwd: args.repo_path }
-  );
+  const { stdout: diff } = await execAsync(`git show ${args.commit_hash}`, { cwd: args.repo_path });
 
   // Get stats
-  const { stdout: stats } = await execAsync(
-    `git show --stat ${args.commit_hash}`,
-    { cwd: args.repo_path }
-  );
+  const { stdout: stats } = await execAsync(`git show --stat ${args.commit_hash}`, {
+    cwd: args.repo_path,
+  });
 
   // Get branch information
   let branch = 'unknown';
@@ -92,12 +88,13 @@ export async function recordCommit(
     );
 
     // Prefer non-detached branches, prefer main/master, otherwise take first
-    branch = branches.find(b => b === 'main') ||
-             branches.find(b => b === 'master') ||
-             branches.find(b => !b.startsWith('HEAD')) ||
-             branches[0] ||
-             'unknown';
-  } catch (error) {
+    branch =
+      branches.find(b => b === 'main') ||
+      branches.find(b => b === 'master') ||
+      branches.find(b => !b.startsWith('HEAD')) ||
+      branches[0] ||
+      'unknown';
+  } catch {
     // If branch detection fails, try to get current branch
     try {
       branch = await context.gitService.getCurrentBranch(args.repo_path);
@@ -122,7 +119,7 @@ export async function recordCommit(
     diff,
     sessionId: context.currentSessionId,
     projectName: name,
-    projectSlug: slug
+    projectSlug: slug,
   });
 
   await fs.writeFile(commitFile, content);
@@ -152,14 +149,21 @@ export async function recordCommit(
     filesToCheck.push(context.currentSessionFile);
   }
 
+  // Run vault custodian on commit/project/session files (silent unless issues found)
   let custodianReport = '';
   try {
     const custodianResult = await context.vaultCustodian({ files_to_check: filesToCheck });
     if (custodianResult.content && custodianResult.content[0]) {
-      custodianReport = '\n\n' + (custodianResult.content[0] as { text: string }).text;
+      const reportText = (custodianResult.content[0] as { text: string }).text;
+      // Only show report if there are issues, warnings, or fixes applied
+      if (!reportText.includes('No issues found')) {
+        custodianReport = '\n\n' + reportText;
+      }
     }
-  } catch (error) {
-    custodianReport = '\n\n⚠️  Vault custodian check failed: ' + (error instanceof Error ? error.message : String(error));
+  } catch (_error) {
+    custodianReport =
+      '\n\n⚠️  Vault custodian check failed: ' +
+      (_error instanceof Error ? _error.message : String(_error));
   }
 
   return {

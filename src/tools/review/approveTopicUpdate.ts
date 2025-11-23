@@ -36,10 +36,12 @@ export async function approveTopicUpdate(
   const pendingReview = context.pendingReviews.get(args.review_id);
 
   if (!pendingReview) {
-    throw new Error(`Review not found: ${args.review_id}. It may have expired or already been processed.`);
+    throw new Error(
+      `Review not found: ${args.review_id}. It may have expired or already been processed.`
+    );
   }
 
-  const { slug, topic, current_content } = pendingReview;
+  const { slug, topic, current_content: currentContent } = pendingReview;
   const topicFile = path.join(context.vaultPath, 'topics', `${slug}.md`);
   const today = new Date().toISOString().split('T')[0];
 
@@ -47,7 +49,7 @@ export async function approveTopicUpdate(
     switch (args.action) {
       case 'update': {
         // Parse existing frontmatter
-        const frontmatterMatch = current_content.match(/^---\n([\s\S]*?)\n---/);
+        const frontmatterMatch = currentContent.match(/^---\n([\s\S]*?)\n---/);
         if (!frontmatterMatch) throw new Error('Invalid frontmatter');
 
         const frontmatter = frontmatterMatch[1];
@@ -70,25 +72,30 @@ export async function approveTopicUpdate(
           updatedFrontmatter += `\nreview_history:\n${reviewHistoryEntry}`;
         }
 
-        const mainContent = current_content.substring(frontmatterMatch[0].length).trim();
+        const mainContent = currentContent.substring(frontmatterMatch[0].length).trim();
         const newContent = `---\n${updatedFrontmatter}\n---\n\n${args.modified_content || mainContent}`;
 
         await fs.writeFile(topicFile, newContent);
 
         context.pendingReviews.delete(args.review_id);
 
-        // Run vault custodian on the updated topic
+        // Run vault custodian on the updated topic (silent unless issues found)
         let custodianReport = '';
         try {
           const custodianResult = await context.vaultCustodian({
-            files_to_check: [topicFile]
+            files_to_check: [topicFile],
           });
           if (custodianResult.content && custodianResult.content[0]) {
-            custodianReport = '\n\n' + (custodianResult.content[0] as { text: string }).text;
+            const reportText = (custodianResult.content[0] as { text: string }).text;
+            // Only show report if there are issues, warnings, or fixes applied
+            if (!reportText.includes('No issues found')) {
+              custodianReport = '\n\n' + reportText;
+            }
           }
-        } catch (error) {
-          custodianReport = '\n\n⚠️  Vault custodian check failed: ' +
-            (error instanceof Error ? error.message : String(error));
+        } catch (_error: unknown) {
+          custodianReport =
+            '\n\n⚠️  Vault custodian check failed: ' +
+            (_error instanceof Error ? _error.message : String(_error));
         }
 
         return {
@@ -103,7 +110,7 @@ export async function approveTopicUpdate(
 
       case 'keep': {
         // Mark as reviewed without content changes
-        const frontmatterMatch = current_content.match(/^---\n([\s\S]*?)\n---/);
+        const frontmatterMatch = currentContent.match(/^---\n([\s\S]*?)\n---/);
         if (!frontmatterMatch) throw new Error('Invalid frontmatter');
 
         const frontmatter = frontmatterMatch[1];
@@ -124,25 +131,30 @@ export async function approveTopicUpdate(
           updatedFrontmatter += `\nreview_history:\n${reviewHistoryEntry}`;
         }
 
-        const mainContent = current_content.substring(frontmatterMatch[0].length).trim();
+        const mainContent = currentContent.substring(frontmatterMatch[0].length).trim();
         const newContent = `---\n${updatedFrontmatter}\n---\n\n${mainContent}`;
 
         await fs.writeFile(topicFile, newContent);
 
         context.pendingReviews.delete(args.review_id);
 
-        // Run vault custodian on the reviewed topic
+        // Run vault custodian on the reviewed topic (silent unless issues found)
         let custodianReport = '';
         try {
           const custodianResult = await context.vaultCustodian({
-            files_to_check: [topicFile]
+            files_to_check: [topicFile],
           });
           if (custodianResult.content && custodianResult.content[0]) {
-            custodianReport = '\n\n' + (custodianResult.content[0] as { text: string }).text;
+            const reportText = (custodianResult.content[0] as { text: string }).text;
+            // Only show report if there are issues, warnings, or fixes applied
+            if (!reportText.includes('No issues found')) {
+              custodianReport = '\n\n' + reportText;
+            }
           }
-        } catch (error) {
-          custodianReport = '\n\n⚠️  Vault custodian check failed: ' +
-            (error instanceof Error ? error.message : String(error));
+        } catch (_error: unknown) {
+          custodianReport =
+            '\n\n⚠️  Vault custodian check failed: ' +
+            (_error instanceof Error ? _error.message : String(_error));
         }
 
         return {
@@ -175,7 +187,9 @@ export async function approveTopicUpdate(
       default:
         throw new Error(`Unknown action: ${args.action}. Use: update, keep, archive, or dismiss`);
     }
-  } catch (error) {
-    throw new Error(`Failed to process review: ${error}`);
+  } catch (error: unknown) {
+    throw new Error(
+      `Failed to process review: ${error instanceof Error ? error.message : String(error)}`
+    );
   }
 }

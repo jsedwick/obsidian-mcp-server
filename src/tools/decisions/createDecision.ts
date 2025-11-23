@@ -60,7 +60,18 @@ export async function createDecision(
   const contentLower = args.content.toLowerCase();
 
   // Validation 1: Check if title suggests this should be a topic instead
-  const topicKeywords = ['fix', 'bug', 'issue', 'implement', 'how', 'guide', 'setup', 'error', 'crash', 'problem'];
+  const topicKeywords = [
+    'fix',
+    'bug',
+    'issue',
+    'implement',
+    'how',
+    'guide',
+    'setup',
+    'error',
+    'crash',
+    'problem',
+  ];
   const matchedTopicKeywords = topicKeywords.filter(kw => titleLower.includes(kw));
 
   if (matchedTopicKeywords.length > 0 && !args.force) {
@@ -85,9 +96,17 @@ To proceed anyway, call create_decision again with force: true.`,
   }
 
   // Validation 2: Check if decision indicates alternatives were considered
-  const decisionIndicators = ['vs', 'versus', 'between', 'alternative', 'option', 'approach', 'choice'];
-  const hasDecisionIndicator = decisionIndicators.some(indicator =>
-    titleLower.includes(indicator) || contentLower.includes(indicator)
+  const decisionIndicators = [
+    'vs',
+    'versus',
+    'between',
+    'alternative',
+    'option',
+    'approach',
+    'choice',
+  ];
+  const hasDecisionIndicator = decisionIndicators.some(
+    indicator => titleLower.includes(indicator) || contentLower.includes(indicator)
   );
 
   if (!hasDecisionIndicator && !args.force) {
@@ -124,7 +143,7 @@ To proceed anyway, call create_decision again with force: true.`,
   // Ensure the project-specific or vault directory exists
   try {
     await fs.mkdir(decisionsDir, { recursive: true });
-  } catch (error) {
+  } catch {
     // Directory might already exist, that's fine
   }
 
@@ -147,7 +166,7 @@ To proceed anyway, call create_decision again with force: true.`,
     date: today,
     context: args.context,
     content: args.content,
-    currentSessionId: context.currentSessionId || undefined
+    currentSessionId: context.currentSessionId || undefined,
   });
 
   await fs.writeFile(decisionFile, content);
@@ -156,7 +175,7 @@ To proceed anyway, call create_decision again with force: true.`,
   context.trackDecisionCreation({
     slug: `${numberStr}-${slug}`,
     title: args.title,
-    file: decisionFile
+    file: decisionFile,
   });
 
   // Proactively search for related content based on decision title and content
@@ -186,18 +205,23 @@ To proceed anyway, call create_decision again with force: true.`,
     await fs.writeFile(decisionFile, updatedContent);
   }
 
-  // Run vault custodian on the created decision
+  // Run vault custodian on the created decision (silent unless issues found)
   let custodianReport = '';
   try {
     const custodianResult = await context.vaultCustodian({
-      files_to_check: [decisionFile]
+      files_to_check: [decisionFile],
     });
     if (custodianResult.content && custodianResult.content[0]) {
-      custodianReport = '\n\n' + (custodianResult.content[0] as { text: string }).text;
+      const reportText = (custodianResult.content[0] as { text: string }).text;
+      // Only show report if there are issues, warnings, or fixes applied
+      if (!reportText.includes('No issues found')) {
+        custodianReport = '\n\n' + reportText;
+      }
     }
-  } catch (error) {
-    custodianReport = '\n\n⚠️  Vault custodian check failed: ' +
-      (error instanceof Error ? error.message : String(error));
+  } catch (_error) {
+    custodianReport =
+      '\n\n⚠️  Vault custodian check failed: ' +
+      (_error instanceof Error ? _error.message : String(_error));
   }
 
   const scopeMsg = scope === 'vault' ? ' (vault-level)' : ` (project: ${scope})`;
