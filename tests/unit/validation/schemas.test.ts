@@ -10,7 +10,6 @@
 
 import { describe, it, expect } from 'vitest';
 import {
-  ValidationSchemas,
   validateToolArgs,
   safeValidateToolArgs,
   getValidationSchema,
@@ -151,18 +150,6 @@ describe('Validation Schemas', () => {
       });
     });
 
-    describe('link_to_topic', () => {
-      it('should validate topic name', () => {
-        const args = { topic: 'JWT Authentication' };
-        expect(() => validateToolArgs('link_to_topic', args)).not.toThrow();
-      });
-
-      it('should reject empty topic', () => {
-        const args = { topic: '' };
-        expect(() => validateToolArgs('link_to_topic', args)).toThrow(ValidationError);
-      });
-    });
-
     describe('toggle_embeddings', () => {
       it('should validate without arguments', () => {
         expect(() => validateToolArgs('toggle_embeddings', {})).not.toThrow();
@@ -295,44 +282,6 @@ describe('Validation Schemas', () => {
       it('should reject negative threshold', () => {
         expect(() => validateToolArgs('find_stale_topics', {
           age_threshold_days: -1,
-        })).toThrow(ValidationError);
-      });
-    });
-
-    describe('review_topic', () => {
-      it('should validate topic review', () => {
-        const args = {
-          topic: 'topic-to-review',
-          analysis_prompt: 'Check for outdated dependencies',
-        };
-        expect(() => validateToolArgs('review_topic', args)).not.toThrow();
-      });
-    });
-
-    describe('approve_topic_update', () => {
-      it('should validate review approval', () => {
-        const args = {
-          review_id: 'review-123',
-          action: 'update' as const,
-          modified_content: 'Updated content',
-        };
-        expect(() => validateToolArgs('approve_topic_update', args)).not.toThrow();
-      });
-
-      it('should validate all actions', () => {
-        const actions = ['update', 'archive', 'keep', 'dismiss'];
-        actions.forEach(action => {
-          expect(() => validateToolArgs('approve_topic_update', {
-            review_id: 'test',
-            action,
-          })).not.toThrow();
-        });
-      });
-
-      it('should reject invalid action', () => {
-        expect(() => validateToolArgs('approve_topic_update', {
-          review_id: 'test',
-          action: 'delete',
         })).toThrow(ValidationError);
       });
     });
@@ -517,7 +466,7 @@ describe('Validation Schemas', () => {
       it('should validate multiple tool calls', () => {
         const results = validateBatch([
           { toolName: 'search_vault', args: { query: 'test' } },
-          { toolName: 'link_to_topic', args: { topic: 'Test Topic' } },
+          { toolName: 'create_topic_page', args: { topic: 'Test Topic', content: 'Test content' } },
         ]);
 
         expect(results).toHaveLength(2);

@@ -118,11 +118,6 @@ export const SearchVaultArgsSchema = z.object({
   detail: DetailLevelSchema.optional().default('summary').describe('Response detail level'),
 });
 
-// link_to_topic
-export const LinkToTopicArgsSchema = z.object({
-  topic: NonEmptyString.describe('Topic name to link to'),
-});
-
 // toggle_embeddings
 export const ToggleEmbeddingsArgsSchema = z.object({
   enabled: z
@@ -327,7 +322,6 @@ export const ValidationSchemas = {
 
   // Search tools
   search_vault: SearchVaultArgsSchema,
-  link_to_topic: LinkToTopicArgsSchema,
   toggle_embeddings: ToggleEmbeddingsArgsSchema,
 
   // Topics tools

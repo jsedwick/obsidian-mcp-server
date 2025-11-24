@@ -152,7 +152,7 @@ obsidian-vault/
 
 ## Available Tools (MCP Functions)
 
-The server provides 25 tools to Claude Code:
+The server provides 22 tools to Claude Code:
 
 ### Session Management (4)
 1. **start_session** - Begin a new conversation
@@ -164,34 +164,33 @@ The server provides 25 tools to Claude Code:
 5. **search_vault** - Find past context with relevance scoring
 6. **get_session_context** - Retrieve session details
 
-### Knowledge Management (4)
+### Knowledge Management (3)
 7. **create_topic_page** - Document concepts
 8. **update_topic_page** - Update existing topics
 9. **create_decision** - Record ADRs
-10. **link_to_topic** - Create wiki links
 
 ### Topic Review & Maintenance (4)
-11. **find_stale_topics** - Find topics that need review
-12. **review_topic** - Analyze topic for outdated content
-13. **approve_topic_update** - Apply or dismiss review
-14. **archive_topic** - Move topic to archive
+10. **find_stale_topics** - Find topics that need review
+11. **review_topic** - Analyze topic for outdated content
+12. **approve_topic_update** - Apply or dismiss review
+13. **archive_topic** - Move topic to archive
 
 ### Vault Maintenance (1)
-15. **vault_custodian** - Check integrity & fix organization
+14. **vault_custodian** - Check integrity & fix organization
 
 ### Search Configuration (1)
-16. **toggle_embeddings** - Enable/disable semantic search
+15. **toggle_embeddings** - Enable/disable semantic search
 
 ### Git Integration (5)
-17. **track_file_access** - Track files accessed during session
-18. **detect_session_repositories** - Auto-detect relevant Git repos
-19. **link_session_to_repository** - Link session to a repo
-20. **create_project_page** - Create/update project page
-21. **record_commit** - Record Git commit with diff
+16. **track_file_access** - Track files accessed during session
+17. **detect_session_repositories** - Auto-detect relevant Git repos
+18. **link_session_to_repository** - Link session to a repo
+19. **create_project_page** - Create/update project page
+20. **record_commit** - Record Git commit with diff
 
 ### AI-Powered Analysis (2)
-22. **analyze_topic_content** - Auto-tag and analyze topics with AI
-23. **analyze_commit_impact** - AI-powered commit analysis for documentation updates
+21. **analyze_topic_content** - Auto-tag and analyze topics with AI
+22. **analyze_commit_impact** - AI-powered commit analysis for documentation updates
 
 ## Example Workflow
 
@@ -218,7 +217,7 @@ npm test
 
 This verifies:
 - ✅ MCP server starts correctly
-- ✅ All 25 tools are available
+- ✅ All 22 tools are available
 - ✅ Files are created in vault
 - ✅ Search finds content
 - ✅ Session lifecycle works

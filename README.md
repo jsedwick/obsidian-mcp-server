@@ -466,13 +466,6 @@ Content: "Rationale: ACID compliance, JSON support..."
 Creates: decisions/001-use-postgresql.md
 ```
 
-**link_to_topic** - Create Obsidian wiki link
-```
-Topic: "Authentication System"
-Returns: [[topics/authentication-system|Authentication System]]
-Creates topic page if it doesn't exist
-```
-
 ### Topic Review & Maintenance
 
 **list_recent_projects** - List recent projects tracked in vault
@@ -960,7 +953,7 @@ The Obsidian MCP Server has undergone a comprehensive Phase 1 Architectural Refa
 ### Backward Compatibility
 
 All existing functionality is preserved and enhanced:
-- ✅ All 25 MCP tools work identically to before
+- ✅ All 22 MCP tools work identically to before
 - ✅ Vault files remain compatible
 - ✅ Frontmatter format unchanged
 - ✅ MCP tool API unchanged

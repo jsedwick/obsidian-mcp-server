@@ -1,5 +1,5 @@
 /**
- * Tool Registry - Exports all 27 MCP tools
+ * Tool Registry - Exports all 22 MCP tools
  *
  * This module serves as the central registry for all Obsidian MCP Server tools.
  * Tools are organized by category for better maintainability.
@@ -8,7 +8,7 @@
 // Session tools (5)
 export * from './session/index.js';
 
-// Search tools (4)
+// Search tools (2)
 export * from './search/index.js';
 
 // Topic tools (4)
@@ -39,11 +39,9 @@ export * from './memory/index.js';
  * - track_file_access
  * - detect_session_repositories
  *
- * SEARCH (4 tools):
+ * SEARCH (2 tools):
  * - search_vault
- * - enhanced_search
  * - get_topic_context
- * - link_to_topic
  *
  * TOPICS (4 tools):
  * - create_topic_page

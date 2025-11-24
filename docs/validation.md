@@ -145,8 +145,6 @@ commit_hash: z.string().regex(/^[a-f0-9]{7,40}$/i)
 #### Search Tools
 
 - `search_vault`: Query must be non-empty, max_results must be positive
-- `enhanced_search`: Query required, context optional
-- `link_to_topic`: Topic name must be non-empty
 
 #### Topics Tools
 
@@ -248,10 +246,8 @@ export const ValidationSchemas = {
   close_session: CloseSessionArgsSchema,
   detect_session_repositories: DetectSessionRepositoriesArgsSchema,
 
-  // Search tools (4)
+  // Search tools (2)
   search_vault: SearchVaultArgsSchema,
-  enhanced_search: EnhancedSearchArgsSchema,
-  link_to_topic: LinkToTopicArgsSchema,
   toggle_embeddings: ToggleEmbeddingsArgsSchema,
 
   // Topics tools (4)

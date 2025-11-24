@@ -360,13 +360,6 @@ class ObsidianMCPServer {
               slugify: this.slugify.bind(this),
             });
 
-          case 'link_to_topic':
-            return await tools.linkToTopic(validatedArgs as tools.LinkToTopicArgs, {
-              vaultPath: this.config.primaryVault.path,
-              slugify: this.slugify.bind(this),
-              createTopicPage: this.createTopicPageWrapper.bind(this),
-            });
-
           case 'close_session':
             return await tools.closeSession(validatedArgs as tools.CloseSessionArgs, {
               vaultPath: this.config.primaryVault.path,
