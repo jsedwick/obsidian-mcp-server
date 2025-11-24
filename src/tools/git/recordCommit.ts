@@ -41,7 +41,6 @@ export async function recordCommit(
     gitService: GitService;
     currentSessionId: string | null;
     currentSessionFile: string | null;
-    vaultCustodian: (args: { files_to_check?: string[] }) => Promise<RecordCommitResult>;
   }
 ): Promise<RecordCommitResult> {
   if (!context.currentSessionId) {
@@ -143,34 +142,11 @@ export async function recordCommit(
     await fs.writeFile(context.currentSessionFile, sessionContent + appendContent);
   }
 
-  // Run vault custodian on all files created/updated by record_commit
-  const filesToCheck = [commitFile, projectFile];
-  if (context.currentSessionFile) {
-    filesToCheck.push(context.currentSessionFile);
-  }
-
-  // Run vault custodian on commit/project/session files (silent unless issues found)
-  let custodianReport = '';
-  try {
-    const custodianResult = await context.vaultCustodian({ files_to_check: filesToCheck });
-    if (custodianResult.content && custodianResult.content[0]) {
-      const reportText = (custodianResult.content[0] as { text: string }).text;
-      // Only show report if there are issues, warnings, or fixes applied
-      if (!reportText.includes('No issues found')) {
-        custodianReport = '\n\n' + reportText;
-      }
-    }
-  } catch (_error) {
-    custodianReport =
-      '\n\n⚠️  Vault custodian check failed: ' +
-      (_error instanceof Error ? _error.message : String(_error));
-  }
-
   return {
     content: [
       {
         type: 'text',
-        text: `Commit recorded: ${shortHash}\nCommit page: projects/${slug}/commits/${shortHash}.md\nLinked to session and project.${custodianReport}`,
+        text: `Commit recorded: ${shortHash}\nCommit page: projects/${slug}/commits/${shortHash}.md\nLinked to session and project.`,
       },
     ],
   };

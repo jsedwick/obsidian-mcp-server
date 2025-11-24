@@ -51,10 +51,8 @@ export * from './memory/index.js';
  * - archive_topic
  * - analyze_topic_content
  *
- * REVIEW (3 tools):
+ * REVIEW (1 tool):
  * - find_stale_topics
- * - review_topic
- * - approve_topic_update
  *
  * GIT (7 tools):
  * - create_project_page
@@ -73,5 +71,5 @@ export * from './memory/index.js';
  * - vault_custodian
  * - toggle_embeddings
  *
- * Total: 27 tools
+ * Total: 25 tools
  */

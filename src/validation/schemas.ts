@@ -29,10 +29,6 @@ const FileAccessActionSchema = z.enum(['read', 'edit', 'create'], {
   errorMap: () => ({ message: 'action must be one of: read, edit, create' }),
 });
 
-// Review action enum
-const ReviewActionSchema = z.enum(['update', 'archive', 'keep', 'dismiss'], {
-  errorMap: () => ({ message: 'action must be one of: update, archive, keep, dismiss' }),
-});
 
 // Date range object (used in search)
 const DateRangeSchema = z
@@ -211,24 +207,6 @@ export const FindStaleTopicsArgsSchema = z.object({
     .describe('Include topics that have never been reviewed'),
 });
 
-// review_topic
-export const ReviewTopicArgsSchema = z.object({
-  topic: NonEmptyString.describe('Topic name or slug to review'),
-  analysis_prompt: z
-    .string()
-    .optional()
-    .describe('Optional custom instructions for the review analysis'),
-});
-
-// approve_topic_update
-export const ApproveTopicUpdateArgsSchema = z.object({
-  review_id: NonEmptyString.describe('Review ID from review_topic call'),
-  action: ReviewActionSchema.describe('Action to take on the review'),
-  modified_content: z
-    .string()
-    .optional()
-    .describe('Optional: edited content if you want to modify the AI suggestion before applying'),
-});
 
 /**
  * GIT TOOLS (6 tools)
@@ -386,8 +364,6 @@ export const ValidationSchemas = {
 
   // Review tools
   find_stale_topics: FindStaleTopicsArgsSchema,
-  review_topic: ReviewTopicArgsSchema,
-  approve_topic_update: ApproveTopicUpdateArgsSchema,
 
   // Git tools
   create_project_page: CreateProjectPageArgsSchema,

@@ -118,7 +118,7 @@ export async function findStaleTopics(
     resultText += `   - Reviews: ${topic.review_count}\n\n`;
   });
 
-  resultText += `\nUse review_topic to analyze any of these topics.`;
+  resultText += `\nUse get_topic_context to load full content, then update_topic_page to make changes.`;
 
   return {
     content: [

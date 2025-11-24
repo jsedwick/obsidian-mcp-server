@@ -47,7 +47,6 @@ export interface CreateDecisionContext {
     projects: Array<{ link: string; name: string }>;
   }>;
   trackDecisionCreation: (decision: { slug: string; title: string; file: string }) => void;
-  vaultCustodian: (args: { files_to_check: string[] }) => Promise<CreateDecisionResult>;
 }
 
 export async function createDecision(
@@ -205,31 +204,12 @@ To proceed anyway, call create_decision again with force: true.`,
     await fs.writeFile(decisionFile, updatedContent);
   }
 
-  // Run vault custodian on the created decision (silent unless issues found)
-  let custodianReport = '';
-  try {
-    const custodianResult = await context.vaultCustodian({
-      files_to_check: [decisionFile],
-    });
-    if (custodianResult.content && custodianResult.content[0]) {
-      const reportText = (custodianResult.content[0] as { text: string }).text;
-      // Only show report if there are issues, warnings, or fixes applied
-      if (!reportText.includes('No issues found')) {
-        custodianReport = '\n\n' + reportText;
-      }
-    }
-  } catch (_error) {
-    custodianReport =
-      '\n\n⚠️  Vault custodian check failed: ' +
-      (_error instanceof Error ? _error.message : String(_error));
-  }
-
   const scopeMsg = scope === 'vault' ? ' (vault-level)' : ` (project: ${scope})`;
   return {
     content: [
       {
         type: 'text',
-        text: `Decision record created${scopeMsg}: ${decisionFile}\nDecision number: ${numberStr}${relatedContent.topics.length > 0 ? `\n\nFound ${relatedContent.topics.length} related topic(s):` + relatedContent.topics.map(t => `\n- ${t.title}`).join('') : ''}${relatedContent.projects.length > 0 ? `\n\nFound ${relatedContent.projects.length} related project(s):` + relatedContent.projects.map(p => `\n- ${p.name}`).join('') : ''}${custodianReport}`,
+        text: `Decision record created${scopeMsg}: ${decisionFile}\nDecision number: ${numberStr}${relatedContent.topics.length > 0 ? `\n\nFound ${relatedContent.topics.length} related topic(s):` + relatedContent.topics.map(t => `\n- ${t.title}`).join('') : ''}${relatedContent.projects.length > 0 ? `\n\nFound ${relatedContent.projects.length} related project(s):` + relatedContent.projects.map(p => `\n- ${p.name}`).join('') : ''}`,
       },
     ],
   };

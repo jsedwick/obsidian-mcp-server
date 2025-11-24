@@ -3,5 +3,3 @@
  */
 
 export * from './findStaleTopics.js';
-export * from './reviewTopic.js';
-export * from './approveTopicUpdate.js';

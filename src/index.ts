@@ -115,21 +115,6 @@ function loadConfig(): ServerConfig {
 const CONFIG = loadConfig();
 const VAULT_PATH = CONFIG.primaryVault.path; // Keep for backward compatibility
 
-interface ReviewAnalysis {
-  is_outdated: boolean;
-  concerns: string[];
-  suggested_updates: string;
-  confidence: 'high' | 'medium' | 'low';
-}
-
-interface PendingReview {
-  review_id: string;
-  topic: string;
-  slug: string;
-  current_content: string;
-  analysis: ReviewAnalysis;
-  timestamp: number;
-}
 
 interface EmbeddingCacheEntry {
   file: string;
@@ -165,7 +150,6 @@ class ObsidianMCPServer {
   private config: ServerConfig;
   private currentSessionId: string | null = null;
   private currentSessionFile: string | null = null;
-  private pendingReviews: Map<string, PendingReview> = new Map();
   private filesAccessed: Array<{
     path: string;
     action: 'read' | 'edit' | 'create';
@@ -344,7 +328,6 @@ class ObsidianMCPServer {
               analyzeTopicContentInternal: this.analyzeTopicContentInternal.bind(this),
               findRelatedProjects: this.findRelatedProjects.bind(this),
               trackTopicCreation: (topic) => this.topicsCreated.push(topic),
-              vaultCustodian: this.vaultCustodianWrapper.bind(this),
             });
 
           case 'create_decision':
@@ -355,7 +338,6 @@ class ObsidianMCPServer {
               ensureVaultStructure: this.ensureVaultStructure.bind(this),
               findRelatedContentInText: this.findRelatedContentInText.bind(this),
               trackDecisionCreation: (decision) => this.decisionsCreated.push(decision),
-              vaultCustodian: this.vaultCustodianWrapper.bind(this),
             });
 
           case 'update_topic_page':
@@ -363,7 +345,6 @@ class ObsidianMCPServer {
               vaultPath: this.config.primaryVault.path,
               slugify: this.slugify.bind(this),
               createTopicPage: this.createTopicPageWrapper.bind(this),
-              vaultCustodian: this.vaultCustodianWrapper.bind(this),
             });
 
           case 'get_session_context':
@@ -415,27 +396,12 @@ class ObsidianMCPServer {
               getFileAgeDays: this.getFileAgeDays.bind(this),
             });
 
-          case 'review_topic':
-            return await tools.reviewTopic(validatedArgs as tools.ReviewTopicArgs, {
-              vaultPath: this.config.primaryVault.path,
-              slugify: this.slugify.bind(this),
-              pendingReviews: this.pendingReviews,
-            });
-
-          case 'approve_topic_update':
-            return await tools.approveTopicUpdate(validatedArgs as tools.ApproveTopicUpdateArgs, {
-              vaultPath: this.config.primaryVault.path,
-              pendingReviews: this.pendingReviews,
-              archiveTopic: this.archiveTopicWrapper.bind(this),
-              vaultCustodian: this.vaultCustodianWrapper.bind(this),
-            });
 
           case 'archive_topic':
             return await tools.archiveTopic(validatedArgs as tools.ArchiveTopicArgs, {
               vaultPath: this.config.primaryVault.path,
               slugify: this.slugify.bind(this),
               ensureVaultStructure: this.ensureVaultStructure.bind(this),
-              vaultCustodian: this.vaultCustodianWrapper.bind(this),
             });
 
           case 'list_recent_sessions':
@@ -475,7 +441,6 @@ class ObsidianMCPServer {
               vaultPath: this.config.primaryVault.path,
               gitService: this.gitService,
               trackProjectCreation: (project) => this.projectsCreated.push(project),
-              vaultCustodian: this.vaultCustodianWrapper.bind(this),
             });
 
           case 'record_commit':
@@ -484,7 +449,6 @@ class ObsidianMCPServer {
               gitService: this.gitService,
               currentSessionId: this.currentSessionId,
               currentSessionFile: this.currentSessionFile,
-              vaultCustodian: this.vaultCustodianWrapper.bind(this),
             });
 
           case 'toggle_embeddings':
@@ -1141,47 +1105,6 @@ SCOPE: Decisions can be vault-level (affecting the MCP system itself) or project
         },
       },
       {
-        name: 'review_topic',
-        description: 'Analyze a topic for outdated content and suggest updates. Returns current content and AI analysis with suggested changes.',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            topic: {
-              type: 'string',
-              description: 'Topic name or slug to review',
-            },
-            analysis_prompt: {
-              type: 'string',
-              description: 'Optional custom instructions for the review analysis',
-            },
-          },
-          required: ['topic'],
-        },
-      },
-      {
-        name: 'approve_topic_update',
-        description: 'Apply or dismiss a pending topic review. Updates the topic with new content and review history.',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            review_id: {
-              type: 'string',
-              description: 'Review ID from review_topic call',
-            },
-            action: {
-              type: 'string',
-              enum: ['update', 'archive', 'keep', 'dismiss'],
-              description: 'Action to take: update (apply changes), archive (move to archive), keep (mark reviewed, no changes), dismiss (cancel review)',
-            },
-            modified_content: {
-              type: 'string',
-              description: 'Optional: edited content if you want to modify the AI suggestion before applying',
-            },
-          },
-          required: ['review_id', 'action'],
-        },
-      },
-      {
         name: 'archive_topic',
         description: 'Move a topic to the archive directory. Preserves all metadata and content.',
         inputSchema: {
@@ -1537,7 +1460,6 @@ Check the sessions/ directory for recent conversations.
       analyzeTopicContentInternal: this.analyzeTopicContentInternal.bind(this),
       findRelatedProjects: this.findRelatedProjects.bind(this),
       trackTopicCreation: (topic) => this.topicsCreated.push(topic),
-      vaultCustodian: this.vaultCustodianWrapper.bind(this),
     });
   }
 
@@ -1546,7 +1468,6 @@ Check the sessions/ directory for recent conversations.
       vaultPath: this.config.primaryVault.path,
       gitService: this.gitService,
       trackProjectCreation: (project) => this.projectsCreated.push(project),
-      vaultCustodian: this.vaultCustodianWrapper.bind(this),
     });
   }
 
@@ -1558,14 +1479,6 @@ Check the sessions/ directory for recent conversations.
     });
   }
 
-  private async archiveTopicWrapper(args: { topic: string; reason?: string }): Promise<any> {
-    return tools.archiveTopic(args as unknown as tools.ArchiveTopicArgs, {
-      vaultPath: this.config.primaryVault.path,
-      slugify: this.slugify.bind(this),
-      ensureVaultStructure: this.ensureVaultStructure.bind(this),
-      vaultCustodian: this.vaultCustodianWrapper.bind(this),
-    });
-  }
 
   private async searchVaultWrapper(args: {
     query: string;
@@ -1597,7 +1510,6 @@ Check the sessions/ directory for recent conversations.
       gitService: this.gitService,
       currentSessionId: this.currentSessionId,
       currentSessionFile: this.currentSessionFile,
-      vaultCustodian: this.vaultCustodianWrapper.bind(this),
     });
   }
 
