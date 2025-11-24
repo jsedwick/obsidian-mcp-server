@@ -253,11 +253,21 @@ prompt_vault_config() {
 
         # Get authority level
         echo ""
-        print_info "Authority levels control search result ranking:"
-        print_info "  - 'curated' (recommended): Results ranked highly but below primary vault"
-        print_info "  - 'default': Standard ranking equal to primary vault"
-        print_info "  - 'reference': Lower ranking, treated as reference material"
-        read -p "$(echo -e "${BLUE}Authority level${NC} (curated/default/reference, default: curated): ")" AUTHORITY
+        print_info "Authority level controls how this vault's content ranks in search results:"
+        echo ""
+        print_info "  ${GREEN}'curated'${NC} (recommended for most secondary vaults)"
+        print_info "    → All content ranks as high-quality documentation (+5 boost)"
+        print_info "    → Use for: Work documentation, technical notes, professional content"
+        echo ""
+        print_info "  ${YELLOW}'default'${NC} (intelligent directory-based ranking)"
+        print_info "    → Ranks based on directory structure (topics/ high, sessions/ low)"
+        print_info "    → Use for: Vaults with Claude-style structure (topics/, sessions/, etc.)"
+        echo ""
+        print_info "  ${CYAN}'reference'${NC} (lower priority reference material)"
+        print_info "    → Content ranks lower, like session logs (+1 boost)"
+        print_info "    → Use for: Archives, personal brainstorming, draft content"
+        echo ""
+        read -p "$(echo -e "${BLUE}Authority level${NC} (curated/default/reference) [curated]: ")" AUTHORITY
 
         if [ -z "$AUTHORITY" ]; then
             AUTHORITY="curated"
