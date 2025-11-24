@@ -22,10 +22,10 @@ export interface ListRecentSessionsResult {
 }
 
 enum ResponseDetail {
-  MINIMAL = 'minimal',    // IDs, titles, counts only
-  SUMMARY = 'summary',    // + brief snippets (default)
-  DETAILED = 'detailed',  // + extended context
-  FULL = 'full'          // Complete content
+  MINIMAL = 'minimal', // IDs, titles, counts only
+  SUMMARY = 'summary', // + brief snippets (default)
+  DETAILED = 'detailed', // + extended context
+  FULL = 'full', // Complete content
 }
 
 // Helper to parse detail level with default
@@ -49,9 +49,9 @@ export async function listRecentSessions(
   args: ListRecentSessionsArgs,
   context: ListRecentSessionsContext
 ): Promise<ListRecentSessionsResult> {
-  // Enforce that this tool can only be called via the /sessions slash command
+  // Enforce that this tool can only be invoked via the /sessions slash command
   if (!args._invoked_by_slash_command) {
-    throw new Error('This tool can only be invoked via the /sessions slash command. Please ask the user to run the /sessions command.');
+    throw new Error('list_recent_sessions can only be invoked via the /sessions slash command');
   }
 
   await context.ensureVaultStructure();
@@ -61,22 +61,29 @@ export async function listRecentSessions(
   const sessionsDir = path.join(context.vaultPath, 'sessions');
 
   try {
-    // Filter for .md files and get their stats, including from month subdirectories
-    const sessionFiles: Array<{
+    interface SessionFile {
       file: string;
       filePath: string;
       mtime: Date;
-      session_id: string;
+      sessionId: string;
       topic?: string;
       date?: string;
       status?: string;
-    }> = [];
+    }
+
+    // Filter for .md files and get their stats, including from month subdirectories
+    const sessionFiles: SessionFile[] = [];
 
     // Helper function to parse session file metadata
-    const parseSessionFile = (file: string, filePath: string, stats: any, content: string) => {
+    const parseSessionFile = (
+      file: string,
+      filePath: string,
+      stats: { mtime: Date },
+      content: string
+    ) => {
       // Parse frontmatter to get metadata
       const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
-      let session_id = file.replace('.md', '');
+      let sessionId = file.replace('.md', '');
       let topic: string | undefined;
       let date: string | undefined;
       let status: string | undefined;
@@ -88,15 +95,15 @@ export async function listRecentSessions(
         const dateMatch = frontmatter.match(/date:\s*(.+)/);
         const statusMatch = frontmatter.match(/status:\s*(.+)/);
 
-        if (sessionIdMatch) session_id = sessionIdMatch[1].trim();
+        if (sessionIdMatch) sessionId = sessionIdMatch[1].trim();
         if (dateMatch) date = dateMatch[1].trim();
         if (statusMatch) status = statusMatch[1].trim();
 
         if (topicsMatch) {
           try {
-            const topicsArray = JSON.parse(topicsMatch[1]);
+            const topicsArray = JSON.parse(topicsMatch[1]) as unknown;
             if (Array.isArray(topicsArray) && topicsArray.length > 0) {
-              topic = topicsArray[0];
+              topic = String(topicsArray[0]);
             }
           } catch {
             // If parsing fails, try to extract from filename
@@ -118,7 +125,7 @@ export async function listRecentSessions(
         file,
         filePath,
         mtime: stats.mtime,
-        session_id,
+        sessionId,
         topic,
         date,
         status,
@@ -180,112 +187,130 @@ export async function listRecentSessions(
     // Format using tiered response levels
     return await formatSessionList(recentSessions, detailLevel);
   } catch (error) {
-    throw new Error(`Failed to list sessions: ${error}`);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to list sessions: ${errorMessage}`);
   }
 }
 
+interface SessionFile {
+  file: string;
+  filePath: string;
+  mtime: Date;
+  sessionId: string;
+  topic?: string;
+  date?: string;
+  status?: string;
+}
+
+function formatMinimalSessions(sessions: SessionFile[]): string {
+  let resultText = '';
+  sessions.forEach((s, idx) => {
+    const topicText = s.topic ? `: ${s.topic}` : '';
+    resultText += `${idx + 1}. ${s.sessionId}${topicText}\n`;
+  });
+  resultText += `\n💡 Use detail: "summary" for dates and status`;
+  return resultText;
+}
+
+function formatSummarySessions(sessions: SessionFile[]): string {
+  let resultText = '';
+  sessions.forEach((s, idx) => {
+    const statusIcon = s.status === 'completed' ? '✓' : '○';
+    const topicText = s.topic ? `: ${s.topic}` : '';
+    const dateText = s.date ? ` (${s.date})` : '';
+    resultText += `${idx + 1}. ${statusIcon} ${s.sessionId}${topicText}${dateText}\n`;
+  });
+  resultText += `\n💡 Use get_session_context(session_id) for full content`;
+  resultText += `\n💡 Use detail: "detailed" for file and commit info`;
+  return resultText;
+}
+
+async function formatDetailedSessions(sessions: SessionFile[]): Promise<string> {
+  let resultText = '';
+  for (let idx = 0; idx < sessions.length; idx++) {
+    const s = sessions[idx];
+    const statusIcon = s.status === 'completed' ? '✓' : '○';
+    const topicText = s.topic ? `: ${s.topic}` : '';
+    const dateText = s.date ? ` (${s.date})` : '';
+
+    resultText += `${idx + 1}. ${statusIcon} ${s.sessionId}${topicText}${dateText}\n`;
+
+    try {
+      const content = await fs.readFile(s.filePath, 'utf-8');
+      const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
+
+      if (frontmatterMatch) {
+        const frontmatter = frontmatterMatch[1];
+        const repoMatch = frontmatter.match(/repository:\s*\n\s*path:\s*(.+)\n\s*name:\s*(.+)/);
+        if (repoMatch) {
+          resultText += `   Repository: ${repoMatch[2].trim()}\n`;
+        }
+
+        const filesMatch = frontmatter.match(/files_accessed:/);
+        if (filesMatch) {
+          const filesSection = content.substring(content.indexOf('files_accessed:'));
+          const filesCount = (filesSection.match(/- path:/g) || []).length;
+          if (filesCount > 0) {
+            resultText += `   Files accessed: ${filesCount}\n`;
+          }
+        }
+      }
+    } catch {
+      // Skip if can't read file
+    }
+    resultText += '\n';
+  }
+  resultText += `💡 Use get_session_context(session_id) for complete content`;
+  return resultText;
+}
+
+async function formatFullSessions(sessions: SessionFile[]): Promise<string> {
+  let resultText = '';
+  for (let idx = 0; idx < sessions.length; idx++) {
+    const s = sessions[idx];
+    const statusIcon = s.status === 'completed' ? '✓' : '○';
+    const topicText = s.topic ? `: ${s.topic}` : '';
+
+    resultText += `${idx + 1}. ${statusIcon} ${s.sessionId}${topicText}\n`;
+    resultText += `   Date: ${s.date || 'Unknown'}\n`;
+
+    try {
+      const content = await fs.readFile(s.filePath, 'utf-8');
+      const summaryMatch = content.match(/## Summary\n\n([\s\S]+?)(\n\n|$)/);
+      if (summaryMatch) {
+        const summary = summaryMatch[1].trim();
+        const truncated = summary.substring(0, 200);
+        resultText += `   ${truncated}${summary.length > 200 ? '...' : ''}\n`;
+      }
+    } catch {
+      // Skip if can't read file
+    }
+    resultText += '\n';
+  }
+  return resultText;
+}
+
 async function formatSessionList(
-  sessions: Array<{
-    file: string;
-    filePath: string;
-    mtime: Date;
-    session_id: string;
-    topic?: string;
-    date?: string;
-    status?: string;
-  }>,
+  sessions: SessionFile[],
   detail: ResponseDetail
 ): Promise<{ content: Array<{ type: string; text: string }> }> {
   let resultText = `Found ${sessions.length} recent session(s):\n\n`;
 
   switch (detail) {
     case ResponseDetail.MINIMAL:
-      // Just ID and topic
-      sessions.forEach((s, idx) => {
-        const topicText = s.topic ? `: ${s.topic}` : '';
-        resultText += `${idx + 1}. ${s.session_id}${topicText}\n`;
-      });
-      resultText += `\n💡 Use detail: "summary" for dates and status`;
+      resultText += formatMinimalSessions(sessions);
       break;
 
     case ResponseDetail.SUMMARY:
-      // ID, topic, date, status (default - current behavior)
-      sessions.forEach((s, idx) => {
-        const statusIcon = s.status === 'completed' ? '✓' : '○';
-        const topicText = s.topic ? `: ${s.topic}` : '';
-        const dateText = s.date ? ` (${s.date})` : '';
-        resultText += `${idx + 1}. ${statusIcon} ${s.session_id}${topicText}${dateText}\n`;
-      });
-      resultText += `\n💡 Use get_session_context(session_id) for full content`;
-      resultText += `\n💡 Use detail: "detailed" for file and commit info`;
+      resultText += formatSummarySessions(sessions);
       break;
 
     case ResponseDetail.DETAILED:
-      // Everything in summary + parse session files for additional metadata
-      for (let idx = 0; idx < sessions.length; idx++) {
-        const s = sessions[idx];
-        const statusIcon = s.status === 'completed' ? '✓' : '○';
-        const topicText = s.topic ? `: ${s.topic}` : '';
-        const dateText = s.date ? ` (${s.date})` : '';
-
-        resultText += `${idx + 1}. ${statusIcon} ${s.session_id}${topicText}${dateText}\n`;
-
-        // Try to read session file for additional metadata
-        try {
-          const content = await fs.readFile(s.filePath, 'utf-8');
-          const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
-
-          if (frontmatterMatch) {
-            const frontmatter = frontmatterMatch[1];
-
-            // Extract repository info
-            const repoMatch = frontmatter.match(/repository:\s*\n\s*path:\s*(.+)\n\s*name:\s*(.+)/);
-            if (repoMatch) {
-              resultText += `   Repository: ${repoMatch[2].trim()}\n`;
-            }
-
-            // Count files accessed
-            const filesMatch = frontmatter.match(/files_accessed:/);
-            if (filesMatch) {
-              const filesSection = content.substring(content.indexOf('files_accessed:'));
-              const filesCount = (filesSection.match(/- path:/g) || []).length;
-              if (filesCount > 0) {
-                resultText += `   Files accessed: ${filesCount}\n`;
-              }
-            }
-          }
-        } catch {
-          // Couldn't read file, skip additional metadata
-        }
-        resultText += '\n';
-      }
-      resultText += `💡 Use get_session_context(session_id) for complete content`;
+      resultText += await formatDetailedSessions(sessions);
       break;
 
     case ResponseDetail.FULL:
-      // Include summary snippets from each session
-      for (let idx = 0; idx < sessions.length; idx++) {
-        const s = sessions[idx];
-        const statusIcon = s.status === 'completed' ? '✓' : '○';
-        const topicText = s.topic ? `: ${s.topic}` : '';
-
-        resultText += `${idx + 1}. ${statusIcon} ${s.session_id}${topicText}\n`;
-        resultText += `   Date: ${s.date || 'Unknown'}\n`;
-
-        // Try to extract summary
-        try {
-          const content = await fs.readFile(s.filePath, 'utf-8');
-          const summaryMatch = content.match(/## Summary\n\n([\s\S]+?)(\n\n|$)/);
-          if (summaryMatch) {
-            const summary = summaryMatch[1].trim();
-            const truncated = summary.substring(0, 200);
-            resultText += `   ${truncated}${summary.length > 200 ? '...' : ''}\n`;
-          }
-        } catch {
-          // Couldn't read file
-        }
-        resultText += '\n';
-      }
+      resultText += await formatFullSessions(sessions);
       break;
   }
 
@@ -295,8 +320,8 @@ async function formatSessionList(
     content: [
       {
         type: 'text',
-        text: resultText
-      }
-    ]
+        text: resultText,
+      },
+    ],
   };
 }

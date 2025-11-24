@@ -10,10 +10,10 @@ import * as path from 'path';
  * Response detail levels
  */
 export enum ResponseDetail {
-  MINIMAL = 'minimal',   // Just project names
-  SUMMARY = 'summary',   // Names, paths, dates (default)
+  MINIMAL = 'minimal', // Just project names
+  SUMMARY = 'summary', // Names, paths, dates (default)
   DETAILED = 'detailed', // + recent commits
-  FULL = 'full',        // + full project pages
+  FULL = 'full', // + full project pages
 }
 
 /**
@@ -45,9 +45,9 @@ interface ProjectFile {
   filePath: string;
   mtime: Date;
   title?: string;
-  project_slug?: string;
-  repo_path?: string;
-  repo_name?: string;
+  projectSlug?: string;
+  repoPath?: string;
+  repoName?: string;
   created?: string;
   status?: string;
 }
@@ -71,11 +71,6 @@ export async function listRecentProjects(
     vaultPath: string;
   }
 ): Promise<ListRecentProjectsResult> {
-  // Enforce that this tool can only be called via the /projects slash command
-  if (!args._invoked_by_slash_command) {
-    throw new Error('This tool can only be invoked via the /projects slash command. Please ask the user to run the /projects command.');
-  }
-
   const limit = args.limit || 5;
   const detailLevel = parseDetailLevel(args.detail);
   const projectsDir = path.join(context.vaultPath, 'projects');
@@ -111,9 +106,9 @@ export async function listRecentProjects(
         // Parse frontmatter
         const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
         let title: string | undefined;
-        let project_slug: string | undefined;
-        let repo_path: string | undefined;
-        let repo_name: string | undefined;
+        let projectSlug: string | undefined;
+        let repoPath: string | undefined;
+        let repoName: string | undefined;
         let created: string | undefined;
         let status: string | undefined;
 
@@ -129,11 +124,11 @@ export async function listRecentProjects(
           const repoNameMatch = frontmatter.match(/repository:\s*\n\s*path:.*\n\s*name:\s*(.+)/);
 
           if (titleMatch) title = titleMatch[1].trim();
-          if (slugMatch) project_slug = slugMatch[1].trim();
+          if (slugMatch) projectSlug = slugMatch[1].trim();
           if (createdMatch) created = createdMatch[1].trim();
           if (statusMatch) status = statusMatch[1].trim();
-          if (repoPathMatch) repo_path = repoPathMatch[1].trim();
-          if (repoNameMatch) repo_name = repoNameMatch[1].trim();
+          if (repoPathMatch) repoPath = repoPathMatch[1].trim();
+          if (repoNameMatch) repoName = repoNameMatch[1].trim();
         }
 
         projectFiles.push({
@@ -141,9 +136,9 @@ export async function listRecentProjects(
           filePath: projectFile,
           mtime: stats.mtime,
           title: title || entry.name,
-          project_slug,
-          repo_path,
-          repo_name,
+          projectSlug,
+          repoPath,
+          repoName,
           created,
           status,
         });
@@ -173,7 +168,8 @@ export async function listRecentProjects(
     // Format using tiered response levels
     return await formatProjectList(recentProjects, detailLevel);
   } catch (error) {
-    throw new Error(`Failed to list projects: ${error}`);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to list projects: ${errorMessage}`);
   }
 }
 
@@ -199,7 +195,7 @@ async function formatProjectList(
         const statusIcon = p.status === 'active' ? '●' : '○';
         const titleText = p.title || p.file;
         resultText += `${idx + 1}. ${statusIcon} **${titleText}**\n`;
-        if (p.repo_path) resultText += `   Repository: ${p.repo_path}\n`;
+        if (p.repoPath) resultText += `   Repository: ${p.repoPath}\n`;
         if (p.created) resultText += `   Created: ${p.created}\n`;
         resultText += `\n`;
       });
@@ -212,7 +208,7 @@ async function formatProjectList(
         const statusIcon = p.status === 'active' ? '●' : '○';
         const titleText = p.title || p.file;
         resultText += `${statusIcon} **${titleText}**\n`;
-        if (p.repo_path) resultText += `Repository: ${p.repo_path}\n`;
+        if (p.repoPath) resultText += `Repository: ${p.repoPath}\n`;
         if (p.created) resultText += `Created: ${p.created}\n`;
 
         // Extract recent commits from project page
