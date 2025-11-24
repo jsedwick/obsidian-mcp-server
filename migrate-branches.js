@@ -7,13 +7,46 @@
  */
 
 import { promises as fs } from 'fs';
+import fssync from 'fs';
 import path from 'path';
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import { fileURLToPath } from 'url';
 
 const execAsync = promisify(exec);
 
-const VAULT_PATH = '/Users/jsedwick/Documents/Obsidian/Claude/Claude';
+// Load vault path from config file (same logic as MCP server)
+function loadVaultPath() {
+  const currentDir = path.dirname(fileURLToPath(import.meta.url));
+  const projectRoot = path.join(currentDir, '..');
+
+  const configPaths = [
+    path.join(currentDir, '.obsidian-mcp.json'),     // dist/.obsidian-mcp.json (built)
+    path.join(projectRoot, '.obsidian-mcp.json'),    // project-root/.obsidian-mcp.json
+    path.join(process.env.HOME || '', '.obsidian-mcp.json'),  // ~/.obsidian-mcp.json
+    path.join(process.env.HOME || '', '.config', '.obsidian-mcp.json')  // ~/.config/.obsidian-mcp.json
+  ];
+
+  // Try each path until we find one that exists
+  for (const configPath of configPaths) {
+    try {
+      const configData = fssync.readFileSync(configPath, 'utf-8');
+      const config = JSON.parse(configData);
+
+      if (config.primaryVault && config.primaryVault.path) {
+        return config.primaryVault.path.replace(/\/+$/, ''); // Remove trailing slashes
+      }
+    } catch (_error) {
+      // Try next config path
+      continue;
+    }
+  }
+
+  // Fall back to environment variable or default
+  return process.env.OBSIDIAN_VAULT_PATH || path.join(process.env.HOME || '', 'obsidian-vault');
+}
+
+const VAULT_PATH = loadVaultPath();
 
 async function migrateCommitBranches(projectSlug = null, dryRun = false) {
   const projectsDir = path.join(VAULT_PATH, 'projects');

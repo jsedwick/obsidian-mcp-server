@@ -30,57 +30,86 @@ interface ServerConfig {
 
 // Load configuration
 function loadConfig(): ServerConfig {
-  // Try to load from config file in MCP server directory
-  const configPath = path.join(path.dirname(fileURLToPath(import.meta.url)), '.obsidian-mcp.json');
-  try {
-    const configData = fssync.readFileSync(configPath, 'utf-8');
-    const config = JSON.parse(configData);
+  // Try multiple locations for config file (in order of preference)
+  const currentDir = path.dirname(fileURLToPath(import.meta.url));
+  const projectRoot = path.join(currentDir, '..');
 
-    // Validate config structure
-    if (!config.primaryVault || !config.primaryVault.path) {
-      throw new Error('Invalid config: primaryVault.path is required');
+  const configPaths = [
+    path.join(currentDir, '.obsidian-mcp.json'),     // dist/.obsidian-mcp.json (built)
+    path.join(projectRoot, '.obsidian-mcp.json'),    // project-root/.obsidian-mcp.json
+    path.join(process.env.HOME || '', '.obsidian-mcp.json'),  // ~/.obsidian-mcp.json
+    path.join(process.env.HOME || '', '.config', '.obsidian-mcp.json')  // ~/.config/.obsidian-mcp.json
+  ];
+
+  // Try each path until we find one that exists
+  for (const configPath of configPaths) {
+    try {
+      const configData = fssync.readFileSync(configPath, 'utf-8');
+      const config: unknown = JSON.parse(configData);
+
+      // Type guard for config structure
+      if (
+        !config ||
+        typeof config !== 'object' ||
+        !('primaryVault' in config) ||
+        !config.primaryVault ||
+        typeof config.primaryVault !== 'object' ||
+        !('path' in config.primaryVault) ||
+        typeof config.primaryVault.path !== 'string'
+      ) {
+        continue; // Try next config path
+      }
+
+      // Helper to normalize paths (remove trailing slashes)
+      const normalizePath = (p: string): string => p.replace(/\/+$/, '');
+
+      // Type-safe config object after validation
+      const typedConfig = config as {
+        primaryVault: { path: string; name?: string; authority?: VaultAuthority };
+        secondaryVaults?: Array<{ path: string; name?: string; authority?: VaultAuthority }>;
+      };
+
+      return {
+        primaryVault: {
+          path: normalizePath(typedConfig.primaryVault.path),
+          name: typedConfig.primaryVault.name || 'Primary Vault',
+          authority: typedConfig.primaryVault.authority || 'default',
+        },
+        secondaryVaults: (typedConfig.secondaryVaults || []).map((v) => ({
+          path: normalizePath(v.path),
+          name: v.name || path.basename(v.path),
+          authority: v.authority || 'default',
+        })),
+      };
+    } catch {
+      // Try next config path
+      continue;
     }
-
-    // Helper to normalize paths (remove trailing slashes)
-    const normalizePath = (p: string): string => p.replace(/\/+$/, '');
-
-    return {
-      primaryVault: {
-        path: normalizePath(config.primaryVault.path as string),
-        name: config.primaryVault.name || 'Primary Vault',
-        authority: (config.primaryVault.authority as VaultAuthority | undefined) || 'default',
-      },
-      secondaryVaults: (config.secondaryVaults || []).map((v: { path: string; name?: string; authority?: string }) => ({
-        path: normalizePath(v.path),
-        name: v.name || path.basename(v.path),
-        authority: (v.authority as VaultAuthority | undefined) || 'default',
-      })),
-    };
-  } catch (_error) {
-    // Helper to normalize paths (remove trailing slashes)
-    const normalizePath = (p: string): string => p.replace(/\/+$/, '');
-
-    // Fall back to environment variables
-    const primaryPath = process.env.OBSIDIAN_VAULT_PATH || path.join(process.env.HOME || '', 'obsidian-vault');
-
-    // Parse secondary vaults from env (comma-separated paths)
-    const secondaryPaths = process.env.OBSIDIAN_SECONDARY_VAULTS
-      ? process.env.OBSIDIAN_SECONDARY_VAULTS.split(',').map(p => p.trim()).filter(p => p)
-      : [];
-
-    return {
-      primaryVault: {
-        path: normalizePath(primaryPath),
-        name: process.env.OBSIDIAN_VAULT_NAME || 'Primary Vault',
-        authority: 'default',
-      },
-      secondaryVaults: secondaryPaths.map((p, idx) => ({
-        path: normalizePath(p),
-        name: `Secondary Vault ${idx + 1}`,
-        authority: 'default',
-      })),
-    };
   }
+
+  // If no config file found, fall back to environment variables
+  // Helper to normalize paths (remove trailing slashes)
+  const normalizePath = (p: string): string => p.replace(/\/+$/, '');
+
+  const primaryPath = process.env.OBSIDIAN_VAULT_PATH || path.join(process.env.HOME || '', 'obsidian-vault');
+
+  // Parse secondary vaults from env (comma-separated paths)
+  const secondaryPaths = process.env.OBSIDIAN_SECONDARY_VAULTS
+    ? process.env.OBSIDIAN_SECONDARY_VAULTS.split(',').map(p => p.trim()).filter(p => p)
+    : [];
+
+  return {
+    primaryVault: {
+      path: normalizePath(primaryPath),
+      name: process.env.OBSIDIAN_VAULT_NAME || 'Primary Vault',
+      authority: 'default',
+    },
+    secondaryVaults: secondaryPaths.map((p, idx) => ({
+      path: normalizePath(p),
+      name: `Secondary Vault ${idx + 1}`,
+      authority: 'default',
+    })),
+  };
 }
 
 const CONFIG = loadConfig();
