@@ -478,21 +478,6 @@ class ObsidianMCPServer {
               searchVault: this.searchVaultWrapper.bind(this),
             });
 
-          case 'extract_decisions_from_session':
-            return await tools.extractDecisionsFromSession(validatedArgs as tools.ExtractDecisionsFromSessionArgs, {
-              vaultPath: this.config.primaryVault.path,
-              currentSessionFile: this.currentSessionFile,
-              currentSessionId: this.currentSessionId,
-              slugify: this.slugify.bind(this),
-              findSessionFile: this.findSessionFile.bind(this),
-            });
-
-          case 'enhanced_search':
-            return await tools.enhancedSearch(validatedArgs as tools.EnhancedSearchArgs, {
-              findSessionFile: this.findSessionFile.bind(this),
-              searchVault: this.searchVaultWrapper.bind(this),
-            });
-
           case 'analyze_commit_impact':
             return await tools.analyzeCommitImpact(validatedArgs as tools.AnalyzeCommitImpactArgs, {
               vaultPath: this.config.primaryVault.path,
@@ -1309,49 +1294,6 @@ SCOPE: Decisions can be vault-level (affecting the MCP system itself) or project
             },
           },
           required: ['content'],
-        },
-      },
-      {
-        name: 'extract_decisions_from_session',
-        description: 'Extract architectural decisions from a session and generate ADR-formatted decision records. Analyzes session content to identify strategic choices, alternatives considered, and consequences.',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            session_id: {
-              type: 'string',
-              description: 'Optional session ID to analyze. If not provided, uses current session.',
-            },
-            content: {
-              type: 'string',
-              description: 'Optional content to analyze instead of reading from session file',
-            },
-          },
-        },
-      },
-      {
-        name: 'enhanced_search',
-        description: 'Enhanced semantic search with query understanding, expansion, and contextual refinement. Uses sub-agent to transform queries into multiple search variations and synthesize results.',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            query: {
-              type: 'string',
-              description: 'The search query to understand and expand',
-            },
-            context: {
-              type: 'string',
-              description: 'Optional additional context to refine the search (e.g., current work, specific domain)',
-            },
-            current_session_id: {
-              type: 'string',
-              description: 'Optional session ID to use for contextual search',
-            },
-            max_results_per_query: {
-              type: 'number',
-              description: 'Maximum results per query variation (default: 5)',
-            },
-          },
-          required: ['query'],
         },
       },
       {

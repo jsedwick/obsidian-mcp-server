@@ -574,57 +574,7 @@ Usage:
   - Helps maintain consistent tagging and discover existing related content
 ```
 
-**extract_decisions_from_session** - Extract architectural decisions from sessions
-```
-Session ID: (optional) "2025-11-05_14-30-00_..." or uses current session
-Content: (optional) Direct content to analyze
-
-Returns:
-  - List of identified strategic decisions with:
-    * Decision title and context
-    * Alternatives that were considered
-    * Rationale for the choice made
-    * Consequences and tradeoffs
-    * Strategic level score (1-5)
-
-Workflow:
-  1. Call extract_decisions_from_session on a completed session
-  2. Review the extracted decisions
-  3. For each decision found with strategic_level >= 3:
-     - Use create_decision tool to generate ADR
-     - Link back to original session
-
-Only extracts strategic decisions (level 3-5), ignoring tactical implementation details.
-```
-
-**enhanced_search** - Intelligent search with query understanding and expansion
-```
-Query: "how did we handle auth?"
-Context: (optional) "Working on authentication refactoring"
-Current session ID: (optional) "2025-11-05_14-30-00_..."
-Max results per query: (optional) 5
-
-Returns:
-  - Multiple expanded query variations
-  - Search results from each variation
-  - Deduplicated and ranked results
-  - Synthesized findings across all searches
-
-Workflow:
-  - Automatically understands user intent from natural language queries
-  - Expands queries into multiple semantic variations
-  - Searches vault with each variation
-  - Deduplicates and ranks results by relevance
-  - Returns unified, comprehensive search results
-
-Benefits:
-  - Improved recall through multiple query perspectives
-  - Context-aware refinement using session information
-  - Efficient deduplication to avoid repeated results
-  - Automatic embedding cache reuse for performance
-```
-
-These AI-powered tools enhance the vault's intelligence by providing automatic content analysis, decision extraction, and semantic search expansion.
+This AI-powered tool enhances the vault's intelligence by providing automatic content analysis, helping maintain consistent tagging and discovering related content.
 
 ### Git Integration
 

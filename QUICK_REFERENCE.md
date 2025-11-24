@@ -74,8 +74,6 @@ npm run build
 | Tool | Purpose |
 |------|---------|
 | `analyze_topic_content` | Auto-tag and analyze topics with AI |
-| `extract_decisions_from_session` | Extract ADRs from sessions |
-| `enhanced_search` | Query expansion and understanding |
 | `analyze_commit_impact` | AI commit analysis for docs |
 
 ### Git Integration
@@ -154,7 +152,7 @@ Claude: [Creates topics/mcp-servers.md]
 - [ ] Vault directories created (sessions, topics, decisions, projects, archive)
 - [ ] Config.json has correct paths
 - [ ] `npm test` passes
-- [ ] Claude Code recognizes server (25 tools available)
+- [ ] Claude Code recognizes server (23 tools available)
 - [ ] Session files being created
 - [ ] Search finds content
 - [ ] Git integration works (if applicable)

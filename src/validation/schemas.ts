@@ -118,19 +118,6 @@ export const SearchVaultArgsSchema = z.object({
   detail: DetailLevelSchema.optional().default('summary').describe('Response detail level'),
 });
 
-// enhanced_search
-export const EnhancedSearchArgsSchema = z.object({
-  query: NonEmptyString.describe('The search query to understand and expand'),
-  context: z.string().optional().describe('Optional additional context to refine the search'),
-  current_session_id: z
-    .string()
-    .optional()
-    .describe('Optional session ID to use for contextual search'),
-  max_results_per_query: PositiveNumber.optional()
-    .default(5)
-    .describe('Maximum results per query variation'),
-});
-
 // link_to_topic
 export const LinkToTopicArgsSchema = z.object({
   topic: NonEmptyString.describe('Topic name to link to'),
@@ -283,18 +270,6 @@ export const CreateDecisionArgsSchema = z.object({
     .describe('Set to true to bypass keyword detection warnings'),
 });
 
-// extract_decisions_from_session
-export const ExtractDecisionsFromSessionArgsSchema = z.object({
-  session_id: z
-    .string()
-    .optional()
-    .describe('Optional session ID to analyze (defaults to current session)'),
-  content: z
-    .string()
-    .optional()
-    .describe('Optional content to analyze instead of reading from session file'),
-});
-
 /**
  * MAINTENANCE TOOLS (2 tools)
  */
@@ -352,7 +327,6 @@ export const ValidationSchemas = {
 
   // Search tools
   search_vault: SearchVaultArgsSchema,
-  enhanced_search: EnhancedSearchArgsSchema,
   link_to_topic: LinkToTopicArgsSchema,
   toggle_embeddings: ToggleEmbeddingsArgsSchema,
 
@@ -375,7 +349,6 @@ export const ValidationSchemas = {
 
   // Decisions tools
   create_decision: CreateDecisionArgsSchema,
-  extract_decisions_from_session: ExtractDecisionsFromSessionArgsSchema,
 
   // Maintenance tools
   vault_custodian: VaultCustodianArgsSchema,

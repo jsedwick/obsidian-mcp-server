@@ -5,7 +5,6 @@
  * - searchVault: Search the vault for relevant notes
  * - getTopicContext: Load full topic content
  * - linkToTopic: Get Obsidian link format for a topic
- * - enhancedSearch: Advanced semantic search with query expansion
  */
 
 export {
@@ -25,9 +24,3 @@ export {
   type LinkToTopicArgs,
   type LinkToTopicResult,
 } from './linkToTopic.js';
-
-export {
-  enhancedSearch,
-  type EnhancedSearchArgs,
-  type EnhancedSearchResult,
-} from './enhancedSearch.js';

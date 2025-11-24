@@ -151,22 +151,6 @@ describe('Validation Schemas', () => {
       });
     });
 
-    describe('enhanced_search', () => {
-      it('should validate required query', () => {
-        const args = { query: 'complex search query' };
-        expect(() => validateToolArgs('enhanced_search', args)).not.toThrow();
-      });
-
-      it('should validate with context', () => {
-        const args = {
-          query: 'test',
-          context: 'looking for authentication code',
-          max_results_per_query: 3,
-        };
-        expect(() => validateToolArgs('enhanced_search', args)).not.toThrow();
-      });
-    });
-
     describe('link_to_topic', () => {
       it('should validate topic name', () => {
         const args = { topic: 'JWT Authentication' };
@@ -470,22 +454,6 @@ describe('Validation Schemas', () => {
           force: true,
         };
         expect(() => validateToolArgs('create_decision', args)).not.toThrow();
-      });
-    });
-
-    describe('extract_decisions_from_session', () => {
-      it('should validate without arguments', () => {
-        expect(() => validateToolArgs('extract_decisions_from_session', {})).not.toThrow();
-      });
-
-      it('should validate with session_id', () => {
-        const args = { session_id: 'session-123' };
-        expect(() => validateToolArgs('extract_decisions_from_session', args)).not.toThrow();
-      });
-
-      it('should validate with content', () => {
-        const args = { content: 'Session content to analyze' };
-        expect(() => validateToolArgs('extract_decisions_from_session', args)).not.toThrow();
       });
     });
   });

@@ -8,10 +8,3 @@
 
 export { createDecision } from './createDecision.js';
 export type { CreateDecisionArgs, CreateDecisionResult, CreateDecisionContext } from './createDecision.js';
-
-export { extractDecisionsFromSession } from './extractDecisionsFromSession.js';
-export type {
-  ExtractDecisionsFromSessionArgs,
-  ExtractDecisionsFromSessionResult,
-  ExtractDecisionsFromSessionContext
-} from './extractDecisionsFromSession.js';
