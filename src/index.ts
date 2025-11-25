@@ -20,6 +20,7 @@ import { IndexBuilder } from './services/search/index/IndexBuilder.js';
 import { IndexedSearch } from './services/search/IndexedSearch.js';
 import { DEFAULT_INDEX_CONFIG } from './models/IndexModels.js';
 import type { VaultConfig, VaultAuthority } from './models/Vault.js';
+import { LRUCache } from './utils/LRUCache.js';
 
 const execAsync = promisify(exec);
 
@@ -130,6 +131,7 @@ interface EmbeddingConfig {
   keywordCandidatesLimit: number; // Number of top keyword results to re-rank with semantic search
   confidenceThreshold: number; // Score above which to skip semantic re-ranking (0-1)
   precomputeEmbeddings: boolean; // Whether to pre-compute embeddings on startup
+  enableSmartSearch: boolean; // Whether to use heuristic query analysis for semantic search optimization
 }
 
 interface EmbeddingToggleConfig {
@@ -160,7 +162,11 @@ class ObsidianMCPServer {
   private decisionsCreated: Array<{ slug: string; title: string; file: string }> = [];
   private projectsCreated: Array<{ slug: string; name: string; file: string }> = [];
   private embeddingConfig: EmbeddingConfig;
-  private embeddingCache: Map<string, EmbeddingCacheEntry> = new Map();
+  // LRU cache with 2000 entry limit (~6MB for embeddings at 384 dimensions × 4 bytes × 2000)
+  // Prevents unbounded memory growth during heavy search sessions
+  private embeddingCache: LRUCache<string, EmbeddingCacheEntry> = new LRUCache({
+    maxSize: 2000,
+  });
   private extractor: any = null;
   private embeddingInitPromise: Promise<void> | null = null;
   private embeddingToggleFile: string = '';
@@ -204,6 +210,7 @@ class ObsidianMCPServer {
       keywordCandidatesLimit: parseInt(process.env.EMBEDDING_CANDIDATES_LIMIT || '100', 10),
       confidenceThreshold: parseFloat(process.env.EMBEDDING_CONFIDENCE_THRESHOLD || '0.75'),
       precomputeEmbeddings: process.env.EMBEDDING_PRECOMPUTE !== 'false',
+      enableSmartSearch: process.env.ENABLE_SMART_SEARCH !== 'false', // Default: enabled
     };
 
     // Initialize GitService
@@ -409,7 +416,7 @@ class ObsidianMCPServer {
             });
 
           case 'track_file_access':
-            return await tools.trackFileAccess(validatedArgs as tools.TrackFileAccessArgs, {
+            return tools.trackFileAccess(validatedArgs as tools.TrackFileAccessArgs, {
               filesAccessed: this.filesAccessed,
             });
 
@@ -614,6 +621,9 @@ class ObsidianMCPServer {
     }
 
     // Load cache from all vault directories
+    // Sort by timestamp so newest entries are loaded last (preserved by LRU)
+    const allEntries: Array<{ key: string; entry: EmbeddingCacheEntry; timestamp: number }> = [];
+
     for (const [vaultPath, cacheDir] of this.embeddingConfig.cacheDirs) {
       try {
         const cacheFile = path.join(cacheDir, 'embeddings.json');
@@ -628,12 +638,27 @@ class ObsidianMCPServer {
             vaultPath: vaultPath,
             file: absolutePath, // Store absolute path as cache key
           };
-          this.embeddingCache.set(absolutePath, cacheEntry);
+          allEntries.push({
+            key: absolutePath,
+            entry: cacheEntry,
+            timestamp: entry.timestamp,
+          });
         }
-      } catch (error) {
+      } catch {
         // Cache file doesn't exist for this vault yet, which is fine
       }
     }
+
+    // Sort by timestamp (oldest first) so newest entries end up as "most recently used"
+    allEntries.sort((a, b) => a.timestamp - b.timestamp);
+
+    // Load into LRU cache (will auto-evict if over limit)
+    for (const { key, entry, timestamp } of allEntries) {
+      this.embeddingCache.setWithTimestamp(key, entry, timestamp * 1000); // Convert to ms
+    }
+
+    const stats = this.embeddingCache.getStats();
+    console.error(`[Embedding] Loaded ${stats.size} cached embeddings (max: ${stats.maxSize})`);
   }
 
   private async saveEmbeddingCache(): Promise<void> {
@@ -644,7 +669,7 @@ class ObsidianMCPServer {
     // Group cache entries by vault
     const entriesByVault = new Map<string, EmbeddingCacheEntry[]>();
 
-    for (const [absolutePath, entry] of this.embeddingCache) {
+    for (const [absolutePath, entry] of this.embeddingCache.entries()) {
       const vault = this.getVaultForFile(absolutePath);
       if (!vault) continue;
 
@@ -674,9 +699,12 @@ class ObsidianMCPServer {
         console.error(`[Embedding] Failed to save cache for vault ${vaultPath}:`, error);
       }
     }
+
+    const stats = this.embeddingCache.getStats();
+    console.error(`[Embedding] Saved ${stats.size} embeddings to cache`);
   }
 
-  private async getCachedEmbedding(file: string, fileStats: any): Promise<number[] | null> {
+  private getCachedEmbedding(file: string, fileStats: any): number[] | null {
     if (!this.embeddingConfig.enabled) {
       return null;
     }
@@ -695,7 +723,7 @@ class ObsidianMCPServer {
 
   private async getOrCreateEmbedding(file: string, content: string, fileStats: any): Promise<number[]> {
     // Try to get from cache
-    const cached = await this.getCachedEmbedding(file, fileStats);
+    const cached = this.getCachedEmbedding(file, fileStats);
     if (cached) {
       return cached;
     }

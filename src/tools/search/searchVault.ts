@@ -37,6 +37,7 @@ export async function searchVault(
       enabled: boolean;
       keywordCandidatesLimit: number;
       confidenceThreshold: number;
+      enableSmartSearch?: boolean;
     };
     indexedSearches: Map<string, IndexedSearch>;
     indexBuilders: Map<string, IndexBuilder>;
@@ -326,11 +327,28 @@ export async function searchVault(
 
   // Special case: If zero keyword matches but embeddings enabled, do pure semantic search
   if (queryEmbedding && context.embeddingConfig.enabled && results.length === 0) {
-    console.log('[Search] Zero keyword matches, performing pure semantic search across all documents');
+    const useSmartSearch = context.embeddingConfig.enableSmartSearch !== false;
+    console.log(`[Search] Zero keyword matches, performing ${useSmartSearch ? 'smart' : 'standard'} semantic search`);
+
+    // Hard limit to prevent unbounded memory growth on large vaults
+    // Even with smart search disabled, we cap at 500 files (most recent first)
+    const SEMANTIC_SEARCH_HARD_LIMIT = 500;
+
+    // Analyze query for optimization hints (if smart search enabled)
+    let queryHints = null;
+    if (useSmartSearch) {
+      const { analyzeQuery } = await import('../../utils/queryAnalysis.js');
+      queryHints = analyzeQuery(args.query);
+
+      console.log(`[Search] Query hints: temporal=${queryHints.temporal}, scope=[${queryHints.scopeDirectories.join(', ')}], sort=${queryHints.sortPreference}, maxFiles=${queryHints.maxFilesToScan || 'unlimited'}`);
+    }
 
     // Re-scan all documents with pure semantic scoring (no keyword filter)
     const vaults = context.getAllVaults();
     const allResults: typeof results = [];
+
+    // Collect files from ALL vaults first, then sort globally by recency
+    let allFilesGlobal: Array<{ path: string; stats: { mtime: Date }; vault: typeof vaults[0] }> = [];
 
     for (const vault of vaults) {
       const isPrimaryVault = vault.path === context.config.primaryVault.path;
@@ -339,50 +357,86 @@ export async function searchVault(
       for (const dir of dirsToScan) {
         const dirPath = isPrimaryVault ? path.join(vault.path, dir) : vault.path;
 
-        // Recursively collect all .md files
-        const collectFiles = async (currentPath: string): Promise<string[]> => {
-          const files: string[] = [];
+        // Recursively collect all .md files with metadata
+        const collectFilesWithStats = async (currentPath: string): Promise<Array<{ path: string; stats: { mtime: Date } }>> => {
+          const files: Array<{ path: string; stats: { mtime: Date } }> = [];
           try {
             const entries = await fs.readdir(currentPath, { withFileTypes: true });
             for (const entry of entries) {
               const fullPath = path.join(currentPath, entry.name);
-              if (entry.isDirectory() && !['.git', 'node_modules', '.DS_Store', '.obsidian'].includes(entry.name)) {
-                files.push(...await collectFiles(fullPath));
+              if (entry.isDirectory() && !['.git', 'node_modules', '.DS_Store', '.obsidian', '.embedding-cache'].includes(entry.name)) {
+                files.push(...await collectFilesWithStats(fullPath));
               } else if (entry.isFile() && entry.name.endsWith('.md')) {
-                files.push(fullPath);
+                try {
+                  const stats = await fs.stat(fullPath);
+                  files.push({ path: fullPath, stats: { mtime: stats.mtime } });
+                } catch {
+                  // Skip files we can't stat
+                }
               }
             }
-          } catch (error) {
+          } catch {
             // Directory doesn't exist or can't be accessed
           }
           return files;
         };
 
-        const mdFiles = await collectFiles(dirPath);
+        const allFiles = await collectFilesWithStats(dirPath);
+        // Tag each file with its vault for later processing
+        allFilesGlobal.push(...allFiles.map(f => ({ ...f, vault })));
+      }
+    }
 
-        // Score each file by semantic similarity
-        for (const filePath of mdFiles) {
-          try {
-            const content = await fs.readFile(filePath, 'utf-8');
-            const fileStats = await fs.stat(filePath);
-            const docEmbedding = await context.getOrCreateEmbedding(filePath, content, fileStats);
-            const semanticScore = context.cosineSimilarity(queryEmbedding, docEmbedding);
+    // Sort ALL files by mtime (most recent first) - this ensures we process recent files first
+    allFilesGlobal.sort((a, b) => b.stats.mtime.getTime() - a.stats.mtime.getTime());
 
-            // Only include documents with meaningful similarity (> 0.3 threshold)
-            if (semanticScore > 0.3) {
-              const relativePath = filePath.replace(vault.path, '').replace(/^\//, '');
-              allResults.push({
-                file: relativePath,
-                matches: [`Semantic match (score: ${semanticScore.toFixed(3)})`],
-                score: semanticScore,
-                semanticScore: semanticScore,
-                vault: vault.name,
-              });
-            }
-          } catch (error) {
-            console.error(`[Search] Failed to score ${filePath}:`, error);
-          }
+    // Apply smart filtering based on query hints (if enabled)
+    let filesToScore = allFilesGlobal;
+    if (useSmartSearch && queryHints) {
+      const { applyFileFilters } = await import('../../utils/queryAnalysis.js');
+      // applyFileFilters expects {path, stats} - it will handle the extra vault field
+      filesToScore = applyFileFilters(allFilesGlobal, queryHints) as typeof allFilesGlobal;
+
+      const filesBeforeFilter = allFilesGlobal.length;
+      const filesAfterFilter = filesToScore.length;
+
+      if (filesBeforeFilter > filesAfterFilter) {
+        console.log(`[Search] Smart filtering: ${filesBeforeFilter} files → ${filesAfterFilter} files (${Math.round((1 - filesAfterFilter / filesBeforeFilter) * 100)}% reduction)`);
+      }
+    }
+
+    // Apply hard limit to prevent memory issues on very large vaults
+    const effectiveLimit = queryHints?.maxFilesToScan
+      ? Math.min(queryHints.maxFilesToScan, SEMANTIC_SEARCH_HARD_LIMIT)
+      : SEMANTIC_SEARCH_HARD_LIMIT;
+
+    if (filesToScore.length > effectiveLimit) {
+      console.log(`[Search] Applying hard limit: ${filesToScore.length} files → ${effectiveLimit} files (scanning most recent files only)`);
+      filesToScore = filesToScore.slice(0, effectiveLimit);
+    }
+
+    // Score each file by semantic similarity
+    for (const fileInfo of filesToScore) {
+      const vault = fileInfo.vault;
+      try {
+        const content = await fs.readFile(fileInfo.path, 'utf-8');
+        const fileStats = await fs.stat(fileInfo.path);
+        const docEmbedding = await context.getOrCreateEmbedding(fileInfo.path, content, fileStats);
+        const semanticScore = context.cosineSimilarity(queryEmbedding, docEmbedding);
+
+        // Only include documents with meaningful similarity (> 0.3 threshold)
+        if (semanticScore > 0.3) {
+          const relativePath = fileInfo.path.replace(vault.path, '').replace(/^\//, '');
+          allResults.push({
+            file: relativePath,
+            matches: [`Semantic match (score: ${semanticScore.toFixed(3)})`],
+            score: semanticScore,
+            semanticScore: semanticScore,
+            vault: vault.name,
+          });
         }
+      } catch (error) {
+        console.error(`[Search] Failed to score ${fileInfo.path}:`, error);
       }
     }
 
