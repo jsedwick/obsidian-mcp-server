@@ -29,7 +29,6 @@ const FileAccessActionSchema = z.enum(['read', 'edit', 'create'], {
   errorMap: () => ({ message: 'action must be one of: read, edit, create' }),
 });
 
-
 // Date range object (used in search)
 const DateRangeSchema = z
   .object({
@@ -189,7 +188,6 @@ export const FindStaleTopicsArgsSchema = z.object({
     .describe('Include topics that have never been reviewed'),
 });
 
-
 /**
  * GIT TOOLS (6 tools)
  */
@@ -295,17 +293,32 @@ export const GetTopicContextArgsSchema = z.object({
 // get_memory_base
 export const GetMemoryBaseArgsSchema = z.object({}).describe('No arguments required');
 
-// append_to_memory_base
-export const AppendToMemoryBaseArgsSchema = z.object({
-  summary: NonEmptyString.describe('Session summary to append'),
-  session_topic: z.string().optional().describe('Optional topic/title for the session'),
+// generate_vault_index
+export const GenerateVaultIndexArgsSchema = z.object({
+  max_files: z
+    .number()
+    .int()
+    .positive()
+    .optional()
+    .default(100)
+    .describe('Maximum number of files to include in index (default: 100)'),
   max_size_bytes: z
     .number()
     .int()
     .positive()
     .optional()
     .default(10240)
-    .describe('Maximum file size in bytes (default: 10240)'),
+    .describe('Maximum size of generated index in bytes (default: 10240)'),
+  include_tags: z
+    .boolean()
+    .optional()
+    .default(true)
+    .describe('Include frontmatter tags in index entries (default: true)'),
+  include_description: z
+    .boolean()
+    .optional()
+    .default(false)
+    .describe('Include frontmatter description in index entries (default: false)'),
 });
 
 /**
@@ -352,7 +365,7 @@ export const ValidationSchemas = {
 
   // Memory tools
   get_memory_base: GetMemoryBaseArgsSchema,
-  append_to_memory_base: AppendToMemoryBaseArgsSchema,
+  generate_vault_index: GenerateVaultIndexArgsSchema,
 } as const;
 
 /**

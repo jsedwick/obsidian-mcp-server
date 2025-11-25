@@ -402,8 +402,6 @@ class ObsidianMCPServer {
               setCurrentSession: this.setCurrentSession.bind(this),
               clearSessionState: this.clearSessionState.bind(this),
               getMostRecentSessionDate: this.getMostRecentSessionDate.bind(this),
-              appendToMemoryBase: async args =>
-                tools.appendToMemoryBase(args, this.config.primaryVault.path),
             });
 
           case 'find_stale_topics':
@@ -520,10 +518,11 @@ class ObsidianMCPServer {
               this.config.primaryVault.path
             );
 
-          case 'append_to_memory_base':
-            return await tools.appendToMemoryBase(
-              validatedArgs as tools.AppendToMemoryBaseArgs,
-              this.config.primaryVault.path
+          case 'generate_vault_index':
+            return await tools.writeVaultIndex(
+              validatedArgs as tools.GenerateVaultIndexArgs,
+              this.config.primaryVault.path,
+              this.config.secondaryVaults.map(v => ({ path: v.path, name: v.name }))
             );
 
           default:
@@ -1439,26 +1438,29 @@ SCOPE: Decisions can be vault-level (affecting the MCP system itself) or project
         },
       },
       {
-        name: 'append_to_memory_base',
+        name: 'generate_vault_index',
         description:
-          'Append a session summary to the rolling memory file. Automatically trims old content when the file exceeds the size limit.',
+          'Generate a procedural index of vault files sorted by modification time. This creates a file index in memory-base.md that helps Claude understand what content exists in the vault, improving cross-referencing and file update suggestions.',
         inputSchema: {
           type: 'object',
           properties: {
-            summary: {
-              type: 'string',
-              description: 'Session summary to append',
-            },
-            session_topic: {
-              type: 'string',
-              description: 'Optional topic/title for the session',
+            max_files: {
+              type: 'number',
+              description: 'Maximum number of files to include in index (default: 100)',
             },
             max_size_bytes: {
               type: 'number',
-              description: 'Maximum file size in bytes (default: 10240)',
+              description: 'Maximum size of generated index in bytes (default: 10240)',
+            },
+            include_tags: {
+              type: 'boolean',
+              description: 'Include frontmatter tags in index entries (default: true)',
+            },
+            include_description: {
+              type: 'boolean',
+              description: 'Include frontmatter description in index entries (default: false)',
             },
           },
-          required: ['summary'],
         },
       },
     ];
