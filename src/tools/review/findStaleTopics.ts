@@ -91,7 +91,9 @@ export async function findStaleTopics(
       }
     }
   } catch (error) {
-    throw new Error(`Failed to scan topics: ${error}`);
+    throw new Error(
+      `Failed to scan topics: ${error instanceof Error ? error.message : String(error)}`
+    );
   }
 
   // Sort by age (oldest first)

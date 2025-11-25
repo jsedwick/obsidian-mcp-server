@@ -71,7 +71,8 @@ Respond in JSON format:
     // Parse search results to find potential duplicates
     const potentialDuplicates = searchResults.content[0].text.includes('Found 0 matches')
       ? []
-      : searchResults.content[0].text.split('\n')
+      : searchResults.content[0].text
+          .split('\n')
           .filter(line => line.includes('**'))
           .slice(0, 3)
           .map(line => {
@@ -94,9 +95,11 @@ ${analysisPrompt}
 \`\`\`
 
 ## Potential Duplicate Topics
-${potentialDuplicates.length > 0
-  ? `Found ${potentialDuplicates.length} potentially similar existing topics:\n${potentialDuplicates.map((t, i) => `${i + 1}. ${t}`).join('\n')}`
-  : 'No similar topics found in the vault.'}
+${
+  potentialDuplicates.length > 0
+    ? `Found ${potentialDuplicates.length} potentially similar existing topics:\n${potentialDuplicates.map((t, i) => `${i + 1}. ${t}`).join('\n')}`
+    : 'No similar topics found in the vault.'
+}
 
 ## Next Steps
 1. Run the analysis prompt above through a sub-agent to get structured analysis
@@ -123,31 +126,133 @@ ${potentialDuplicates.length > 0
  * Extracts meaningful keywords from title and content without LLM calls.
  * Used by auto_analyze feature in createTopicPage.
  */
-export async function analyzeTopicContentInternal(args: {
+export function analyzeTopicContentInternal(args: {
   content: string;
   topic_name?: string;
   context?: string;
-}): Promise<{
+}): {
   tags: string[];
   summary: string;
   key_concepts: string[];
   related_topics: string[];
   content_type: string;
-}> {
+} {
   // Common words to filter out (expanded stop words list)
   const commonWords = new Set([
-    'the', 'be', 'to', 'of', 'and', 'a', 'in', 'that', 'have', 'i',
-    'it', 'for', 'not', 'on', 'with', 'he', 'as', 'you', 'do', 'at',
-    'this', 'but', 'his', 'by', 'from', 'they', 'we', 'say', 'her', 'she',
-    'or', 'an', 'will', 'my', 'one', 'all', 'would', 'there', 'their',
-    'what', 'so', 'up', 'out', 'if', 'about', 'who', 'get', 'which', 'go',
-    'me', 'when', 'make', 'can', 'like', 'time', 'no', 'just', 'him', 'know',
-    'take', 'people', 'into', 'year', 'your', 'good', 'some', 'could', 'them',
-    'see', 'other', 'than', 'then', 'now', 'look', 'only', 'come', 'its',
-    'over', 'think', 'also', 'back', 'after', 'use', 'two', 'how', 'our',
-    'work', 'first', 'well', 'way', 'even', 'new', 'want', 'because', 'any',
-    'these', 'give', 'day', 'most', 'us', 'is', 'was', 'are', 'been', 'has',
-    'had', 'were', 'said', 'did', 'having', 'may', 'should', 'does', 'done'
+    'the',
+    'be',
+    'to',
+    'of',
+    'and',
+    'a',
+    'in',
+    'that',
+    'have',
+    'i',
+    'it',
+    'for',
+    'not',
+    'on',
+    'with',
+    'he',
+    'as',
+    'you',
+    'do',
+    'at',
+    'this',
+    'but',
+    'his',
+    'by',
+    'from',
+    'they',
+    'we',
+    'say',
+    'her',
+    'she',
+    'or',
+    'an',
+    'will',
+    'my',
+    'one',
+    'all',
+    'would',
+    'there',
+    'their',
+    'what',
+    'so',
+    'up',
+    'out',
+    'if',
+    'about',
+    'who',
+    'get',
+    'which',
+    'go',
+    'me',
+    'when',
+    'make',
+    'can',
+    'like',
+    'time',
+    'no',
+    'just',
+    'him',
+    'know',
+    'take',
+    'people',
+    'into',
+    'year',
+    'your',
+    'good',
+    'some',
+    'could',
+    'them',
+    'see',
+    'other',
+    'than',
+    'then',
+    'now',
+    'look',
+    'only',
+    'come',
+    'its',
+    'over',
+    'think',
+    'also',
+    'back',
+    'after',
+    'use',
+    'two',
+    'how',
+    'our',
+    'work',
+    'first',
+    'well',
+    'way',
+    'even',
+    'new',
+    'want',
+    'because',
+    'any',
+    'these',
+    'give',
+    'day',
+    'most',
+    'us',
+    'is',
+    'was',
+    'are',
+    'been',
+    'has',
+    'had',
+    'were',
+    'said',
+    'did',
+    'having',
+    'may',
+    'should',
+    'does',
+    'done',
   ]);
 
   // Extract words from title and content

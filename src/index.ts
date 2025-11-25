@@ -36,10 +36,10 @@ function loadConfig(): ServerConfig {
   const projectRoot = path.join(currentDir, '..');
 
   const configPaths = [
-    path.join(currentDir, '.obsidian-mcp.json'),     // dist/.obsidian-mcp.json (built)
-    path.join(projectRoot, '.obsidian-mcp.json'),    // project-root/.obsidian-mcp.json
-    path.join(process.env.HOME || '', '.obsidian-mcp.json'),  // ~/.obsidian-mcp.json
-    path.join(process.env.HOME || '', '.config', '.obsidian-mcp.json')  // ~/.config/.obsidian-mcp.json
+    path.join(currentDir, '.obsidian-mcp.json'), // dist/.obsidian-mcp.json (built)
+    path.join(projectRoot, '.obsidian-mcp.json'), // project-root/.obsidian-mcp.json
+    path.join(process.env.HOME || '', '.obsidian-mcp.json'), // ~/.obsidian-mcp.json
+    path.join(process.env.HOME || '', '.config', '.obsidian-mcp.json'), // ~/.config/.obsidian-mcp.json
   ];
 
   // Try each path until we find one that exists
@@ -76,7 +76,7 @@ function loadConfig(): ServerConfig {
           name: typedConfig.primaryVault.name || 'Primary Vault',
           authority: typedConfig.primaryVault.authority || 'default',
         },
-        secondaryVaults: (typedConfig.secondaryVaults || []).map((v) => ({
+        secondaryVaults: (typedConfig.secondaryVaults || []).map(v => ({
           path: normalizePath(v.path),
           name: v.name || path.basename(v.path),
           authority: v.authority || 'default',
@@ -92,11 +92,14 @@ function loadConfig(): ServerConfig {
   // Helper to normalize paths (remove trailing slashes)
   const normalizePath = (p: string): string => p.replace(/\/+$/, '');
 
-  const primaryPath = process.env.OBSIDIAN_VAULT_PATH || path.join(process.env.HOME || '', 'obsidian-vault');
+  const primaryPath =
+    process.env.OBSIDIAN_VAULT_PATH || path.join(process.env.HOME || '', 'obsidian-vault');
 
   // Parse secondary vaults from env (comma-separated paths)
   const secondaryPaths = process.env.OBSIDIAN_SECONDARY_VAULTS
-    ? process.env.OBSIDIAN_SECONDARY_VAULTS.split(',').map(p => p.trim()).filter(p => p)
+    ? process.env.OBSIDIAN_SECONDARY_VAULTS.split(',')
+        .map(p => p.trim())
+        .filter(p => p)
     : [];
 
   return {
@@ -115,7 +118,6 @@ function loadConfig(): ServerConfig {
 
 const CONFIG = loadConfig();
 const VAULT_PATH = CONFIG.primaryVault.path; // Keep for backward compatibility
-
 
 interface EmbeddingCacheEntry {
   file: string;
@@ -141,10 +143,10 @@ interface EmbeddingToggleConfig {
 
 // Response detail levels for tiered responses
 enum ResponseDetail {
-  MINIMAL = 'minimal',    // IDs, titles, counts only
-  SUMMARY = 'summary',    // + brief snippets (default)
-  DETAILED = 'detailed',  // + extended context
-  FULL = 'full'          // Complete content
+  MINIMAL = 'minimal', // IDs, titles, counts only
+  SUMMARY = 'summary', // + brief snippets (default)
+  DETAILED = 'detailed', // + extended context
+  FULL = 'full', // Complete content
 }
 
 class ObsidianMCPServer {
@@ -191,16 +193,16 @@ class ObsidianMCPServer {
     // Initialize embedding config with per-vault cache directories
     const cacheDirs = new Map<string, string>();
     // Primary vault cache
-    cacheDirs.set(this.config.primaryVault.path, path.join(this.config.primaryVault.path, '.embedding-cache'));
+    cacheDirs.set(
+      this.config.primaryVault.path,
+      path.join(this.config.primaryVault.path, '.embedding-cache')
+    );
     // Secondary vaults cache
     for (const vault of this.config.secondaryVaults) {
       cacheDirs.set(vault.path, path.join(vault.path, '.embedding-cache'));
     }
 
-    this.embeddingToggleFile = path.join(
-      this.config.primaryVault.path,
-      '.embedding-toggle.json'
-    );
+    this.embeddingToggleFile = path.join(this.config.primaryVault.path, '.embedding-toggle.json');
 
     // Try to load embedding state from toggle file, fallback to env var
     this.embeddingConfig = {
@@ -224,11 +226,19 @@ class ObsidianMCPServer {
       const vaultAuthorities = this.buildVaultAuthoritiesMap();
 
       // Primary vault
-      const primaryCacheDir = path.join(this.config.primaryVault.path, DEFAULT_INDEX_CONFIG.cacheDir);
+      const primaryCacheDir = path.join(
+        this.config.primaryVault.path,
+        DEFAULT_INDEX_CONFIG.cacheDir
+      );
       const primaryBuilder = new IndexBuilder(primaryCacheDir);
-      console.error(`[Init] Primary vault: ${this.config.primaryVault.name} at path: ${this.config.primaryVault.path}`);
+      console.error(
+        `[Init] Primary vault: ${this.config.primaryVault.name} at path: ${this.config.primaryVault.path}`
+      );
       this.indexBuilders.set(this.config.primaryVault.path, primaryBuilder);
-      this.indexedSearches.set(this.config.primaryVault.path, new IndexedSearch(primaryBuilder, primaryCacheDir, vaultAuthorities));
+      this.indexedSearches.set(
+        this.config.primaryVault.path,
+        new IndexedSearch(primaryBuilder, primaryCacheDir, vaultAuthorities)
+      );
 
       // Secondary vaults
       for (const vault of this.config.secondaryVaults) {
@@ -236,7 +246,10 @@ class ObsidianMCPServer {
         const builder = new IndexBuilder(cacheDir);
         console.error(`[Init] Secondary vault: ${vault.name} at path: ${vault.path}`);
         this.indexBuilders.set(vault.path, builder);
-        this.indexedSearches.set(vault.path, new IndexedSearch(builder, cacheDir, vaultAuthorities));
+        this.indexedSearches.set(
+          vault.path,
+          new IndexedSearch(builder, cacheDir, vaultAuthorities)
+        );
       }
 
       console.error('[Init] Final Map keys:');
@@ -249,15 +262,14 @@ class ObsidianMCPServer {
   }
 
   private setupErrorHandling(): void {
-    this.server.onerror = (error) => {
+    this.server.onerror = error => {
       console.error('[MCP Error]', error);
     };
 
-    process.on('SIGINT', async () => {
+    process.on('SIGINT', () => {
       // With lazy session creation, we don't need to close sessions on SIGINT
       // Sessions are only created when user explicitly runs /close
-      await this.server.close();
-      process.exit(0);
+      void this.server.close().then(() => process.exit(0));
     });
   }
 
@@ -294,7 +306,7 @@ class ObsidianMCPServer {
 
   private setupHandlers(): void {
     // List available tools
-    this.server.setRequestHandler(ListToolsRequestSchema, async () => ({
+    this.server.setRequestHandler(ListToolsRequestSchema, () => ({
       tools: this.getTools(),
     }));
 
@@ -334,7 +346,7 @@ class ObsidianMCPServer {
               ensureVaultStructure: this.ensureVaultStructure.bind(this),
               analyzeTopicContentInternal: this.analyzeTopicContentInternal.bind(this),
               findRelatedProjects: this.findRelatedProjects.bind(this),
-              trackTopicCreation: (topic) => this.topicsCreated.push(topic),
+              trackTopicCreation: topic => this.topicsCreated.push(topic),
             });
 
           case 'create_decision':
@@ -344,7 +356,7 @@ class ObsidianMCPServer {
               slugify: this.slugify.bind(this),
               ensureVaultStructure: this.ensureVaultStructure.bind(this),
               findRelatedContentInText: this.findRelatedContentInText.bind(this),
-              trackDecisionCreation: (decision) => this.decisionsCreated.push(decision),
+              trackDecisionCreation: decision => this.decisionsCreated.push(decision),
             });
 
           case 'update_topic_page':
@@ -386,7 +398,8 @@ class ObsidianMCPServer {
               setCurrentSession: this.setCurrentSession.bind(this),
               clearSessionState: this.clearSessionState.bind(this),
               getMostRecentSessionDate: this.getMostRecentSessionDate.bind(this),
-              appendToMemoryBase: async (args) => tools.appendToMemoryBase(args, this.config.primaryVault.path),
+              appendToMemoryBase: async args =>
+                tools.appendToMemoryBase(args, this.config.primaryVault.path),
             });
 
           case 'find_stale_topics':
@@ -395,7 +408,6 @@ class ObsidianMCPServer {
               ensureVaultStructure: this.ensureVaultStructure.bind(this),
               getFileAgeDays: this.getFileAgeDays.bind(this),
             });
-
 
           case 'archive_topic':
             return await tools.archiveTopic(validatedArgs as tools.ArchiveTopicArgs, {
@@ -421,26 +433,32 @@ class ObsidianMCPServer {
             });
 
           case 'detect_session_repositories':
-            return await tools.detectSessionRepositories(validatedArgs as tools.DetectSessionRepositoriesArgs, {
-              currentSessionId: this.currentSessionId,
-              filesAccessed: this.filesAccessed,
-              findGitRepos: this.findGitRepos.bind(this),
-              getRepoInfo: this.getRepoInfo.bind(this),
-            });
+            return await tools.detectSessionRepositories(
+              validatedArgs as tools.DetectSessionRepositoriesArgs,
+              {
+                currentSessionId: this.currentSessionId,
+                filesAccessed: this.filesAccessed,
+                findGitRepos: this.findGitRepos.bind(this),
+                getRepoInfo: this.getRepoInfo.bind(this),
+              }
+            );
 
           case 'link_session_to_repository':
-            return await tools.linkSessionToRepository(validatedArgs as tools.LinkSessionToRepositoryArgs, {
-              currentSessionFile: this.currentSessionFile,
-              filesAccessed: this.filesAccessed,
-              gitService: this.gitService,
-              createProjectPage: this.createProjectPageWrapper.bind(this),
-            });
+            return await tools.linkSessionToRepository(
+              validatedArgs as tools.LinkSessionToRepositoryArgs,
+              {
+                currentSessionFile: this.currentSessionFile,
+                filesAccessed: this.filesAccessed,
+                gitService: this.gitService,
+                createProjectPage: this.createProjectPageWrapper.bind(this),
+              }
+            );
 
           case 'create_project_page':
             return await tools.createProjectPage(validatedArgs as tools.CreateProjectPageArgs, {
               vaultPath: this.config.primaryVault.path,
               gitService: this.gitService,
-              trackProjectCreation: (project) => this.projectsCreated.push(project),
+              trackProjectCreation: project => this.projectsCreated.push(project),
             });
 
           case 'record_commit':
@@ -456,8 +474,12 @@ class ObsidianMCPServer {
               embeddingConfig: this.embeddingConfig,
               embeddingToggleFile: this.embeddingToggleFile,
               embeddingCache: this.embeddingCache,
-              setExtractor: (extractor) => { this.extractor = extractor; },
-              setEmbeddingInitPromise: (promise) => { this.embeddingInitPromise = promise; },
+              setExtractor: extractor => {
+                this.extractor = extractor;
+              },
+              setEmbeddingInitPromise: promise => {
+                this.embeddingInitPromise = promise;
+              },
             });
 
           case 'vault_custodian':
@@ -468,10 +490,13 @@ class ObsidianMCPServer {
             });
 
           case 'migrate_commit_branches':
-            return await tools.migrateCommitBranches(validatedArgs as tools.MigrateCommitBranchesArgs, {
-              vaultPath: this.config.primaryVault.path,
-              gitService: this.gitService,
-            });
+            return await tools.migrateCommitBranches(
+              validatedArgs as tools.MigrateCommitBranchesArgs,
+              {
+                vaultPath: this.config.primaryVault.path,
+                gitService: this.gitService,
+              }
+            );
 
           case 'analyze_topic_content':
             return await tools.analyzeTopicContent(validatedArgs as tools.AnalyzeTopicContentArgs, {
@@ -575,16 +600,22 @@ class ObsidianMCPServer {
 
     try {
       // Generate embedding for the text
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
       const result = await this.extractor(text, { pooling: 'mean', normalize: true });
 
-      // Convert to array if needed
+      // Convert to array if needed - result type varies by transformers.js version
       let embedding: number[];
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
       if (result.data) {
-        embedding = Array.from(result.data);
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+        embedding = Array.from(result.data as ArrayLike<number>);
       } else if (Array.isArray(result)) {
-        embedding = (result as unknown[])[0] ? Array.from((result as unknown[])[0] as any) : Array.from(result as any);
+        const arr = result as unknown[];
+        embedding = arr[0]
+          ? Array.from(arr[0] as ArrayLike<number>)
+          : Array.from(arr as unknown as ArrayLike<number>);
       } else {
-        embedding = Array.from(result);
+        embedding = Array.from(result as ArrayLike<number>);
       }
       return embedding;
     } catch (error) {
@@ -721,7 +752,11 @@ class ObsidianMCPServer {
     return null;
   }
 
-  private async getOrCreateEmbedding(file: string, content: string, fileStats: any): Promise<number[]> {
+  private async getOrCreateEmbedding(
+    file: string,
+    content: string,
+    fileStats: any
+  ): Promise<number[]> {
     // Try to get from cache
     const cached = this.getCachedEmbedding(file, fileStats);
     if (cached) {
@@ -746,12 +781,12 @@ class ObsidianMCPServer {
   private loadEmbeddingToggleState(): boolean {
     // Try to load from toggle file first
     try {
-      if (require('fs').existsSync(this.embeddingToggleFile)) {
-        const data = require('fs').readFileSync(this.embeddingToggleFile, 'utf-8');
+      if (fssync.existsSync(this.embeddingToggleFile)) {
+        const data = fssync.readFileSync(this.embeddingToggleFile, 'utf-8');
         const config: EmbeddingToggleConfig = JSON.parse(data);
         return config.enabled;
       }
-    } catch (error) {
+    } catch (_error) {
       // Fall through to env var
     }
 
@@ -771,9 +806,8 @@ class ObsidianMCPServer {
     let filesSkipped = 0;
 
     for (const vault of vaults) {
-      const searchDirs = vault.path === this.config.primaryVault.path
-        ? ['sessions', 'topics', 'decisions']
-        : []; // Search everything in secondary vaults
+      const searchDirs =
+        vault.path === this.config.primaryVault.path ? ['sessions', 'topics', 'decisions'] : []; // Search everything in secondary vaults
 
       try {
         // Recursively find all markdown files
@@ -787,7 +821,7 @@ class ObsidianMCPServer {
           try {
             // Check if already cached and up to date
             const fileStats = await fs.stat(filePath);
-            const cached = await this.getCachedEmbedding(filePath, fileStats);
+            const cached = this.getCachedEmbedding(filePath, fileStats);
 
             if (cached) {
               filesSkipped++;
@@ -815,7 +849,9 @@ class ObsidianMCPServer {
     // Save all computed embeddings
     await this.saveEmbeddingCache();
 
-    console.error(`[Embeddings] Pre-computation complete: ${filesProcessed} new, ${filesSkipped} cached`);
+    console.error(
+      `[Embeddings] Pre-computation complete: ${filesProcessed} new, ${filesSkipped} cached`
+    );
   }
 
   /**
@@ -837,7 +873,11 @@ class ObsidianMCPServer {
 
           // Skip ignored directories
           if (entry.isDirectory()) {
-            if (['.git', 'node_modules', '.DS_Store', '.obsidian', '.embedding-cache'].includes(entry.name)) {
+            if (
+              ['.git', 'node_modules', '.DS_Store', '.obsidian', '.embedding-cache'].includes(
+                entry.name
+              )
+            ) {
               continue;
             }
 
@@ -857,7 +897,7 @@ class ObsidianMCPServer {
             files.push(fullPath);
           }
         }
-      } catch (error) {
+      } catch (_error) {
         // Directory doesn't exist or can't be accessed
       }
     };
@@ -882,7 +922,8 @@ class ObsidianMCPServer {
     return [
       {
         name: 'search_vault',
-        description: 'Search the Obsidian vault for relevant notes and context. Returns ranked results with snippets. Use get_session_context to read full files.',
+        description:
+          'Search the Obsidian vault for relevant notes and context. Returns ranked results with snippets. Use get_session_context to read full files.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -910,13 +951,15 @@ class ObsidianMCPServer {
             },
             snippets_only: {
               type: 'boolean',
-              description: 'If true, return condensed snippets instead of full matches (default: true)',
+              description:
+                'If true, return condensed snippets instead of full matches (default: true)',
               default: true,
             },
             detail: {
               type: 'string',
               enum: ['minimal', 'summary', 'detailed', 'full'],
-              description: 'Response detail level. minimal: files only, summary: + snippets (default), detailed: + extended context, full: complete matches',
+              description:
+                'Response detail level. minimal: files only, summary: + snippets (default), detailed: + extended context, full: complete matches',
               default: 'summary',
             },
           },
@@ -950,7 +993,8 @@ DO NOT USE FOR:
             },
             auto_analyze: {
               type: ['boolean', 'string'],
-              description: 'Auto-analyze content for tags and metadata. false (default): generic tags, true: always analyze, "smart": analyze if content >500 words and no existing tags',
+              description:
+                'Auto-analyze content for tags and metadata. false (default): generic tags, true: always analyze, "smart": analyze if content >500 words and no existing tags',
               enum: [false, true, 'smart'],
             },
           },
@@ -994,11 +1038,13 @@ SCOPE: Decisions can be vault-level (affecting the MCP system itself) or project
             },
             project: {
               type: 'string',
-              description: 'Optional project slug (e.g., "obsidian-mcp-server", "accessibility-automatic-testing"). If provided, decision is created in decisions/{project}/. If omitted, decision is vault-level and created in decisions/vault/.',
+              description:
+                'Optional project slug (e.g., "obsidian-mcp-server", "accessibility-automatic-testing"). If provided, decision is created in decisions/{project}/. If omitted, decision is vault-level and created in decisions/vault/.',
             },
             force: {
               type: 'boolean',
-              description: 'Set to true to bypass keyword detection warnings. Use when title contains implementation keywords but the decision is genuinely strategic (e.g., "Implement Feature X: considered approach A vs B, chose B")',
+              description:
+                'Set to true to bypass keyword detection warnings. Use when title contains implementation keywords but the decision is genuinely strategic (e.g., "Implement Feature X: considered approach A vs B, chose B")',
             },
           },
           required: ['title', 'content'],
@@ -1042,7 +1088,8 @@ SCOPE: Decisions can be vault-level (affecting the MCP system itself) or project
       },
       {
         name: 'get_topic_context',
-        description: 'Load full topic content when you need complete, authoritative information. Topics are living documents that represent the gold standard for their subject matter.\n\n**When to use:**\n- You need detailed, comprehensive understanding of a concept\n- Search snippets are insufficient or incomplete\n- User asks for in-depth explanation\n- Multiple follow-up questions are expected\n\n**When NOT to use:**\n- Quick factual lookup (use search snippets instead)\n- Topic would be very large but you only need a small detail\n- One-off questions where snippets suffice\n\n**Best practice:** Search first to identify relevant topics, then load the full topic for authoritative reference.',
+        description:
+          'Load full topic content when you need complete, authoritative information. Topics are living documents that represent the gold standard for their subject matter.\n\n**When to use:**\n- You need detailed, comprehensive understanding of a concept\n- Search snippets are insufficient or incomplete\n- User asks for in-depth explanation\n- Multiple follow-up questions are expected\n\n**When NOT to use:**\n- Quick factual lookup (use search snippets instead)\n- Topic would be very large but you only need a small detail\n- One-off questions where snippets suffice\n\n**Best practice:** Search first to identify relevant topics, then load the full topic for authoritative reference.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -1056,7 +1103,8 @@ SCOPE: Decisions can be vault-level (affecting the MCP system itself) or project
       },
       {
         name: 'link_to_topic',
-        description: 'Get the Obsidian link format for a topic, creating the page if it doesn\'t exist.',
+        description:
+          "Get the Obsidian link format for a topic, creating the page if it doesn't exist.",
         inputSchema: {
           type: 'object',
           properties: {
@@ -1070,21 +1118,25 @@ SCOPE: Decisions can be vault-level (affecting the MCP system itself) or project
       },
       {
         name: 'close_session',
-        description: 'Create a session retroactively to capture the work done in this conversation. ONLY callable via the /close slash command. Call this at the end of a conversation to persist the session to the vault.',
+        description:
+          'Create a session retroactively to capture the work done in this conversation. ONLY callable via the /close slash command. Call this at the end of a conversation to persist the session to the vault.',
         inputSchema: {
           type: 'object',
           properties: {
             summary: {
               type: 'string',
-              description: 'A summary of what was accomplished in this conversation. This will be the main content of the session file.',
+              description:
+                'A summary of what was accomplished in this conversation. This will be the main content of the session file.',
             },
             topic: {
               type: 'string',
-              description: 'Optional topic or title for this session (will be slugified for the filename)',
+              description:
+                'Optional topic or title for this session (will be slugified for the filename)',
             },
             _invoked_by_slash_command: {
               type: 'boolean',
-              description: 'Internal parameter - must be true to invoke this tool. Only set by slash commands.',
+              description:
+                'Internal parameter - must be true to invoke this tool. Only set by slash commands.',
               default: false,
             },
           },
@@ -1093,13 +1145,15 @@ SCOPE: Decisions can be vault-level (affecting the MCP system itself) or project
       },
       {
         name: 'find_stale_topics',
-        description: 'Find topics that haven\'t been reviewed in a specified time period. Returns list of topics that may need review.',
+        description:
+          "Find topics that haven't been reviewed in a specified time period. Returns list of topics that may need review.",
         inputSchema: {
           type: 'object',
           properties: {
             age_threshold_days: {
               type: 'number',
-              description: 'Number of days since creation or last review to consider a topic stale (default: 365)',
+              description:
+                'Number of days since creation or last review to consider a topic stale (default: 365)',
               default: 365,
             },
             include_never_reviewed: {
@@ -1130,7 +1184,8 @@ SCOPE: Decisions can be vault-level (affecting the MCP system itself) or project
       },
       {
         name: 'list_recent_sessions',
-        description: 'List the most recent conversation sessions. Returns session metadata including ID, topic, date, and status.',
+        description:
+          'List the most recent conversation sessions. Returns session metadata including ID, topic, date, and status.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -1142,12 +1197,14 @@ SCOPE: Decisions can be vault-level (affecting the MCP system itself) or project
             detail: {
               type: 'string',
               enum: ['minimal', 'summary', 'detailed', 'full'],
-              description: 'Response detail level. minimal: IDs only, summary: + date/status (default), detailed: + files/commits, full: + summaries',
+              description:
+                'Response detail level. minimal: IDs only, summary: + date/status (default), detailed: + files/commits, full: + summaries',
               default: 'summary',
             },
             _invoked_by_slash_command: {
               type: 'boolean',
-              description: 'Internal parameter - must be true to invoke this tool. Only set by slash commands.',
+              description:
+                'Internal parameter - must be true to invoke this tool. Only set by slash commands.',
               default: false,
             },
           },
@@ -1155,7 +1212,8 @@ SCOPE: Decisions can be vault-level (affecting the MCP system itself) or project
       },
       {
         name: 'list_recent_projects',
-        description: 'List the most recent projects. Returns project metadata including name, repository path, creation date, and activity.',
+        description:
+          'List the most recent projects. Returns project metadata including name, repository path, creation date, and activity.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -1167,12 +1225,14 @@ SCOPE: Decisions can be vault-level (affecting the MCP system itself) or project
             detail: {
               type: 'string',
               enum: ['minimal', 'summary', 'detailed', 'full'],
-              description: 'Response detail level. minimal: names only, summary: + paths/dates (default), detailed: + recent commits, full: + full project pages',
+              description:
+                'Response detail level. minimal: names only, summary: + paths/dates (default), detailed: + recent commits, full: + full project pages',
               default: 'summary',
             },
             _invoked_by_slash_command: {
               type: 'boolean',
-              description: 'Internal parameter - must be true to invoke this tool. Only set by slash commands.',
+              description:
+                'Internal parameter - must be true to invoke this tool. Only set by slash commands.',
               default: false,
             },
           },
@@ -1180,7 +1240,8 @@ SCOPE: Decisions can be vault-level (affecting the MCP system itself) or project
       },
       {
         name: 'track_file_access',
-        description: 'Track a file that was accessed during the session. Used to help detect relevant Git repositories.',
+        description:
+          'Track a file that was accessed during the session. Used to help detect relevant Git repositories.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -1199,7 +1260,8 @@ SCOPE: Decisions can be vault-level (affecting the MCP system itself) or project
       },
       {
         name: 'detect_session_repositories',
-        description: 'Analyze the current session to detect relevant Git repositories based on files accessed and session context.',
+        description:
+          'Analyze the current session to detect relevant Git repositories based on files accessed and session context.',
         inputSchema: {
           type: 'object',
           properties: {},
@@ -1221,7 +1283,8 @@ SCOPE: Decisions can be vault-level (affecting the MCP system itself) or project
       },
       {
         name: 'create_project_page',
-        description: 'Create or update a project page in the Obsidian vault for tracking a Git repository.',
+        description:
+          'Create or update a project page in the Obsidian vault for tracking a Git repository.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -1235,7 +1298,8 @@ SCOPE: Decisions can be vault-level (affecting the MCP system itself) or project
       },
       {
         name: 'record_commit',
-        description: 'Record a Git commit in the Obsidian vault, creating a commit page with diff and session links.',
+        description:
+          'Record a Git commit in the Obsidian vault, creating a commit page with diff and session links.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -1253,51 +1317,59 @@ SCOPE: Decisions can be vault-level (affecting the MCP system itself) or project
       },
       {
         name: 'toggle_embeddings',
-        description: 'Toggle the embedding cache on or off. Embeddings are used for semantic search in search_vault. Easily toggle without restarting the server.',
+        description:
+          'Toggle the embedding cache on or off. Embeddings are used for semantic search in search_vault. Easily toggle without restarting the server.',
         inputSchema: {
           type: 'object',
           properties: {
             enabled: {
               type: 'boolean',
-              description: 'Optional: true to enable, false to disable. If not provided, toggles current state.',
+              description:
+                'Optional: true to enable, false to disable. If not provided, toggles current state.',
             },
           },
         },
       },
       {
         name: 'vault_custodian',
-        description: 'Verify vault integrity by checking file organization, validating links, and reorganizing/relinking files as necessary. Ensures all files are in logical locations and properly connected. Can optionally be scoped to only check specific files.',
+        description:
+          'Verify vault integrity by checking file organization, validating links, and reorganizing/relinking files as necessary. Ensures all files are in logical locations and properly connected. Can optionally be scoped to only check specific files.',
         inputSchema: {
           type: 'object',
           properties: {
             files_to_check: {
               type: 'array',
               items: { type: 'string' },
-              description: 'Optional: Array of absolute file paths to check. If not provided, checks all vault files.',
+              description:
+                'Optional: Array of absolute file paths to check. If not provided, checks all vault files.',
             },
           },
         },
       },
       {
         name: 'migrate_commit_branches',
-        description: 'Migrate existing commit files to add branch information. Scans all recorded commits and adds branch field to frontmatter based on Git history. Optional: specify project slug to migrate only that project.',
+        description:
+          'Migrate existing commit files to add branch information. Scans all recorded commits and adds branch field to frontmatter based on Git history. Optional: specify project slug to migrate only that project.',
         inputSchema: {
           type: 'object',
           properties: {
             project_slug: {
               type: 'string',
-              description: 'Optional: Project slug to migrate (e.g., "obsidian-mcp-server"). If not provided, migrates all projects.',
+              description:
+                'Optional: Project slug to migrate (e.g., "obsidian-mcp-server"). If not provided, migrates all projects.',
             },
             dry_run: {
               type: 'boolean',
-              description: 'If true, shows what would be changed without making changes. Default: false.',
+              description:
+                'If true, shows what would be changed without making changes. Default: false.',
             },
           },
         },
       },
       {
         name: 'analyze_topic_content',
-        description: 'Analyze topic content using AI to generate tags, summary, find related topics, and detect duplicates. Returns structured analysis that can be used to enhance topic creation.',
+        description:
+          'Analyze topic content using AI to generate tags, summary, find related topics, and detect duplicates. Returns structured analysis that can be used to enhance topic creation.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -1319,7 +1391,8 @@ SCOPE: Decisions can be vault-level (affecting the MCP system itself) or project
       },
       {
         name: 'analyze_commit_impact',
-        description: 'Analyze a Git commit to understand what changed, generate human-readable summaries, and identify related topics/decisions. Provides impact analysis for documentation updates.',
+        description:
+          'Analyze a Git commit to understand what changed, generate human-readable summaries, and identify related topics/decisions. Provides impact analysis for documentation updates.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -1341,7 +1414,8 @@ SCOPE: Decisions can be vault-level (affecting the MCP system itself) or project
       },
       {
         name: 'get_memory_base',
-        description: 'Retrieve the current contents of the rolling memory file. Used at session start to provide continuity from recent conversations.',
+        description:
+          'Retrieve the current contents of the rolling memory file. Used at session start to provide continuity from recent conversations.',
         inputSchema: {
           type: 'object',
           properties: {},
@@ -1349,7 +1423,8 @@ SCOPE: Decisions can be vault-level (affecting the MCP system itself) or project
       },
       {
         name: 'append_to_memory_base',
-        description: 'Append a session summary to the rolling memory file. Automatically trims old content when the file exceeds the size limit.',
+        description:
+          'Append a session summary to the rolling memory file. Automatically trims old content when the file exceeds the size limit.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -1387,7 +1462,9 @@ SCOPE: Decisions can be vault-level (affecting the MCP system itself) or project
     try {
       await fs.access(indexPath);
     } catch {
-      await fs.writeFile(indexPath, `# Obsidian Vault Index
+      await fs.writeFile(
+        indexPath,
+        `# Obsidian Vault Index
 
 This vault contains context from Claude Code conversations.
 
@@ -1398,7 +1475,8 @@ This vault contains context from Claude Code conversations.
 
 ## Recent Sessions
 Check the sessions/ directory for recent conversations.
-`);
+`
+      );
     }
   }
 
@@ -1414,7 +1492,11 @@ Check the sessions/ directory for recent conversations.
   // ==================== Tool Wrapper Methods ====================
   // These wrappers allow modular tools to call other tools without circular dependencies
 
-  private async createTopicPageWrapper(args: { topic: string; content: string; auto_analyze?: boolean | 'true' | 'smart' }): Promise<any> {
+  private async createTopicPageWrapper(args: {
+    topic: string;
+    content: string;
+    auto_analyze?: boolean | 'true' | 'smart';
+  }): Promise<any> {
     return tools.createTopicPage(args as unknown as tools.CreateTopicPageArgs, {
       vaultPath: this.config.primaryVault.path,
       currentSessionId: this.currentSessionId,
@@ -1422,7 +1504,7 @@ Check the sessions/ directory for recent conversations.
       ensureVaultStructure: this.ensureVaultStructure.bind(this),
       analyzeTopicContentInternal: this.analyzeTopicContentInternal.bind(this),
       findRelatedProjects: this.findRelatedProjects.bind(this),
-      trackTopicCreation: (topic) => this.topicsCreated.push(topic),
+      trackTopicCreation: topic => this.topicsCreated.push(topic),
     });
   }
 
@@ -1430,7 +1512,7 @@ Check the sessions/ directory for recent conversations.
     return tools.createProjectPage(args as unknown as tools.CreateProjectPageArgs, {
       vaultPath: this.config.primaryVault.path,
       gitService: this.gitService,
-      trackProjectCreation: (project) => this.projectsCreated.push(project),
+      trackProjectCreation: project => this.projectsCreated.push(project),
     });
   }
 
@@ -1441,7 +1523,6 @@ Check the sessions/ directory for recent conversations.
       findSessionFile: this.findSessionFile.bind(this),
     });
   }
-
 
   private async searchVaultWrapper(args: {
     query: string;
@@ -1467,7 +1548,10 @@ Check the sessions/ directory for recent conversations.
     });
   }
 
-  private async recordCommitWrapper(args: { repo_path: string; commit_hash: string }): Promise<any> {
+  private async recordCommitWrapper(args: {
+    repo_path: string;
+    commit_hash: string;
+  }): Promise<any> {
     return tools.recordCommit(args as unknown as tools.RecordCommitArgs, {
       vaultPath: this.config.primaryVault.path,
       gitService: this.gitService,
@@ -1550,17 +1634,22 @@ Check the sessions/ directory for recent conversations.
    * Strip Obsidian-specific markdown syntax from text for cleaner CLI output
    */
   private cleanObsidianMarkdown(text: string): string {
-    return text
-      // Convert wiki links: [[link|display]] -> display, [[link]] -> link
-      .replace(/\[\[([^\]|]+)\|([^\]]+)\]\]/g, '$2')
-      .replace(/\[\[([^\]]+)\]\]/g, '$1');
+    return (
+      text
+        // Convert wiki links: [[link|display]] -> display, [[link]] -> link
+        .replace(/\[\[([^\]|]+)\|([^\]]+)\]\]/g, '$2')
+        .replace(/\[\[([^\]]+)\]\]/g, '$1')
+    );
   }
 
-  private smartTruncate(text: string, options: {
-    maxLength: number;
-    preserveContext: boolean;
-    ellipsis: string;
-  }): string {
+  private smartTruncate(
+    text: string,
+    options: {
+      maxLength: number;
+      preserveContext: boolean;
+      ellipsis: string;
+    }
+  ): string {
     if (text.length <= options.maxLength) return text;
 
     let truncated = text.substring(0, options.maxLength);
@@ -1612,9 +1701,8 @@ Check the sessions/ directory for recent conversations.
         // Just file paths and basic metadata
         resultText += `Found ${totalCount} matches. Top ${results.length}:\n\n`;
         results.forEach((r, idx) => {
-          const vaultIndicator = r.vault && r.vault !== this.config.primaryVault.name
-            ? ` [${r.vault}]`
-            : '';
+          const vaultIndicator =
+            r.vault && r.vault !== this.config.primaryVault.name ? ` [${r.vault}]` : '';
           resultText += `${idx + 1}. ${r.file}${r.date ? ` (${r.date})` : ''}${vaultIndicator}\n`;
         });
         resultText += `\n💡 Use detail: "summary" to see snippets`;
@@ -1624,18 +1712,18 @@ Check the sessions/ directory for recent conversations.
         // Current implementation - snippets truncated to 100 chars
         resultText += `Found ${totalCount} matches. Top ${results.length} results:\n\n`;
         results.forEach((r, idx) => {
-          const semanticIndicator = r.semanticScore !== undefined
-            ? ` [semantic: ${(r.semanticScore * 100).toFixed(0)}%]`
-            : '';
-          const vaultIndicator = r.vault && r.vault !== this.config.primaryVault.name
-            ? ` [${r.vault}]`
-            : '';
+          const semanticIndicator =
+            r.semanticScore !== undefined
+              ? ` [semantic: ${(r.semanticScore * 100).toFixed(0)}%]`
+              : '';
+          const vaultIndicator =
+            r.vault && r.vault !== this.config.primaryVault.name ? ` [${r.vault}]` : '';
 
           resultText += `${idx + 1}. **${r.file}** ${r.date ? `(${r.date})` : ''}${semanticIndicator}${vaultIndicator}\n`;
 
           if (r.matches.length > 0) {
             const snippets = r.matches
-              .slice(0, 3)  // Max 3 snippets per result
+              .slice(0, 3) // Max 3 snippets per result
               .map(m => {
                 const cleaned = this.cleanObsidianMarkdown(m.trim());
                 return `   ${cleaned.substring(0, 100)}${cleaned.length > 100 ? '...' : ''}`;
@@ -1657,24 +1745,24 @@ Check the sessions/ directory for recent conversations.
         // Extended snippets - up to 300 chars, more matches per result
         resultText += `Found ${totalCount} matches. Showing ${results.length} detailed results:\n\n`;
         results.forEach((r, idx) => {
-          const semanticIndicator = r.semanticScore !== undefined
-            ? ` [semantic: ${(r.semanticScore * 100).toFixed(0)}%]`
-            : '';
-          const vaultIndicator = r.vault && r.vault !== this.config.primaryVault.name
-            ? ` [${r.vault}]`
-            : '';
+          const semanticIndicator =
+            r.semanticScore !== undefined
+              ? ` [semantic: ${(r.semanticScore * 100).toFixed(0)}%]`
+              : '';
+          const vaultIndicator =
+            r.vault && r.vault !== this.config.primaryVault.name ? ` [${r.vault}]` : '';
 
           resultText += `${idx + 1}. **${r.file}** ${r.date ? `(${r.date})` : ''}${semanticIndicator}${vaultIndicator}\n`;
 
           if (r.matches.length > 0) {
             const snippets = r.matches
-              .slice(0, 5)  // Up to 5 snippets
+              .slice(0, 5) // Up to 5 snippets
               .map(m => {
                 const cleaned = this.cleanObsidianMarkdown(m.trim());
                 const truncated = this.smartTruncate(cleaned, {
                   maxLength: 300,
                   preserveContext: true,
-                  ellipsis: '...'
+                  ellipsis: '...',
                 });
                 return `   ${truncated}`;
               })
@@ -1697,7 +1785,8 @@ Check the sessions/ directory for recent conversations.
         results.forEach(r => {
           resultText += `**${r.file}** ${r.date ? `(${r.date})` : ''}:\n`;
           if (r.matches.length > 0) {
-            resultText += r.matches.map(m => `  - ${this.cleanObsidianMarkdown(m.trim())}`).join('\n') + '\n';
+            resultText +=
+              r.matches.map(m => `  - ${this.cleanObsidianMarkdown(m.trim())}`).join('\n') + '\n';
           }
           resultText += '\n';
         });
@@ -1716,13 +1805,13 @@ Check the sessions/ directory for recent conversations.
       content: [
         {
           type: 'text',
-          text: resultText
-        }
-      ]
+          text: resultText,
+        },
+      ],
     };
   }
 
-  private async scoreSearchResult(
+  private scoreSearchResult(
     dir: string,
     relPath: string,
     fileName: string,
@@ -1772,7 +1861,10 @@ Check the sessions/ directory for recent conversations.
         break;
       }
     }
-    const firstParagraph = lines.slice(firstParagraphStart, firstParagraphEnd + 1).join('\n').toLowerCase();
+    const firstParagraph = lines
+      .slice(firstParagraphStart, firstParagraphEnd + 1)
+      .join('\n')
+      .toLowerCase();
 
     // Exact phrase match
     if (queryTerms.length > 1 && contentLower.includes(queryLower)) {
@@ -1805,7 +1897,10 @@ Check the sessions/ directory for recent conversations.
         }
 
         // Tag matching
-        if (frontmatter.toLowerCase().includes(`tags:`) && frontmatter.toLowerCase().includes(term)) {
+        if (
+          frontmatter.toLowerCase().includes(`tags:`) &&
+          frontmatter.toLowerCase().includes(term)
+        ) {
           keywordScore += 7;
         }
 
@@ -1936,34 +2031,22 @@ Check the sessions/ directory for recent conversations.
               continue;
             }
           }
-        } catch (error) {
+        } catch (_error) {
           // Skip projects that can't be read
           continue;
         }
       }
-    } catch (error) {
+    } catch (_error) {
       // If projects directory doesn't exist or can't be read, return empty array
     }
 
     return relatedProjects;
   }
 
-
-
-
-
-
-
-
-
-
-
   /**
    * Find topics, decisions, and projects mentioned in text content
    */
-  private async findRelatedContentInText(
-    text: string
-  ): Promise<{
+  private async findRelatedContentInText(text: string): Promise<{
     topics: Array<{ link: string; title: string }>;
     decisions: Array<{ link: string; title: string }>;
     projects: Array<{ link: string; name: string }>;
@@ -1999,7 +2082,7 @@ Check the sessions/ directory for recent conversations.
             }
           }
         }
-      } catch (error) {
+      } catch (_error) {
         // Skip if topics directory doesn't exist
       }
 
@@ -2023,7 +2106,7 @@ Check the sessions/ directory for recent conversations.
             }
           }
         }
-      } catch (error) {
+      } catch (_error) {
         // Skip if decisions directory doesn't exist
       }
 
@@ -2049,21 +2132,19 @@ Check the sessions/ directory for recent conversations.
                 });
               }
             }
-          } catch (error) {
+          } catch (_error) {
             continue;
           }
         }
-      } catch (error) {
+      } catch (_error) {
         // Skip if projects directory doesn't exist
       }
-    } catch (error) {
+    } catch (_error) {
       // Return empty results on error
     }
 
     return result;
   }
-
-
 
   private getFileAgeDays(dateString: string): number {
     const fileDate = new Date(dateString);
@@ -2071,17 +2152,6 @@ Check the sessions/ directory for recent conversations.
     const diffMs = now.getTime() - fileDate.getTime();
     return Math.floor(diffMs / (1000 * 60 * 60 * 24));
   }
-
-
-
-
-
-
-
-
-
-
-
 
   private async findGitRepos(startPath: string, maxDepth: number = 2): Promise<string[]> {
     const repos: string[] = [];
@@ -2106,7 +2176,7 @@ Check the sessions/ directory for recent conversations.
             await searchDir(path.join(dirPath, entry.name), depth + 1);
           }
         }
-      } catch (error) {
+      } catch (_error) {
         // Skip directories we can't access
       }
     };
@@ -2135,30 +2205,32 @@ Check the sessions/ directory for recent conversations.
     return repos;
   }
 
-  private async getRepoInfo(repoPath: string): Promise<{ name: string; branch?: string; remote?: string }> {
+  private async getRepoInfo(
+    repoPath: string
+  ): Promise<{ name: string; branch?: string; remote?: string }> {
     const name = path.basename(repoPath);
 
     try {
-      const { stdout: branchOutput } = await execAsync('git rev-parse --abbrev-ref HEAD', { cwd: repoPath });
+      const { stdout: branchOutput } = await execAsync('git rev-parse --abbrev-ref HEAD', {
+        cwd: repoPath,
+      });
       const branch = branchOutput.trim();
 
       let remote: string | undefined;
       try {
-        const { stdout: remoteOutput } = await execAsync('git config --get remote.origin.url', { cwd: repoPath });
+        const { stdout: remoteOutput } = await execAsync('git config --get remote.origin.url', {
+          cwd: repoPath,
+        });
         remote = remoteOutput.trim();
       } catch {
         // No remote configured
       }
 
       return { name, branch, remote };
-    } catch (error) {
+    } catch (_error) {
       return { name };
     }
   }
-
-
-
-
 
   /**
    * Extract repository slug from various URL formats
@@ -2166,8 +2238,6 @@ Check the sessions/ directory for recent conversations.
   /**
    * Migrate existing commit files to add branch information
    */
-
-
 
   private async findMarkdownFiles(dir: string): Promise<string[]> {
     const files: string[] = [];
@@ -2181,13 +2251,13 @@ Check the sessions/ directory for recent conversations.
         if (entry.isDirectory()) {
           // Skip hidden directories and cache directories
           if (!entry.name.startsWith('.')) {
-            files.push(...await this.findMarkdownFiles(fullPath));
+            files.push(...(await this.findMarkdownFiles(fullPath)));
           }
         } else if (entry.isFile() && entry.name.endsWith('.md')) {
           files.push(fullPath);
         }
       }
-    } catch (error) {
+    } catch (_error) {
       // Directory doesn't exist or can't be read
     }
 
@@ -2196,38 +2266,138 @@ Check the sessions/ directory for recent conversations.
 
   // ==================== Sub-Agent Powered Analysis Methods ====================
 
-
-
   /**
    * Internal method to analyze topic content using heuristic tag extraction.
    * Extracts meaningful keywords from title and content without LLM calls.
    * Used by auto_analyze feature in createTopicPage.
    */
-  private async analyzeTopicContentInternal(args: {
+  private analyzeTopicContentInternal(args: {
     content: string;
     topic_name?: string;
     context?: string;
-  }): Promise<{
+  }): {
     tags: string[];
     summary: string;
     key_concepts: string[];
     related_topics: string[];
     content_type: string;
-  }> {
+  } {
     // Common words to filter out (expanded stop words list)
     const commonWords = new Set([
-      'the', 'be', 'to', 'of', 'and', 'a', 'in', 'that', 'have', 'i',
-      'it', 'for', 'not', 'on', 'with', 'he', 'as', 'you', 'do', 'at',
-      'this', 'but', 'his', 'by', 'from', 'they', 'we', 'say', 'her', 'she',
-      'or', 'an', 'will', 'my', 'one', 'all', 'would', 'there', 'their',
-      'what', 'so', 'up', 'out', 'if', 'about', 'who', 'get', 'which', 'go',
-      'me', 'when', 'make', 'can', 'like', 'time', 'no', 'just', 'him', 'know',
-      'take', 'people', 'into', 'year', 'your', 'good', 'some', 'could', 'them',
-      'see', 'other', 'than', 'then', 'now', 'look', 'only', 'come', 'its',
-      'over', 'think', 'also', 'back', 'after', 'use', 'two', 'how', 'our',
-      'work', 'first', 'well', 'way', 'even', 'new', 'want', 'because', 'any',
-      'these', 'give', 'day', 'most', 'us', 'is', 'was', 'are', 'been', 'has',
-      'had', 'were', 'said', 'did', 'having', 'may', 'should', 'does', 'done'
+      'the',
+      'be',
+      'to',
+      'of',
+      'and',
+      'a',
+      'in',
+      'that',
+      'have',
+      'i',
+      'it',
+      'for',
+      'not',
+      'on',
+      'with',
+      'he',
+      'as',
+      'you',
+      'do',
+      'at',
+      'this',
+      'but',
+      'his',
+      'by',
+      'from',
+      'they',
+      'we',
+      'say',
+      'her',
+      'she',
+      'or',
+      'an',
+      'will',
+      'my',
+      'one',
+      'all',
+      'would',
+      'there',
+      'their',
+      'what',
+      'so',
+      'up',
+      'out',
+      'if',
+      'about',
+      'who',
+      'get',
+      'which',
+      'go',
+      'me',
+      'when',
+      'make',
+      'can',
+      'like',
+      'time',
+      'no',
+      'just',
+      'him',
+      'know',
+      'take',
+      'people',
+      'into',
+      'year',
+      'your',
+      'good',
+      'some',
+      'could',
+      'them',
+      'see',
+      'other',
+      'than',
+      'then',
+      'now',
+      'look',
+      'only',
+      'come',
+      'its',
+      'over',
+      'think',
+      'also',
+      'back',
+      'after',
+      'use',
+      'two',
+      'how',
+      'our',
+      'work',
+      'first',
+      'well',
+      'way',
+      'even',
+      'new',
+      'want',
+      'because',
+      'any',
+      'these',
+      'give',
+      'day',
+      'most',
+      'us',
+      'is',
+      'was',
+      'are',
+      'been',
+      'has',
+      'had',
+      'were',
+      'said',
+      'did',
+      'having',
+      'may',
+      'should',
+      'does',
+      'done',
     ]);
 
     // Extract words from title and content
@@ -2296,12 +2466,6 @@ Check the sessions/ directory for recent conversations.
     };
   }
 
-
-
-
-
-
-
   private async findSessionFile(sessionId: string): Promise<string | null> {
     const primaryPath = this.getPrimaryVaultPath();
     const sessionsDir = path.join(primaryPath, 'sessions');
@@ -2330,7 +2494,7 @@ Check the sessions/ directory for recent conversations.
           return path.join(sessionsDir, file);
         }
       }
-    } catch (error) {
+    } catch (_error) {
       // Directory doesn't exist or can't be read
     }
 

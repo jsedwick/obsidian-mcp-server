@@ -123,14 +123,10 @@ export class Tokenizer {
 
     // 2. Split on word boundaries
     // Matches: spaces, hyphens, underscores, punctuation
-    const tokens = normalized
-      .split(/[\s\-_.,!?;:()\[\]{}'"]+/)
-      .filter(token => token.length > 0);
+    const tokens = normalized.split(/[\s\-_.,!?;:()[\]{}'"]+/).filter(token => token.length > 0);
 
     // 3. Filter by minimum length
-    const lengthFiltered = tokens.filter(
-      token => token.length >= this.options.minTermLength
-    );
+    const lengthFiltered = tokens.filter(token => token.length >= this.options.minTermLength);
 
     // 4. Remove stop words (if enabled)
     const stopWordFiltered = this.options.removeStopWords
@@ -229,8 +225,8 @@ export class Tokenizer {
    */
   private extractTitle(path?: string, frontmatter?: Record<string, unknown>): string | null {
     // Try frontmatter title first
-    if (frontmatter?.title) {
-      return String(frontmatter.title);
+    if (frontmatter?.title && typeof frontmatter.title === 'string') {
+      return frontmatter.title;
     }
 
     // Extract from filename
@@ -312,7 +308,7 @@ export class Tokenizer {
    * Group terms by field
    *
    * @param terms - Array of terms
-   * @returns Map of field ’ terms
+   * @returns Map of field ï¿½ terms
    */
   groupByField(terms: Term[]): Map<IndexField, Term[]> {
     const grouped = new Map<IndexField, Term[]>();
@@ -330,7 +326,7 @@ export class Tokenizer {
    * Get term frequency (how many times each term appears)
    *
    * @param terms - Array of terms
-   * @returns Map of term ’ frequency
+   * @returns Map of term ï¿½ frequency
    */
   getTermFrequencies(terms: Term[]): Map<string, number> {
     const frequencies = new Map<string, number>();

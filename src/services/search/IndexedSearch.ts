@@ -24,7 +24,7 @@ import { FieldBooster } from './index/FieldBooster.js';
 import { RecencyScorer } from './index/RecencyScorer.js';
 import { AuthorityScorer } from './index/AuthorityScorer.js';
 import { IndexPersistence } from './index/IndexPersistence.js';
-import type { DocumentMetadata } from '../../models/IndexModels.js';
+import type { DocumentMetadata, DocumentPosting } from '../../models/IndexModels.js';
 import type { DocumentScore } from './index/BM25Scorer.js';
 import type { VaultAuthority } from '../../models/Vault.js';
 
@@ -124,7 +124,7 @@ export class IndexedSearch {
       invertedIndexExists: !!invertedIndex,
       documentStoreExists: !!documentStore,
       totalDocs: documentStore?.getTotalDocuments(),
-      totalTerms: invertedIndex?.getTermCount()
+      totalTerms: invertedIndex?.getTermCount(),
     });
 
     if (!invertedIndex || !documentStore) {
@@ -137,11 +137,16 @@ export class IndexedSearch {
     const allDocs = documentStore.getAll();
     writeDebugLog('All documents in store', {
       totalCount: allDocs.length,
-      sampleDocs: allDocs.slice(0, 10).map((d: DocumentMetadata) => ({ path: d.path, vault: d.vault, category: d.category })),
-      vaultBreakdown: allDocs.reduce((acc: Record<string, number>, doc: DocumentMetadata) => {
-        acc[doc.vault] = (acc[doc.vault] || 0) + 1;
-        return acc;
-      }, {} as Record<string, number>)
+      sampleDocs: allDocs
+        .slice(0, 10)
+        .map((d: DocumentMetadata) => ({ path: d.path, vault: d.vault, category: d.category })),
+      vaultBreakdown: allDocs.reduce(
+        (acc: Record<string, number>, doc: DocumentMetadata) => {
+          acc[doc.vault] = (acc[doc.vault] || 0) + 1;
+          return acc;
+        },
+        {} as Record<string, number>
+      ),
     });
 
     // Tokenize query
@@ -154,13 +159,15 @@ export class IndexedSearch {
     writeDebugLog('Query tokenized', { queryTerms });
 
     // Query index for matching documents
-    const termPostings = new Map();
+    const termPostings = new Map<string, DocumentPosting[]>();
     for (const term of queryTerms) {
       const postings = invertedIndex.getPostings(term);
       if (postings.length > 0) {
         termPostings.set(term, postings);
         writeDebugLog(`Term "${term}" found in ${postings.length} postings`, {
-          samplePostings: postings.slice(0, 5).map((p: any) => ({ docId: p.docId, tf: p.termFrequency }))
+          samplePostings: postings
+            .slice(0, 5)
+            .map((p: any) => ({ docId: p.docId, tf: p.termFrequency })),
         });
       } else {
         writeDebugLog(`Term "${term}" not found in index`);
@@ -175,7 +182,7 @@ export class IndexedSearch {
 
     writeDebugLog('Term postings summary', {
       termsWithMatches: termPostings.size,
-      totalQueryTerms: queryTerms.length
+      totalQueryTerms: queryTerms.length,
     });
 
     logger.debug('Term postings retrieved', {
@@ -186,7 +193,7 @@ export class IndexedSearch {
     // Calculate BM25 scores
     const documentFrequency = new Map<string, number>();
     for (const [term, postings] of termPostings.entries()) {
-      const uniqueDocs = new Set(postings.map((p: any) => p.docId));
+      const uniqueDocs = new Set(postings.map(p => p.docId));
       documentFrequency.set(term, uniqueDocs.size);
     }
 
@@ -197,11 +204,7 @@ export class IndexedSearch {
       documentFrequency,
     };
 
-    const documentScores = this.bm25Scorer.scoreDocuments(
-      queryTerms,
-      termPostings,
-      indexStats
-    );
+    const documentScores = this.bm25Scorer.scoreDocuments(queryTerms, termPostings, indexStats);
 
     logger.debug('BM25 scoring complete', {
       documentsScored: documentScores.length,
@@ -248,10 +251,7 @@ export class IndexedSearch {
     });
 
     // Apply authority scoring (vault and directory-based ranking)
-    const finalScores = this.authorityScorer.applyAuthorityBoosts(
-      recencyScores,
-      metadataMap
-    );
+    const finalScores = this.authorityScorer.applyAuthorityBoosts(recencyScores, metadataMap);
 
     logger.debug('Authority scoring complete', {
       topScore: finalScores[0]?.score || 0,
@@ -266,9 +266,7 @@ export class IndexedSearch {
         if (!metadata) return false;
 
         // Check if file path contains any of the specified directories
-        return options.directories!.some(dir =>
-          metadata.path.includes(`/${dir}/`)
-        );
+        return options.directories!.some(dir => metadata.path.includes(`/${dir}/`));
       });
 
       logger.debug('Directory filtering applied', {
@@ -309,11 +307,7 @@ export class IndexedSearch {
       if (!metadata) continue;
 
       // Extract matching lines (snippets) from document content
-      const matchingLines = await this.extractMatchingLines(
-        score.docId,
-        queryTerms,
-        options.query
-      );
+      const matchingLines = await this.extractMatchingLines(score.docId, queryTerms, options.query);
 
       results.push({
         file: metadata.path,
@@ -337,7 +331,7 @@ export class IndexedSearch {
     writeDebugLog('=== INDEXED SEARCH COMPLETE ===', {
       resultsReturned: results.length,
       documentsScored: documentScores.length,
-      topResults: results.slice(0, 5).map(r => ({ file: r.file, score: r.score }))
+      topResults: results.slice(0, 5).map(r => ({ file: r.file, score: r.score })),
     });
 
     return results;
@@ -468,7 +462,7 @@ export class IndexedSearch {
             bonus: phraseBonus,
           });
         }
-      } catch (error) {
+      } catch (_error) {
         // Ignore file read errors (file might have been deleted)
         continue;
       }

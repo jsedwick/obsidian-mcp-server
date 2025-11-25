@@ -9,6 +9,7 @@ import * as path from 'path';
 import type { FileAccess } from '../../models/Session.js';
 import type { RepoCandidate } from '../../models/Git.js';
 
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export interface DetectSessionRepositoriesArgs {
   // No arguments
 }
@@ -24,7 +25,9 @@ interface DetectSessionRepositoriesContext {
   currentSessionId: string | null;
   filesAccessed: FileAccess[];
   findGitRepos: (startPath: string, maxDepth?: number) => Promise<string[]>;
-  getRepoInfo: (repoPath: string) => Promise<{ name: string; branch?: string; remote?: string | null }>;
+  getRepoInfo: (
+    repoPath: string
+  ) => Promise<{ name: string; branch?: string; remote?: string | null }>;
 }
 
 export async function detectSessionRepositories(
@@ -87,8 +90,8 @@ export async function detectSessionRepositories(
         // Check for partial matches (e.g., "my-feature" in both "my-feature-repo" and "my-feature-implementation")
         const repoWords = repoNameLower.split(/[-_]/);
         const sessionWords = sessionIdLower.split(/[-_]/);
-        const commonWords = repoWords.filter(word =>
-          word.length > 2 && sessionWords.some(sw => sw.includes(word) || word.includes(sw))
+        const commonWords = repoWords.filter(
+          word => word.length > 2 && sessionWords.some(sw => sw.includes(word) || word.includes(sw))
         );
 
         if (commonWords.length >= 2 || (commonWords.length === 1 && commonWords[0].length > 5)) {

@@ -9,10 +9,14 @@ import { spawn } from 'child_process';
 import { fileURLToPath } from 'url';
 import path from 'path';
 
+// These names are required for ESM compatibility
+// eslint-disable-next-line @typescript-eslint/naming-convention
 const __filename = fileURLToPath(import.meta.url);
+// eslint-disable-next-line @typescript-eslint/naming-convention
 const __dirname = path.dirname(__filename);
 
-const VAULT_PATH = process.env.OBSIDIAN_VAULT_PATH || path.join(process.env.HOME || '', 'obsidian-vault-test');
+const VAULT_PATH =
+  process.env.OBSIDIAN_VAULT_PATH || path.join(process.env.HOME || '', 'obsidian-vault-test');
 
 console.log('🧪 Testing Obsidian MCP Server');
 console.log('================================\n');
@@ -31,23 +35,23 @@ const server = spawn('node', [serverPath], {
 let responseCount = 0;
 const responses: string[] = [];
 
-server.stdout.on('data', (data) => {
+server.stdout.on('data', (data: Buffer) => {
   const response = data.toString();
   console.log('📥 Response:', response);
   responses.push(response);
   responseCount++;
 });
 
-server.stderr.on('data', (data) => {
+server.stderr.on('data', data => {
   console.error('📝 Server log:', data.toString());
 });
 
 function sendRequest(request: any) {
-  return new Promise((resolve) => {
+  return new Promise(resolve => {
     const currentCount = responseCount;
     console.log('\n📤 Request:', JSON.stringify(request, null, 2));
     server.stdin.write(JSON.stringify(request) + '\n');
-    
+
     // Wait for response
     const checkResponse = setInterval(() => {
       if (responseCount > currentCount) {
@@ -124,7 +128,8 @@ async function runTests() {
       params: {
         name: 'close_session',
         arguments: {
-          summary: 'Completed testing of MCP server tools including topic creation, vault search, and session management.',
+          summary:
+            'Completed testing of MCP server tools including topic creation, vault search, and session management.',
           topic: 'Testing MCP Server',
         },
       },
@@ -136,7 +141,6 @@ async function runTests() {
     console.log('  - sessions/ with a new session file');
     console.log('  - topics/test-topic.md');
     console.log('\n================================\n');
-
   } catch (error) {
     console.error('❌ Test failed:', error);
   } finally {

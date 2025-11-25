@@ -15,7 +15,8 @@ import * as path from 'path';
 import * as fs from 'fs/promises';
 
 // Configuration
-const VAULT_PATH = process.env.VAULT_PATH || path.join(process.env.HOME || '', 'Documents/Obsidian/Claude/Claude');
+const VAULT_PATH =
+  process.env.VAULT_PATH || path.join(process.env.HOME || '', 'Documents/Obsidian/Claude/Claude');
 const CACHE_DIR = path.join(VAULT_PATH, '.search-index');
 
 // Test queries
@@ -76,7 +77,9 @@ async function runComparison() {
     process.exit(1);
   }
 
-  console.log(`✅ Index ready: ${buildResult.totalDocuments} documents, ${buildResult.totalTerms} terms\n`);
+  console.log(
+    `✅ Index ready: ${buildResult.totalDocuments} documents, ${buildResult.totalTerms} terms\n`
+  );
 
   // Run comparisons
   const results: ComparisonResult[] = [];
@@ -85,7 +88,10 @@ async function runComparison() {
     console.log(`\nQuery: "${query}"`);
     console.log('─'.repeat(50));
 
-    const queryTerms = query.toLowerCase().split(/\s+/).filter(t => t.length > 2);
+    const queryTerms = query
+      .toLowerCase()
+      .split(/\s+/)
+      .filter(t => t.length > 2);
 
     // Run indexed search
     const indexedStart = Date.now();
@@ -100,12 +106,7 @@ async function runComparison() {
 
     // Run linear search
     const linearStart = Date.now();
-    const linearResults = await runLinearSearch(
-      VAULT_PATH,
-      query,
-      queryTerms,
-      keywordSearch
-    );
+    const linearResults = await runLinearSearch(VAULT_PATH, query, queryTerms, keywordSearch);
     const linearDuration = Date.now() - linearStart;
 
     console.log(`Linear:  ${linearResults.length} results in ${linearDuration}ms`);
@@ -124,7 +125,9 @@ async function runComparison() {
     const top5Overlap = top5Indexed.filter(f => top5Linear.includes(f)).length;
     const topOverlapPercent = (top5Overlap / 5) * 100;
 
-    console.log(`Overlap: ${filesInBoth} files in both, ${filesOnlyIndexed} only indexed, ${filesOnlyLinear} only linear`);
+    console.log(
+      `Overlap: ${filesInBoth} files in both, ${filesOnlyIndexed} only indexed, ${filesOnlyLinear} only linear`
+    );
     console.log(`Top 5 overlap: ${top5Overlap}/5 (${topOverlapPercent.toFixed(1)}%)`);
 
     results.push({
@@ -154,9 +157,11 @@ async function runComparison() {
   console.log('\n\n📊 Summary');
   console.log('='.repeat(50));
 
-  const avgIndexedDuration = results.reduce((sum, r) => sum + r.indexed.duration, 0) / results.length;
+  const avgIndexedDuration =
+    results.reduce((sum, r) => sum + r.indexed.duration, 0) / results.length;
   const avgLinearDuration = results.reduce((sum, r) => sum + r.linear.duration, 0) / results.length;
-  const avgOverlap = results.reduce((sum, r) => sum + r.overlap.topOverlapPercent, 0) / results.length;
+  const avgOverlap =
+    results.reduce((sum, r) => sum + r.overlap.topOverlapPercent, 0) / results.length;
 
   console.log(`Average indexed duration: ${avgIndexedDuration.toFixed(0)}ms`);
   console.log(`Average linear duration: ${avgLinearDuration.toFixed(0)}ms`);
@@ -191,7 +196,13 @@ async function runLinearSearch(
     const dirPath = path.join(vaultPath, dir);
     try {
       await fs.access(dirPath);
-      const dirResults = await searchDirectory(dirPath, dir, keywordSearch, query.toLowerCase(), queryTerms);
+      const dirResults = await searchDirectory(
+        dirPath,
+        dir,
+        keywordSearch,
+        query.toLowerCase(),
+        queryTerms
+      );
       results.push(...dirResults);
     } catch {
       // Directory doesn't exist, skip
@@ -224,7 +235,9 @@ async function searchDirectory(
 
       if (entry.isDirectory()) {
         // Skip ignored directories
-        if (['.git', 'node_modules', '.DS_Store', '.obsidian', '.search-index'].includes(entry.name)) {
+        if (
+          ['.git', 'node_modules', '.DS_Store', '.obsidian', '.search-index'].includes(entry.name)
+        ) {
           continue;
         }
 
@@ -262,7 +275,7 @@ async function searchDirectory(
         }
       }
     }
-  } catch (error) {
+  } catch (_error) {
     // Ignore errors
   }
 

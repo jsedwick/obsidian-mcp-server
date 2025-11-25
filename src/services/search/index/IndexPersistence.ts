@@ -219,7 +219,18 @@ export class IndexPersistence {
   private async loadMetadata(): Promise<IndexMetadata> {
     try {
       const content = await fs.readFile(this.paths.metadata, 'utf-8');
-      const data = JSON.parse(content);
+      const data = JSON.parse(content) as {
+        version: string;
+        lastBuilt: string;
+        lastValidated: string;
+        statistics: {
+          totalDocuments: number;
+          totalTerms: number;
+          averageDocumentLength: number;
+          documentFrequency: Array<[string, number]>;
+        };
+        configuration: IndexMetadata['configuration'];
+      };
 
       // Convert plain object back to Map
       const metadata: IndexMetadata = {
@@ -230,6 +241,7 @@ export class IndexPersistence {
           ...data.statistics,
           documentFrequency: new Map(data.statistics.documentFrequency),
         },
+        configuration: data.configuration,
       };
 
       logger.info('Index metadata loaded', {
@@ -338,9 +350,7 @@ export class IndexPersistence {
         expected: INDEX_VERSION,
         actual: metadata.version,
       });
-      throw new Error(
-        `Index version mismatch: expected ${INDEX_VERSION}, got ${metadata.version}`
-      );
+      throw new Error(`Index version mismatch: expected ${INDEX_VERSION}, got ${metadata.version}`);
     }
 
     logger.info('Index loaded successfully', {

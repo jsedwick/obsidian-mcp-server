@@ -57,17 +57,17 @@ export async function analyzeCommitImpact(
       );
 
       // Get files changed (stat summary)
-      commitFiles = execSync(
-        `git -C "${args.repo_path}" show --stat ${args.commit_hash}`,
-        { encoding: 'utf-8', maxBuffer: 10 * 1024 * 1024 }
-      );
+      commitFiles = execSync(`git -C "${args.repo_path}" show --stat ${args.commit_hash}`, {
+        encoding: 'utf-8',
+        maxBuffer: 10 * 1024 * 1024,
+      });
 
       // Get diff (full or summary based on flag)
       if (args.include_diff) {
-        commitDiff = execSync(
-          `git -C "${args.repo_path}" show ${args.commit_hash}`,
-          { encoding: 'utf-8', maxBuffer: 50 * 1024 * 1024 }
-        );
+        commitDiff = execSync(`git -C "${args.repo_path}" show ${args.commit_hash}`, {
+          encoding: 'utf-8',
+          maxBuffer: 50 * 1024 * 1024,
+        });
       } else {
         commitDiff = execSync(
           `git -C "${args.repo_path}" diff ${args.commit_hash}^ ${args.commit_hash} --stat`,
@@ -90,7 +90,7 @@ export async function analyzeCommitImpact(
     const body = bodyLines.join('\n').trim();
 
     // Extract changed file paths for searching related topics
-    const filePathsMatch = commitFiles.match(/\s([\w\/\.\-_]+)\s+\|/g);
+    const filePathsMatch = commitFiles.match(/\s([\w/.\-_]+)\s+\|/g);
     const changedFiles = filePathsMatch
       ? filePathsMatch.map(m => m.trim().split('|')[0].trim())
       : [];
@@ -98,7 +98,7 @@ export async function analyzeCommitImpact(
     // Search for related topics and decisions based on commit content
     const searchTerms = [
       subject,
-      ...changedFiles.slice(0, 3).map(f => path.basename(f, path.extname(f)))
+      ...changedFiles.slice(0, 3).map(f => path.basename(f, path.extname(f))),
     ];
 
     const relatedContent: string[] = [];
@@ -206,6 +206,8 @@ ${analysisPrompt}
       ],
     };
   } catch (error) {
-    throw new Error(`Failed to analyze commit: ${error instanceof Error ? error.message : String(error)}`);
+    throw new Error(
+      `Failed to analyze commit: ${error instanceof Error ? error.message : String(error)}`
+    );
   }
 }

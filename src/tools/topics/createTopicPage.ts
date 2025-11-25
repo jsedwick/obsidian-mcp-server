@@ -41,13 +41,21 @@ export interface CreateTopicPageContext {
     content: string;
     topic_name?: string;
     context?: string;
-  }) => Promise<{
-    tags: string[];
-    summary: string;
-    key_concepts: string[];
-    related_topics: string[];
-    content_type: string;
-  }>;
+  }) =>
+    | {
+        tags: string[];
+        summary: string;
+        key_concepts: string[];
+        related_topics: string[];
+        content_type: string;
+      }
+    | Promise<{
+        tags: string[];
+        summary: string;
+        key_concepts: string[];
+        related_topics: string[];
+        content_type: string;
+      }>;
   findRelatedProjects: (topicContent: string) => Promise<Array<{ link: string; name: string }>>;
   trackTopicCreation: (topic: { slug: string; title: string; file: string }) => void;
 }

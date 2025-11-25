@@ -43,7 +43,9 @@ async function saveEmbeddingToggleState(
     await fs.writeFile(embeddingToggleFile, JSON.stringify(config, null, 2));
   } catch (error) {
     console.error('[Embedding] Failed to save toggle state:', error);
-    throw new Error(`Failed to save embedding toggle state: ${error}`);
+    throw new Error(
+      `Failed to save embedding toggle state: ${error instanceof Error ? error.message : String(error)}`
+    );
   }
 }
 
@@ -52,7 +54,7 @@ export async function toggleEmbeddings(
   context: {
     embeddingConfig: EmbeddingConfig;
     embeddingToggleFile: string;
-    embeddingCache: Map<string, any>;
+    embeddingCache: { clear: () => void };
     setExtractor: (extractor: any) => void;
     setEmbeddingInitPromise: (promise: Promise<void> | null) => void;
   }
@@ -75,7 +77,9 @@ export async function toggleEmbeddings(
   }
 
   const status = newState ? 'enabled' : 'disabled';
-  const action = newState ? 'enabled (will generate on next search)' : 'disabled (using keyword search only)';
+  const action = newState
+    ? 'enabled (will generate on next search)'
+    : 'disabled (using keyword search only)';
 
   return {
     content: [
