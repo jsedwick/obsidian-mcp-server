@@ -87,10 +87,11 @@ export class IndexedSearch {
     this.fieldBooster = new FieldBooster();
     this.recencyScorer = new RecencyScorer();
     this.authorityScorer = new AuthorityScorer(vaultAuthorities);
-    logger.info('IndexedSearch initialized', {
-      cacheDir,
-      vaultAuthorities: Array.from(vaultAuthorities.entries()),
-    });
+    // Logging disabled - causes JSON-RPC parsing errors in Claude Desktop
+    // logger.info('IndexedSearch initialized', {
+    //   cacheDir,
+    //   vaultAuthorities: Object.fromEntries(vaultAuthorities),
+    // });
   }
 
   /**

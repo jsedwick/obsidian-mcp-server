@@ -117,12 +117,13 @@ export async function searchVault(
       const allVaults = context.getAllVaults();
 
       // Debug logging
-      console.error(
-        '[Search] All vaults:',
-        allVaults.map(v => ({ name: v.name, path: v.path }))
-      );
-      console.error('[Search] IndexBuilders keys:', Array.from(context.indexBuilders.keys()));
-      console.error('[Search] IndexedSearches keys:', Array.from(context.indexedSearches.keys()));
+      // Debug logging disabled - causes JSON-RPC parsing errors in Claude Desktop
+      // console.error(
+      //   '[Search] All vaults:',
+      //   allVaults.map(v => ({ name: v.name, path: v.path }))
+      // );
+      // console.error('[Search] IndexBuilders keys:', Array.from(context.indexBuilders.keys()));
+      // console.error('[Search] IndexedSearches keys:', Array.from(context.indexedSearches.keys()));
 
       for (const vault of allVaults) {
         console.error(`[Search] Looking up vault: ${vault.name} at path: ${vault.path}`);

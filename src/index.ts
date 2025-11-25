@@ -252,9 +252,10 @@ class ObsidianMCPServer {
         );
       }
 
-      console.error('[Init] Final Map keys:');
-      console.error('[Init] - IndexBuilders:', Array.from(this.indexBuilders.keys()));
-      console.error('[Init] - IndexedSearches:', Array.from(this.indexedSearches.keys()));
+      // Debug logging disabled - causes JSON-RPC parsing errors in Claude Desktop
+      // console.error('[Init] Final Map keys:');
+      // console.error('[Init] - IndexBuilders:', Array.from(this.indexBuilders.keys()));
+      // console.error('[Init] - IndexedSearches:', Array.from(this.indexedSearches.keys()));
     }
 
     this.setupHandlers();
