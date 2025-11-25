@@ -42,7 +42,9 @@ async function saveEmbeddingToggleState(
   try {
     await fs.writeFile(embeddingToggleFile, JSON.stringify(config, null, 2));
   } catch (error) {
-    console.error('[Embedding] Failed to save toggle state:', error);
+    console.error(
+      `[Embedding] Failed to save toggle state: ${error instanceof Error ? error.message : String(error)}`
+    );
     throw new Error(
       `Failed to save embedding toggle state: ${error instanceof Error ? error.message : String(error)}`
     );

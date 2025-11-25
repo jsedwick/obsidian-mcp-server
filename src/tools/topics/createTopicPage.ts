@@ -127,7 +127,9 @@ export async function createTopicPage(
       tags = analysis.tags;
     } catch (error) {
       // If analysis fails, fall back to default tags
-      console.error('Topic analysis failed:', error);
+      console.error(
+        `Topic analysis failed: ${error instanceof Error ? error.message : String(error)}`
+      );
     }
   }
 

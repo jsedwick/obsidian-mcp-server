@@ -145,7 +145,9 @@ export async function searchVault(
             mode: BuildMode.AUTO, // Will auto-detect if index exists
           });
         } catch (buildError) {
-          console.error(`[Search] Failed to build index for vault ${vault.name}:`, buildError);
+          console.error(
+            `[Search] Failed to build index for vault ${vault.name}: ${buildError instanceof Error ? buildError.message : String(buildError)}`
+          );
           continue; // Skip this vault but try others
         }
 
@@ -167,7 +169,9 @@ export async function searchVault(
             });
           });
         } catch (searchError) {
-          console.error(`[Search] Failed to search vault ${vault.name}:`, searchError);
+          console.error(
+            `[Search] Failed to search vault ${vault.name}: ${searchError instanceof Error ? searchError.message : String(searchError)}`
+          );
           continue; // Skip this vault but try others
         }
       }
@@ -214,7 +218,9 @@ export async function searchVault(
         );
       }
     } catch (error) {
-      console.error('[Search] Indexed search failed, falling back to linear search:', error);
+      console.error(
+        `[Search] Indexed search failed, falling back to linear search: ${error instanceof Error ? error.message : String(error)}`
+      );
       // Fall through to linear search
     }
   }
@@ -473,7 +479,9 @@ export async function searchVault(
           });
         }
       } catch (error) {
-        console.error(`[Search] Failed to score ${fileInfo.path}:`, error);
+        console.error(
+          `[Search] Failed to score ${fileInfo.path}: ${error instanceof Error ? error.message : String(error)}`
+        );
       }
     }
 
@@ -513,7 +521,9 @@ export async function searchVault(
             result.semanticScore = semanticScore;
             result.score = semanticScore; // Use semantic score as final ranking score
           } catch (error) {
-            console.error(`[Search] Failed to compute semantic score for ${result.file}:`, error);
+            console.error(
+              `[Search] Failed to compute semantic score for ${result.file}: ${error instanceof Error ? error.message : String(error)}`
+            );
             // Keep keyword score if semantic scoring fails
           }
         }
@@ -614,7 +624,9 @@ async function applySemanticReranking(
         const semanticScore = context.cosineSimilarity(queryEmbedding, docEmbedding);
         result.score = semanticScore;
       } catch (error) {
-        console.error(`[Search] Failed to compute semantic score for ${result.file}:`, error);
+        console.error(
+          `[Search] Failed to compute semantic score for ${result.file}: ${error instanceof Error ? error.message : String(error)}`
+        );
         // Keep existing score if semantic scoring fails
       }
 
@@ -627,7 +639,9 @@ async function applySemanticReranking(
     candidates.sort((a, b) => b.score - a.score);
     return candidates.slice(0, maxResults);
   } catch (error) {
-    console.error('[Search] Semantic re-ranking failed:', error);
+    console.error(
+      `[Search] Semantic re-ranking failed: ${error instanceof Error ? error.message : String(error)}`
+    );
     // Fall back to original scores
     return results.slice(0, maxResults);
   }

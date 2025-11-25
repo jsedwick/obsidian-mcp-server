@@ -474,7 +474,9 @@ async function validateReciprocalLinks(
       }
     } catch (error) {
       // Continue on error for individual files
-      console.error(`Error validating reciprocal links for ${file}:`, error);
+      console.error(
+        `Error validating reciprocal links for ${file}: ${error instanceof Error ? error.message : String(error)}`
+      );
     }
   }
 
@@ -1051,7 +1053,9 @@ ${content}`;
           }
         }
       } catch (error) {
-        console.error(`Error removing aspirational links in ${file}:`, error);
+        console.error(
+          `Error removing aspirational links in ${file}: ${error instanceof Error ? error.message : String(error)}`
+        );
       }
     }
 
@@ -1066,7 +1070,9 @@ ${content}`;
           }
         }
       } catch (error) {
-        console.error(`Error deduplicating headers in ${file}:`, error);
+        console.error(
+          `Error deduplicating headers in ${file}: ${error instanceof Error ? error.message : String(error)}`
+        );
       }
     }
 
@@ -1081,7 +1087,9 @@ ${content}`;
           }
         }
       } catch (error) {
-        console.error(`Error moving Related sections in ${file}:`, error);
+        console.error(
+          `Error moving Related sections in ${file}: ${error instanceof Error ? error.message : String(error)}`
+        );
       }
     }
 

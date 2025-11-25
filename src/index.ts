@@ -264,7 +264,7 @@ class ObsidianMCPServer {
 
   private setupErrorHandling(): void {
     this.server.onerror = error => {
-      console.error('[MCP Error]', error);
+      console.error(`[MCP Error] ${error instanceof Error ? error.message : String(error)}`);
     };
 
     process.on('SIGINT', () => {
@@ -584,7 +584,9 @@ class ObsidianMCPServer {
       try {
         this.extractor = await pipeline('feature-extraction', this.embeddingConfig.modelName);
       } catch (error) {
-        console.error('[Embedding] Failed to initialize extractor:', error);
+        console.error(
+          `[Embedding] Failed to initialize extractor: ${error instanceof Error ? error.message : String(error)}`
+        );
         this.embeddingConfig.enabled = false;
       }
     })();
@@ -620,7 +622,9 @@ class ObsidianMCPServer {
       }
       return embedding;
     } catch (error) {
-      console.error('[Embedding] Failed to generate embedding:', error);
+      console.error(
+        `[Embedding] Failed to generate embedding: ${error instanceof Error ? error.message : String(error)}`
+      );
       throw error;
     }
   }
