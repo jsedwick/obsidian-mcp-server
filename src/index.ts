@@ -21,8 +21,10 @@ import { IndexedSearch } from './services/search/IndexedSearch.js';
 import { DEFAULT_INDEX_CONFIG } from './models/IndexModels.js';
 import type { VaultConfig, VaultAuthority } from './models/Vault.js';
 import { LRUCache } from './utils/LRUCache.js';
+import { createLogger } from './utils/logger.js';
 
 const execAsync = promisify(exec);
+const logger = createLogger('MCPServer');
 
 interface ServerConfig {
   primaryVault: VaultConfig;
@@ -220,7 +222,7 @@ class ObsidianMCPServer {
 
     // Initialize IndexBuilder and IndexedSearch for each vault if enabled
     if (DEFAULT_INDEX_CONFIG.enabled) {
-      console.error('[Init] Initializing search indexes for vaults...');
+      logger.info('Initializing search indexes for vaults...');
 
       // Build vault authorities map for all vaults
       const vaultAuthorities = this.buildVaultAuthoritiesMap();
@@ -231,9 +233,10 @@ class ObsidianMCPServer {
         DEFAULT_INDEX_CONFIG.cacheDir
       );
       const primaryBuilder = new IndexBuilder(primaryCacheDir);
-      console.error(
-        `[Init] Primary vault: ${this.config.primaryVault.name} at path: ${this.config.primaryVault.path}`
-      );
+      logger.info('Primary vault initialized', {
+        name: this.config.primaryVault.name,
+        path: this.config.primaryVault.path,
+      });
       this.indexBuilders.set(this.config.primaryVault.path, primaryBuilder);
       this.indexedSearches.set(
         this.config.primaryVault.path,
@@ -244,7 +247,7 @@ class ObsidianMCPServer {
       for (const vault of this.config.secondaryVaults) {
         const cacheDir = path.join(vault.path, DEFAULT_INDEX_CONFIG.cacheDir);
         const builder = new IndexBuilder(cacheDir);
-        console.error(`[Init] Secondary vault: ${vault.name} at path: ${vault.path}`);
+        logger.info('Secondary vault initialized', { name: vault.name, path: vault.path });
         this.indexBuilders.set(vault.path, builder);
         this.indexedSearches.set(
           vault.path,
@@ -252,10 +255,10 @@ class ObsidianMCPServer {
         );
       }
 
-      // Debug logging disabled - causes JSON-RPC parsing errors in Claude Desktop
-      // console.error('[Init] Final Map keys:');
-      // console.error('[Init] - IndexBuilders:', Array.from(this.indexBuilders.keys()));
-      // console.error('[Init] - IndexedSearches:', Array.from(this.indexedSearches.keys()));
+      logger.debug('IndexBuilder and IndexedSearch maps initialized', {
+        indexBuilders: Array.from(this.indexBuilders.keys()),
+        indexedSearches: Array.from(this.indexedSearches.keys()),
+      });
     }
 
     this.setupHandlers();
@@ -264,7 +267,7 @@ class ObsidianMCPServer {
 
   private setupErrorHandling(): void {
     this.server.onerror = error => {
-      console.error(`[MCP Error] ${error instanceof Error ? error.message : String(error)}`);
+      logger.error('MCP Error', error instanceof Error ? error : new Error(String(error)));
     };
 
     process.on('SIGINT', () => {
@@ -584,8 +587,9 @@ class ObsidianMCPServer {
       try {
         this.extractor = await pipeline('feature-extraction', this.embeddingConfig.modelName);
       } catch (error) {
-        console.error(
-          `[Embedding] Failed to initialize extractor: ${error instanceof Error ? error.message : String(error)}`
+        logger.error(
+          'Failed to initialize embedding extractor',
+          error instanceof Error ? error : new Error(String(error))
         );
         this.embeddingConfig.enabled = false;
       }
@@ -622,8 +626,9 @@ class ObsidianMCPServer {
       }
       return embedding;
     } catch (error) {
-      console.error(
-        `[Embedding] Failed to generate embedding: ${error instanceof Error ? error.message : String(error)}`
+      logger.error(
+        'Failed to generate embedding',
+        error instanceof Error ? error : new Error(String(error))
       );
       throw error;
     }
@@ -694,7 +699,7 @@ class ObsidianMCPServer {
     }
 
     const stats = this.embeddingCache.getStats();
-    console.error(`[Embedding] Loaded ${stats.size} cached embeddings (max: ${stats.maxSize})`);
+    logger.info('Loaded cached embeddings', { size: stats.size, maxSize: stats.maxSize });
   }
 
   private async saveEmbeddingCache(): Promise<void> {
@@ -732,12 +737,15 @@ class ObsidianMCPServer {
         const cacheFile = path.join(cacheDir, 'embeddings.json');
         await fs.writeFile(cacheFile, JSON.stringify(entries, null, 2));
       } catch (error) {
-        console.error(`[Embedding] Failed to save cache for vault ${vaultPath}:`, error);
+        logger.error(
+          `Failed to save embedding cache for vault ${vaultPath}`,
+          error instanceof Error ? error : new Error(String(error))
+        );
       }
     }
 
     const stats = this.embeddingCache.getStats();
-    console.error(`[Embedding] Saved ${stats.size} embeddings to cache`);
+    logger.info('Saved embeddings to cache', { size: stats.size });
   }
 
   private getCachedEmbedding(file: string, fileStats: any): number[] | null {
@@ -840,23 +848,27 @@ class ObsidianMCPServer {
 
             // Log progress every 10 files
             if (filesProcessed % 10 === 0) {
-              console.error(`[Embeddings] Pre-computed ${filesProcessed} files...`);
+              logger.debug('Pre-computing embeddings progress', { filesProcessed });
             }
           } catch (err) {
-            console.error(`[Embeddings] Error processing ${filePath}:`, err);
+            logger.error(
+              `Error processing file ${filePath}`,
+              err instanceof Error ? err : new Error(String(err))
+            );
           }
         }
       } catch (err) {
-        console.error(`[Embeddings] Error pre-computing embeddings for vault ${vault.name}:`, err);
+        logger.error(
+          `Error pre-computing embeddings for vault ${vault.name}`,
+          err instanceof Error ? err : new Error(String(err))
+        );
       }
     }
 
     // Save all computed embeddings
     await this.saveEmbeddingCache();
 
-    console.error(
-      `[Embeddings] Pre-computation complete: ${filesProcessed} new, ${filesSkipped} cached`
-    );
+    logger.info('Pre-computation complete', { filesProcessed, filesSkipped });
   }
 
   /**
@@ -2511,20 +2523,26 @@ Check the sessions/ directory for recent conversations.
 
     // Pre-compute embeddings if enabled
     if (this.embeddingConfig.enabled && this.embeddingConfig.precomputeEmbeddings) {
-      console.error('[Embeddings] Pre-computing embeddings on startup...');
+      logger.info('Pre-computing embeddings on startup...');
       try {
         await this.precomputeAllEmbeddings();
-        console.error('[Embeddings] Pre-computation complete');
+        logger.info('Embedding pre-computation complete');
       } catch (error) {
-        console.error('[Embeddings] Pre-computation failed:', error);
+        logger.error(
+          'Embedding pre-computation failed',
+          error instanceof Error ? error : new Error(String(error))
+        );
         // Continue anyway - searches will still work with on-demand embedding
       }
     }
 
     await this.server.connect(transport);
-    console.error('Obsidian MCP Server running on stdio');
+    logger.info('Obsidian MCP Server running on stdio');
   }
 }
 
 const server = new ObsidianMCPServer();
-server.run().catch(console.error);
+server.run().catch(error => {
+  logger.error('Server run failed', error instanceof Error ? error : new Error(String(error)));
+  process.exit(1);
+});

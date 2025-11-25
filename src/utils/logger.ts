@@ -3,7 +3,13 @@
  *
  * Provides context-aware logging with multiple log levels.
  * Log level can be controlled via LOG_LEVEL environment variable.
+ * Logging output can be controlled via LOG_FILE environment variable:
+ *   - If LOG_FILE is set: logs write to file (prevents JSON-RPC interference)
+ *   - If LOG_FILE is unset: logs write to stderr (for CLI/testing)
  */
+
+import * as fs from 'fs';
+import * as path from 'path';
 
 export enum LogLevel {
   DEBUG = 0,
@@ -67,12 +73,39 @@ export class Logger {
     // Format and output based on level
     const formatted = this.format(entry);
 
-    if (level === LogLevel.ERROR) {
-      console.error(formatted);
-    } else if (level === LogLevel.WARN) {
-      console.warn(formatted);
+    // Determine output destination
+    const logFile = process.env.LOG_FILE;
+
+    if (logFile) {
+      // File-based logging (safe for MCP/JSON-RPC)
+      try {
+        // Ensure log directory exists
+        const logDir = path.dirname(logFile);
+        if (!fs.existsSync(logDir)) {
+          fs.mkdirSync(logDir, { recursive: true });
+        }
+
+        // Append to log file with newline
+        fs.appendFileSync(logFile, formatted + '\n', 'utf-8');
+      } catch (error) {
+        // If file logging fails, fall back to stderr (but only for critical errors)
+        if (level === LogLevel.ERROR) {
+          console.error(
+            `[Logger] Failed to write to log file: ${error instanceof Error ? error.message : String(error)}`
+          );
+          console.error(formatted);
+        }
+      }
     } else {
-      console.log(formatted);
+      // Console-based logging (for CLI/testing)
+      // WARNING: This will break JSON-RPC in MCP mode
+      if (level === LogLevel.ERROR) {
+        console.error(formatted);
+      } else if (level === LogLevel.WARN) {
+        console.warn(formatted);
+      } else {
+        console.log(formatted);
+      }
     }
   }
 

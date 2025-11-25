@@ -11,6 +11,9 @@ import { ResponseDetail, parseDetailLevel } from '../../models/Search.js';
 import type { IndexedSearch } from '../../services/search/IndexedSearch.js';
 import { IndexBuilder, BuildMode } from '../../services/search/index/IndexBuilder.js';
 import { DEFAULT_INDEX_CONFIG } from '../../models/IndexModels.js';
+import { createLogger } from '../../utils/logger.js';
+
+const logger = createLogger('SearchVault');
 
 export interface SearchVaultArgs {
   query: string;
@@ -126,14 +129,17 @@ export async function searchVault(
       // console.error('[Search] IndexedSearches keys:', Array.from(context.indexedSearches.keys()));
 
       for (const vault of allVaults) {
-        console.error(`[Search] Looking up vault: ${vault.name} at path: ${vault.path}`);
+        // Debug logging disabled - causes JSON-RPC parsing errors in Claude Desktop
+        // console.error(`[Search] Looking up vault: ${vault.name} at path: ${vault.path}`);
         const builder = context.indexBuilders.get(vault.path);
         const searcher = context.indexedSearches.get(vault.path);
 
-        console.error(`[Search] Found builder: ${!!builder}, Found searcher: ${!!searcher}`);
+        // Debug logging disabled - causes JSON-RPC parsing errors in Claude Desktop
+        // console.error(`[Search] Found builder: ${!!builder}, Found searcher: ${!!searcher}`);
 
         if (!builder || !searcher) {
-          console.error(`[Search] No index for vault ${vault.name}, skipping`);
+          // Debug logging disabled - causes JSON-RPC parsing errors in Claude Desktop
+          // console.error(`[Search] No index for vault ${vault.name}, skipping`);
           continue;
         }
 
@@ -145,8 +151,9 @@ export async function searchVault(
             mode: BuildMode.AUTO, // Will auto-detect if index exists
           });
         } catch (buildError) {
-          console.error(
-            `[Search] Failed to build index for vault ${vault.name}: ${buildError instanceof Error ? buildError.message : String(buildError)}`
+          logger.error(
+            `Failed to build index for vault ${vault.name}`,
+            buildError instanceof Error ? buildError : new Error(String(buildError))
           );
           continue; // Skip this vault but try others
         }
@@ -169,8 +176,9 @@ export async function searchVault(
             });
           });
         } catch (searchError) {
-          console.error(
-            `[Search] Failed to search vault ${vault.name}: ${searchError instanceof Error ? searchError.message : String(searchError)}`
+          logger.error(
+            `Failed to search vault ${vault.name}`,
+            searchError instanceof Error ? searchError : new Error(String(searchError))
           );
           continue; // Skip this vault but try others
         }
@@ -194,7 +202,7 @@ export async function searchVault(
       // If indexed search found no results and embeddings are enabled,
       // fall back to pure semantic search (no keyword filtering)
       if (indexedResults.length === 0 && context.embeddingConfig.enabled) {
-        console.log('[Search] Zero indexed results, falling back to pure semantic search');
+        logger.info('Zero indexed results, falling back to pure semantic search');
         // Fall through to linear search with semantic scoring
       } else {
         // Apply semantic re-ranking if enabled
@@ -218,8 +226,9 @@ export async function searchVault(
         );
       }
     } catch (error) {
-      console.error(
-        `[Search] Indexed search failed, falling back to linear search: ${error instanceof Error ? error.message : String(error)}`
+      logger.error(
+        'Indexed search failed, falling back to linear search',
+        error instanceof Error ? error : new Error(String(error))
       );
       // Fall through to linear search
     }
@@ -244,9 +253,9 @@ export async function searchVault(
     try {
       queryEmbedding = await context.generateEmbedding(args.query);
     } catch (error) {
-      console.error(
-        '[Search] Failed to generate query embedding, falling back to keyword search:',
-        error
+      logger.error(
+        'Failed to generate query embedding, falling back to keyword search',
+        error instanceof Error ? error : new Error(String(error))
       );
     }
   }
@@ -366,9 +375,12 @@ export async function searchVault(
       const { analyzeQuery } = await import('../../utils/queryAnalysis.js');
       queryHints = analyzeQuery(args.query);
 
-      console.log(
-        `[Search] Query hints: temporal=${queryHints.temporal}, scope=[${queryHints.scopeDirectories.join(', ')}], sort=${queryHints.sortPreference}, maxFiles=${queryHints.maxFilesToScan || 'unlimited'}`
-      );
+      logger.debug('Query hints analyzed', {
+        temporal: queryHints.temporal,
+        scope: queryHints.scopeDirectories,
+        sort: queryHints.sortPreference,
+        maxFiles: queryHints.maxFilesToScan || 'unlimited',
+      });
     }
 
     // Re-scan all documents with pure semantic scoring (no keyword filter)
@@ -440,9 +452,12 @@ export async function searchVault(
       const filesAfterFilter = filesToScore.length;
 
       if (filesBeforeFilter > filesAfterFilter) {
-        console.log(
-          `[Search] Smart filtering: ${filesBeforeFilter} files → ${filesAfterFilter} files (${Math.round((1 - filesAfterFilter / filesBeforeFilter) * 100)}% reduction)`
-        );
+        const reductionPct = Math.round((1 - filesAfterFilter / filesBeforeFilter) * 100);
+        logger.debug('Smart filtering applied', {
+          before: filesBeforeFilter,
+          after: filesAfterFilter,
+          reductionPercent: reductionPct,
+        });
       }
     }
 
@@ -452,9 +467,10 @@ export async function searchVault(
       : SEMANTIC_SEARCH_HARD_LIMIT;
 
     if (filesToScore.length > effectiveLimit) {
-      console.log(
-        `[Search] Applying hard limit: ${filesToScore.length} files → ${effectiveLimit} files (scanning most recent files only)`
-      );
+      logger.debug('Applying hard limit to semantic search', {
+        filesBeforeLimit: filesToScore.length,
+        effectiveLimit,
+      });
       filesToScore = filesToScore.slice(0, effectiveLimit);
     }
 
@@ -479,8 +495,9 @@ export async function searchVault(
           });
         }
       } catch (error) {
-        console.error(
-          `[Search] Failed to score ${fileInfo.path}: ${error instanceof Error ? error.message : String(error)}`
+        logger.error(
+          `Failed to score ${fileInfo.path}`,
+          error instanceof Error ? error : new Error(String(error))
         );
       }
     }
@@ -521,8 +538,9 @@ export async function searchVault(
             result.semanticScore = semanticScore;
             result.score = semanticScore; // Use semantic score as final ranking score
           } catch (error) {
-            console.error(
-              `[Search] Failed to compute semantic score for ${result.file}: ${error instanceof Error ? error.message : String(error)}`
+            logger.error(
+              `Failed to compute semantic score for ${result.file}`,
+              error instanceof Error ? error : new Error(String(error))
             );
             // Keep keyword score if semantic scoring fails
           }
@@ -624,8 +642,9 @@ async function applySemanticReranking(
         const semanticScore = context.cosineSimilarity(queryEmbedding, docEmbedding);
         result.score = semanticScore;
       } catch (error) {
-        console.error(
-          `[Search] Failed to compute semantic score for ${result.file}: ${error instanceof Error ? error.message : String(error)}`
+        logger.error(
+          `Failed to compute semantic score for ${result.file}`,
+          error instanceof Error ? error : new Error(String(error))
         );
         // Keep existing score if semantic scoring fails
       }
@@ -639,8 +658,9 @@ async function applySemanticReranking(
     candidates.sort((a, b) => b.score - a.score);
     return candidates.slice(0, maxResults);
   } catch (error) {
-    console.error(
-      `[Search] Semantic re-ranking failed: ${error instanceof Error ? error.message : String(error)}`
+    logger.error(
+      'Semantic re-ranking failed',
+      error instanceof Error ? error : new Error(String(error))
     );
     // Fall back to original scores
     return results.slice(0, maxResults);
