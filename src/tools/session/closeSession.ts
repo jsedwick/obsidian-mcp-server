@@ -10,6 +10,7 @@ import * as path from 'path';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import { generateSessionTemplate } from '../../templates.js';
+import { analyzeTopicContentInternal } from '../topics/analyzeTopicContent.js';
 import type { FileAccess } from '../../models/Session.js';
 import type { RepoCandidate } from '../../models/Git.js';
 
@@ -278,6 +279,13 @@ export async function closeSession(
   // Proactively search for related existing content mentioned in the summary
   const relatedContent = await context.findRelatedContentInText(args.summary);
 
+  // Extract tags from session summary using heuristic analysis
+  const tagAnalysis = analyzeTopicContentInternal({
+    content: args.summary,
+    topic_name: args.topic || 'Work session',
+  });
+  const sessionTags = tagAnalysis.tags;
+
   // Build session content using template
   const sessionContent = generateSessionTemplate({
     sessionId,
@@ -293,6 +301,7 @@ export async function closeSession(
     relatedTopics: relatedContent.topics,
     relatedDecisions: relatedContent.decisions,
     relatedProjects: relatedContent.projects,
+    tags: sessionTags,
   });
 
   // Write session file

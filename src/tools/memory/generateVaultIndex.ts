@@ -37,6 +37,9 @@ interface IndexEntry {
   description?: string;
   modified: Date;
   vault: string;
+  // Commit-specific fields
+  commitBranch?: string;
+  commitMessage?: string;
 }
 
 /**
@@ -54,15 +57,30 @@ function extractTitle(relativePath: string): string {
 /**
  * Format a single index entry as markdown
  */
-function formatEntry(entry: IndexEntry, includeTags: boolean, includeDescription: boolean): string {
+function formatEntry(
+  entry: IndexEntry,
+  includeTags: boolean,
+  includeDescription: boolean,
+  primaryVault: string
+): string {
   const parts: string[] = [];
 
-  // Path and title
-  parts.push(`- **${entry.relativePath}**`);
+  // Special formatting for commits: include branch and message
+  if (entry.category === 'projects' && entry.commitBranch && entry.commitMessage) {
+    const shortHash = path.basename(entry.relativePath, '.md');
+    parts.push(`- **${shortHash}** [${entry.commitBranch}] "${entry.commitMessage}"`);
+  } else {
+    // Path and title for other categories
+    parts.push(`- **${entry.relativePath}**`);
 
-  // Tags (if any and requested)
-  if (includeTags && entry.tags.length > 0) {
-    parts.push(` [${entry.tags.join(', ')}]`);
+    // Vault indicator for non-primary vaults
+    if (entry.vault !== primaryVault) {
+      parts.push(` [${entry.vault}]`);
+    }
+    // Tags (if any and requested) - only show if no vault indicator or append after
+    else if (includeTags && entry.tags.length > 0) {
+      parts.push(` [${entry.tags.join(', ')}]`);
+    }
   }
 
   // Modified date
@@ -97,8 +115,9 @@ export async function generateVaultIndex(
   const scanner = new FileScanner({ computeHashes: false });
   const fileManager = new FileManager();
 
-  // Collect vaults to scan
-  const vaults = [{ path: vaultPath, name: 'Claude' }, ...additionalVaults];
+  // Collect vaults to scan - primary vault first
+  const primaryVaultName = 'Claude';
+  const vaults = [{ path: vaultPath, name: primaryVaultName }, ...additionalVaults];
 
   // Scan all vaults
   const allFiles: ScannedFile[] = [];
@@ -129,9 +148,14 @@ export async function generateVaultIndex(
     try {
       let tags: string[] = [];
       let description: string | undefined;
+      let commitBranch: string | undefined;
+      let commitMessage: string | undefined;
 
-      // Only parse frontmatter if we need tags or description
-      if (includeTags || includeDescription) {
+      // Check if this is a commit file (in projects/*/commits/)
+      const isCommitFile = file.relativePath.match(/^projects\/[^/]+\/commits\/[^/]+\.md$/);
+
+      // Parse frontmatter for tags, description, or commit info
+      if (includeTags || includeDescription || isCommitFile) {
         const content = await fs.readFile(file.absolutePath, 'utf-8');
         const parsed = fileManager.parseFrontmatter(content);
 
@@ -162,6 +186,19 @@ export async function generateVaultIndex(
             100
           );
         }
+
+        // Extract commit-specific fields for commit files
+        if (isCommitFile) {
+          const fm = parsed.frontmatter;
+          if (typeof fm.branch === 'string') {
+            commitBranch = fm.branch;
+          }
+          // Extract message from H1 header: "# Commit: message"
+          const h1Match = parsed.body.match(/^#\s+Commit:\s*(.+)$/m);
+          if (h1Match) {
+            commitMessage = h1Match[1].trim();
+          }
+        }
       }
 
       entries.push({
@@ -172,6 +209,8 @@ export async function generateVaultIndex(
         description,
         modified: new Date(file.lastModified),
         vault: file.vault,
+        commitBranch,
+        commitMessage,
       });
     } catch (error) {
       // Skip files we can't read
@@ -197,7 +236,18 @@ export async function generateVaultIndex(
   const sections: string[] = [];
   sections.push('# Vault Index');
   sections.push(`Generated: ${new Date().toISOString().split('T')[0]}`);
-  sections.push(`Files indexed: ${entries.length} (sorted by modification date)\n`);
+  sections.push(`Files indexed: ${entries.length} (sorted by modification date)`);
+
+  // Add vault legend if there are multiple vaults
+  if (vaults.length > 1) {
+    sections.push('');
+    sections.push('**Vaults:**');
+    for (const vault of vaults) {
+      const isPrimary = vault.name === primaryVaultName;
+      sections.push(`- ${vault.name}: ${vault.path}${isPrimary ? ' (primary)' : ''}`);
+    }
+  }
+  sections.push('');
 
   for (const category of categories) {
     const categoryEntries = grouped.get(category) || [];
@@ -207,7 +257,7 @@ export async function generateVaultIndex(
     sections.push(`## ${categoryTitle} (${categoryEntries.length})`);
 
     for (const entry of categoryEntries) {
-      sections.push(formatEntry(entry, includeTags, includeDescription));
+      sections.push(formatEntry(entry, includeTags, includeDescription, primaryVaultName));
     }
     sections.push('');
   }
@@ -231,7 +281,18 @@ export async function generateVaultIndex(
       const newSections: string[] = [];
       newSections.push('# Vault Index');
       newSections.push(`Generated: ${new Date().toISOString().split('T')[0]}`);
-      newSections.push(`Files indexed: ${entries.length} (sorted by modification date)\n`);
+      newSections.push(`Files indexed: ${entries.length} (sorted by modification date)`);
+
+      // Add vault legend if there are multiple vaults
+      if (vaults.length > 1) {
+        newSections.push('');
+        newSections.push('**Vaults:**');
+        for (const vault of vaults) {
+          const isPrimary = vault.name === primaryVaultName;
+          newSections.push(`- ${vault.name}: ${vault.path}${isPrimary ? ' (primary)' : ''}`);
+        }
+      }
+      newSections.push('');
 
       for (const category of categories) {
         const categoryEntries = grouped.get(category) || [];
@@ -241,7 +302,7 @@ export async function generateVaultIndex(
         newSections.push(`## ${categoryTitle} (${categoryEntries.length})`);
 
         for (const entry of categoryEntries) {
-          newSections.push(formatEntry(entry, includeTags, includeDescription));
+          newSections.push(formatEntry(entry, includeTags, includeDescription, primaryVaultName));
         }
         newSections.push('');
       }

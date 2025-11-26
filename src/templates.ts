@@ -23,6 +23,7 @@ export interface SessionFrontmatter {
   topics: string[]; // List of topic titles covered
   decisions: string[]; // List of decision titles made
   status: 'ongoing' | 'completed';
+  tags: string[]; // Auto-extracted tags for categorization
 }
 
 /**
@@ -373,6 +374,7 @@ export interface SessionTemplateArgs {
   relatedTopics: Array<{ link: string; title: string }>;
   relatedDecisions: Array<{ link: string; title: string }>;
   relatedProjects: Array<{ link: string; name: string }>;
+  tags?: string[]; // Auto-extracted tags for categorization
 }
 
 export function generateSessionTemplate(args: SessionTemplateArgs): string {
@@ -382,6 +384,7 @@ export function generateSessionTemplate(args: SessionTemplateArgs): string {
     topics: args.topic ? [args.topic, ...args.topicsList] : args.topicsList,
     decisions: args.decisionsList,
     status: 'completed',
+    tags: args.tags || [],
   };
 
   // Strip any leading H1 header from summary to prevent duplicates
@@ -393,6 +396,7 @@ session_id: "${frontmatter.session_id}"
 topics: ${JSON.stringify(frontmatter.topics)}
 decisions: ${JSON.stringify(frontmatter.decisions)}
 status: "${frontmatter.status}"
+tags: ${JSON.stringify(frontmatter.tags)}
 ---
 
 # Session: ${args.topic || 'Work session'}
