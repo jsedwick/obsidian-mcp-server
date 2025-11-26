@@ -11,7 +11,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { createLogger } from '../../utils/logger.js';
 import { VaultError } from '../../utils/errors.js';
-import type { VaultConfig, VaultStructure, VaultDirectory } from '../../models/Vault.js';
+import type { VaultConfig, VaultStructure } from '../../models/Vault.js';
 
 const logger = createLogger('VaultManager');
 
@@ -135,7 +135,7 @@ This vault is managed by the Obsidian MCP Server.
    * @param directory - The directory type
    * @returns Absolute path to the directory
    */
-  getDirectoryPath(directory: VaultDirectory | string): string {
+  getDirectoryPath(directory: string): string {
     return path.join(this.vaultConfig.path, directory);
   }
 
