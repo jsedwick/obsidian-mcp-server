@@ -165,6 +165,8 @@ class ObsidianMCPServer {
   private topicsCreated: Array<{ slug: string; title: string; file: string }> = [];
   private decisionsCreated: Array<{ slug: string; title: string; file: string }> = [];
   private projectsCreated: Array<{ slug: string; name: string; file: string }> = [];
+  // Explicit session start time (set when get_memory_base is called)
+  private sessionStartTime: Date | null = null;
   private embeddingConfig: EmbeddingConfig;
   // LRU cache with 2000 entry limit (~6MB for embeddings at 384 dimensions × 4 bytes × 2000)
   // Prevents unbounded memory growth during heavy search sessions
@@ -521,6 +523,11 @@ class ObsidianMCPServer {
             });
 
           case 'get_memory_base':
+            // Clear session state when memory base is loaded (signals new session start)
+            // This ensures filesAccessed array is fresh for Phase 1 commit detection
+            this.clearSessionState();
+            // Set explicit session start time for two-phase /close workflow
+            this.sessionStartTime = new Date();
             return await tools.getMemoryBase(
               validatedArgs as tools.GetMemoryBaseArgs,
               this.config.primaryVault.path
@@ -1615,12 +1622,16 @@ Check the sessions/ directory for recent conversations.
   }
 
   private getSessionStartTime(): Date | null {
-    if (this.filesAccessed.length === 0) {
-      return null;
+    // Prefer explicit session start time (set when get_memory_base is called)
+    if (this.sessionStartTime) {
+      return this.sessionStartTime;
     }
-    // Return timestamp of first file access
-    const firstAccess = this.filesAccessed[0];
-    return new Date(firstAccess.timestamp);
+    // Fallback to first file access timestamp for backwards compatibility
+    if (this.filesAccessed.length > 0) {
+      const firstAccess = this.filesAccessed[0];
+      return new Date(firstAccess.timestamp);
+    }
+    return null;
   }
 
   private async getMostRecentSessionDate(repoSlug: string): Promise<Date | null> {
@@ -1689,6 +1700,7 @@ Check the sessions/ directory for recent conversations.
     this.topicsCreated = [];
     this.decisionsCreated = [];
     this.projectsCreated = [];
+    this.sessionStartTime = null;
   }
 
   // ==================== End Tool Wrapper Methods ====================
