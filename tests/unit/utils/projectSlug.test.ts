@@ -431,6 +431,94 @@ repository:
     const slug = await findExistingProjectSlug('/Users/test/repo-two', projectsDir);
     expect(slug).toBe('project-two');
   });
+
+  it('should return oldest project when duplicates exist for same repo', async () => {
+    // Regression test: when duplicates exist (from quoted YAML bug),
+    // should return the oldest one based on creation date
+    const olderProjectDir = path.join(projectsDir, 'older-project');
+    const newerProjectDir = path.join(projectsDir, 'newer-project');
+
+    await fs.mkdir(olderProjectDir, { recursive: true });
+    await fs.mkdir(newerProjectDir, { recursive: true });
+
+    // Older project (created 2025-11-10)
+    await fs.writeFile(
+      path.join(olderProjectDir, 'project.md'),
+      `---
+project_name: "My Repo"
+repo_path: /Users/test/duplicate-repo
+created: 2025-11-10
+---
+# Project`
+    );
+
+    // Newer project (created 2025-11-24) - duplicate from quoted YAML bug
+    await fs.writeFile(
+      path.join(newerProjectDir, 'project.md'),
+      `---
+project_name: "My Repo"
+repo_path: "/Users/test/duplicate-repo"
+created: 2025-11-24
+---
+# Project`
+    );
+
+    const slug = await findExistingProjectSlug('/Users/test/duplicate-repo', projectsDir);
+    expect(slug).toBe('older-project');
+  });
+
+  it('should handle duplicates with missing creation dates', async () => {
+    // If creation date is missing, should still deterministically choose one
+    const project1Dir = path.join(projectsDir, 'dup-no-date-1');
+    const project2Dir = path.join(projectsDir, 'dup-no-date-2');
+
+    await fs.mkdir(project1Dir, { recursive: true });
+    await fs.mkdir(project2Dir, { recursive: true });
+
+    // Both projects missing creation date
+    await fs.writeFile(
+      path.join(project1Dir, 'project.md'),
+      `---
+repo_path: /Users/test/no-date-repo
+---`
+    );
+    await fs.writeFile(
+      path.join(project2Dir, 'project.md'),
+      `---
+repo_path: /Users/test/no-date-repo
+---`
+    );
+
+    const slug = await findExistingProjectSlug('/Users/test/no-date-repo', projectsDir);
+    // Should return one of them consistently (both have default date '9999-99-99')
+    expect(['dup-no-date-1', 'dup-no-date-2']).toContain(slug);
+  });
+
+  it('should prefer project with creation date over one without', async () => {
+    // Project with date should be chosen over one without (without gets '9999-99-99')
+    const withDateDir = path.join(projectsDir, 'with-date');
+    const withoutDateDir = path.join(projectsDir, 'without-date');
+
+    await fs.mkdir(withDateDir, { recursive: true });
+    await fs.mkdir(withoutDateDir, { recursive: true });
+
+    await fs.writeFile(
+      path.join(withDateDir, 'project.md'),
+      `---
+repo_path: /Users/test/mixed-date-repo
+created: 2025-11-10
+---`
+    );
+    await fs.writeFile(
+      path.join(withoutDateDir, 'project.md'),
+      `---
+repo_path: /Users/test/mixed-date-repo
+---`
+    );
+
+    const slug = await findExistingProjectSlug('/Users/test/mixed-date-repo', projectsDir);
+    expect(slug).toBe('with-date');
+  });
 });
 
 describe('getOrGenerateProjectSlug', () => {

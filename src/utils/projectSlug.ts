@@ -182,6 +182,9 @@ export function generateProjectSlug(repoPath: string, remoteUrl: string | null):
  * - A remote URL changes
  * - The repo is cloned to a different location
  *
+ * If multiple projects exist for the same repo (duplicate bug scenario),
+ * returns the oldest one based on creation date in frontmatter.
+ *
  * @param repoPath - Absolute path to the repository
  * @param projectsDir - Absolute path to the projects directory in the vault
  * @returns The existing project slug if found, null otherwise
@@ -193,6 +196,8 @@ export async function findExistingProjectSlug(
   try {
     const entries = await fs.readdir(projectsDir, { withFileTypes: true });
     const projectDirs = entries.filter(e => e.isDirectory());
+
+    const matches: Array<{ slug: string; created: string }> = [];
 
     for (const dirent of projectDirs) {
       const projectFile = path.join(projectsDir, dirent.name, 'project.md');
@@ -210,7 +215,11 @@ export async function findExistingProjectSlug(
         const existingPath = newFormatMatch?.[1] || oldFormatMatch?.[1];
 
         if (existingPath === repoPath) {
-          return dirent.name; // Found existing project, return its slug
+          // Extract creation date for duplicate resolution
+          const createdMatch = content.match(/^created: "?(\d{4}-\d{2}-\d{2})"?$/m);
+          const created = createdMatch?.[1] || '9999-99-99'; // Default to future date if missing
+
+          matches.push({ slug: dirent.name, created });
         }
       } catch {
         // Skip files we can't read (project.md doesn't exist, etc.)
@@ -218,7 +227,13 @@ export async function findExistingProjectSlug(
       }
     }
 
-    return null; // No existing project found for this repo path
+    if (matches.length === 0) {
+      return null; // No existing project found for this repo path
+    }
+
+    // If multiple matches (duplicates), return the oldest one (earliest creation date)
+    matches.sort((a, b) => a.created.localeCompare(b.created));
+    return matches[0].slug;
   } catch {
     // Projects directory doesn't exist or can't be read
     return null;
