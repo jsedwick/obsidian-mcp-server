@@ -280,15 +280,30 @@ export function analyzeTopicContentInternal(args: {
 
   // Find acronyms (2+ uppercase letters)
   const acronyms = args.content.match(/\b[A-Z]{2,}\b/g) || [];
-  acronyms.forEach(term => technicalTerms.add(term.toLowerCase()));
+  acronyms.forEach(term => {
+    const lowerTerm = term.toLowerCase();
+    if (!commonWords.has(lowerTerm)) {
+      technicalTerms.add(lowerTerm);
+    }
+  });
 
   // Find capitalized technical terms (but not sentence starts)
   const capitalizedWords = args.content.match(/(?<!^|\. )\b[A-Z][a-z]+(?:[A-Z][a-z]+)*\b/g) || [];
-  capitalizedWords.forEach(term => technicalTerms.add(term.toLowerCase()));
+  capitalizedWords.forEach(term => {
+    const lowerTerm = term.toLowerCase();
+    if (!commonWords.has(lowerTerm)) {
+      technicalTerms.add(lowerTerm);
+    }
+  });
 
   // Find hyphenated terms
   const hyphenatedTerms = args.content.match(/\b[a-z]+-[a-z]+(?:-[a-z]+)*\b/gi) || [];
-  hyphenatedTerms.forEach(term => technicalTerms.add(term.toLowerCase()));
+  hyphenatedTerms.forEach(term => {
+    const lowerTerm = term.toLowerCase();
+    if (!commonWords.has(lowerTerm)) {
+      technicalTerms.add(lowerTerm);
+    }
+  });
 
   // Combine technical terms with high-frequency words
   // Filter out title words since they already provide discoverability
