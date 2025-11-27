@@ -5,7 +5,7 @@
  * tool categories, making it easy to write isolated unit tests.
  */
 
-import type { FileAccess, SessionStatus } from '../../src/models/Session.js';
+import type { FileAccess } from '../../src/models/Session.js';
 import type { GitService } from '../../src/services/git/GitService.js';
 import { vi } from 'vitest';
 
@@ -43,12 +43,35 @@ export interface SessionToolsContext extends BaseContext {
   slugify: (text: string) => string;
   ensureVaultStructure: () => Promise<void>;
   findSessionFile: (sessionId: string) => Promise<string | null>;
+  analyzeCommitImpact?: (args: {
+    repo_path: string;
+    commit_hash: string;
+    include_diff?: boolean;
+  }) => Promise<any>;
+  getSessionStartTime?: () => Date | null;
+  getMostRecentSessionDate?: (repoSlug: string) => Promise<Date | null>;
+  findGitRepos?: (startPath: string, maxDepth?: number) => Promise<string[]>;
+  getRepoInfo?: (
+    repoPath: string
+  ) => Promise<{ name: string; branch?: string; remote?: string | null }>;
+  createProjectPage?: (args: { repo_path: string }) => Promise<any>;
+  findRelatedContentInText?: (text: string) => Promise<{
+    topics: Array<{ link: string; title: string }>;
+    decisions: Array<{ link: string; title: string }>;
+    projects: Array<{ link: string; name: string }>;
+  }>;
+  vaultCustodian?: (args: { files_to_check: string[] }) => Promise<any>;
+  recordCommit?: (args: { repo_path: string; commit_hash: string }) => Promise<any>;
+  setCurrentSession?: (sessionId: string, sessionFile: string) => void;
+  clearSessionState?: () => void;
 }
 
 /**
  * Create mock context for session tools
  */
-export function createSessionToolsContext(overrides?: Partial<SessionToolsContext>): SessionToolsContext {
+export function createSessionToolsContext(
+  overrides?: Partial<SessionToolsContext>
+): SessionToolsContext {
   const filesAccessed: FileAccess[] = [];
   const topicsCreated: Array<{ slug: string; title: string; file: string }> = [];
   const decisionsCreated: Array<{ number: string; title: string; file: string }> = [];
@@ -68,6 +91,20 @@ export function createSessionToolsContext(overrides?: Partial<SessionToolsContex
     slugify,
     ensureVaultStructure: vi.fn().mockResolvedValue(undefined),
     findSessionFile: vi.fn().mockResolvedValue(null),
+    // New methods for two-phase /close workflow (Decision 022)
+    analyzeCommitImpact: vi.fn().mockResolvedValue({ content: [{ text: 'Mock commit analysis' }] }),
+    getSessionStartTime: vi.fn().mockReturnValue(null), // Default: no files accessed
+    getMostRecentSessionDate: vi.fn().mockResolvedValue(null),
+    findGitRepos: vi.fn().mockResolvedValue([]),
+    getRepoInfo: vi.fn().mockResolvedValue({ name: 'test-repo', branch: 'main', remote: null }),
+    createProjectPage: vi.fn().mockResolvedValue({ content: [] }),
+    findRelatedContentInText: vi
+      .fn()
+      .mockResolvedValue({ topics: [], decisions: [], projects: [] }),
+    vaultCustodian: vi.fn().mockResolvedValue({ content: [{ text: 'Vault check complete' }] }),
+    recordCommit: vi.fn().mockResolvedValue({ content: [] }),
+    setCurrentSession: vi.fn(),
+    clearSessionState: vi.fn(),
     ...overrides,
   };
 }
@@ -124,7 +161,9 @@ export interface SearchToolsContext extends BaseContext {
 /**
  * Create mock context for search tools
  */
-export function createSearchToolsContext(overrides?: Partial<SearchToolsContext>): SearchToolsContext {
+export function createSearchToolsContext(
+  overrides?: Partial<SearchToolsContext>
+): SearchToolsContext {
   const vaultPath = overrides?.vaultPath || '/tmp/test-vault';
 
   return {
@@ -181,7 +220,9 @@ export interface TopicsToolsContext extends BaseContext {
 /**
  * Create mock context for topics tools
  */
-export function createTopicsToolsContext(overrides?: Partial<TopicsToolsContext>): TopicsToolsContext {
+export function createTopicsToolsContext(
+  overrides?: Partial<TopicsToolsContext>
+): TopicsToolsContext {
   return {
     vaultPath: '/tmp/test-vault',
     currentSessionId: null,
@@ -213,7 +254,9 @@ export interface ReviewToolsContext extends BaseContext {
 /**
  * Create mock context for review tools
  */
-export function createReviewToolsContext(overrides?: Partial<ReviewToolsContext>): ReviewToolsContext {
+export function createReviewToolsContext(
+  overrides?: Partial<ReviewToolsContext>
+): ReviewToolsContext {
   return {
     vaultPath: '/tmp/test-vault',
     slugify,
@@ -302,7 +345,9 @@ export interface DecisionsToolsContext extends BaseContext {
 /**
  * Create mock context for decisions tools
  */
-export function createDecisionsToolsContext(overrides?: Partial<DecisionsToolsContext>): DecisionsToolsContext {
+export function createDecisionsToolsContext(
+  overrides?: Partial<DecisionsToolsContext>
+): DecisionsToolsContext {
   return {
     vaultPath: '/tmp/test-vault',
     currentSessionId: null,

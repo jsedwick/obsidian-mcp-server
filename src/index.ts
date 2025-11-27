@@ -398,10 +398,12 @@ class ObsidianMCPServer {
               findRelatedContentInText: this.findRelatedContentInText.bind(this),
               vaultCustodian: this.vaultCustodianWrapper.bind(this),
               recordCommit: this.recordCommitWrapper.bind(this),
+              analyzeCommitImpact: this.analyzeCommitImpactWrapper.bind(this),
               slugify: this.slugify.bind(this),
               setCurrentSession: this.setCurrentSession.bind(this),
               clearSessionState: this.clearSessionState.bind(this),
               getMostRecentSessionDate: this.getMostRecentSessionDate.bind(this),
+              getSessionStartTime: this.getSessionStartTime.bind(this),
             });
 
           case 'find_stale_topics':
@@ -1598,6 +1600,27 @@ Check the sessions/ directory for recent conversations.
       currentSessionId: this.currentSessionId,
       currentSessionFile: this.currentSessionFile,
     });
+  }
+
+  private async analyzeCommitImpactWrapper(args: {
+    repo_path: string;
+    commit_hash: string;
+    include_diff?: boolean;
+  }): Promise<any> {
+    return tools.analyzeCommitImpact(args as unknown as tools.AnalyzeCommitImpactArgs, {
+      vaultPath: this.config.primaryVault.path,
+      gitService: this.gitService,
+      searchVault: this.searchVaultWrapper.bind(this),
+    });
+  }
+
+  private getSessionStartTime(): Date | null {
+    if (this.filesAccessed.length === 0) {
+      return null;
+    }
+    // Return timestamp of first file access
+    const firstAccess = this.filesAccessed[0];
+    return new Date(firstAccess.timestamp);
   }
 
   private async getMostRecentSessionDate(repoSlug: string): Promise<Date | null> {

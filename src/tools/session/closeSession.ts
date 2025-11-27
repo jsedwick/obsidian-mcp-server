@@ -91,10 +91,69 @@ async function findUnrecordedCommits(
   }
 }
 
+/**
+ * Find commits made during this session (since session start time)
+ * Used for Phase 1 commit analysis
+ */
+async function findSessionCommits(
+  repoPath: string,
+  sessionStartTime: Date | null
+): Promise<string[]> {
+  if (!sessionStartTime) {
+    return [];
+  }
+
+  try {
+    const sinceDate = sessionStartTime.toISOString();
+    const { stdout: commitsOutput } = await execAsync(
+      `git -C "${repoPath}" log --since="${sinceDate}" --format=%H --no-merges`,
+      { cwd: repoPath }
+    );
+
+    const commitHashes = commitsOutput
+      .trim()
+      .split('\n')
+      .filter((hash: string) => hash.length > 0);
+
+    return commitHashes;
+  } catch (_error) {
+    // If git command fails, return empty array
+    return [];
+  }
+}
+
 export interface CloseSessionArgs {
   summary: string;
   topic?: string;
   _invoked_by_slash_command?: boolean;
+  // Phase control for two-phase workflow (Decision 022)
+  analyze_only?: boolean; // Phase 1: analyze commits, return suggestions
+  finalize?: boolean; // Phase 2: run custodian, save session
+  session_data?: SessionData; // Pass state from Phase 1 to Phase 2
+  skip_analysis?: boolean; // Skip commit analysis, go straight to finalization
+}
+
+/**
+ * Session data passed between Phase 1 and Phase 2
+ */
+export interface SessionData {
+  sessionId: string;
+  sessionFile: string;
+  sessionContent: string;
+  dateStr: string;
+  monthDir: string;
+  detectedRepoInfo: {
+    path: string;
+    name: string;
+    branch?: string;
+    remote?: string;
+  } | null;
+  topicsCreated: Array<{ slug: string; title: string; file: string }>;
+  decisionsCreated: Array<{ slug: string; title: string; file: string }>;
+  projectsCreated: Array<{ slug: string; name: string; file: string }>;
+  filesAccessed: FileAccess[];
+  filesToCheck: string[];
+  repoDetectionMessage: string;
 }
 
 export interface CloseSessionResult {
@@ -124,10 +183,16 @@ interface CloseSessionContext {
   }>;
   vaultCustodian: (args: { files_to_check: string[] }) => Promise<any>;
   recordCommit: (args: { repo_path: string; commit_hash: string }) => Promise<any>;
+  analyzeCommitImpact: (args: {
+    repo_path: string;
+    commit_hash: string;
+    include_diff?: boolean;
+  }) => Promise<any>;
   slugify: (text: string) => string;
   setCurrentSession: (sessionId: string, sessionFile: string) => void;
   clearSessionState: () => void;
   getMostRecentSessionDate: (repoSlug: string) => Promise<Date | null>;
+  getSessionStartTime: () => Date | null; // Get first file access timestamp
 }
 
 export async function closeSession(
@@ -142,6 +207,70 @@ export async function closeSession(
   }
 
   await context.ensureVaultStructure();
+
+  // PHASE 2: Finalization mode (Decision 022)
+  // Claude has finished updating topics, now run vault_custodian and save session
+  if (args.finalize && args.session_data) {
+    const data = args.session_data;
+
+    // Write session file (already generated in Phase 1)
+    await fs.writeFile(data.sessionFile, data.sessionContent);
+
+    // Set current session for back-linking
+    context.setCurrentSession(data.sessionId, data.sessionFile);
+
+    // Run vault custodian on all files from Phase 1
+    let vaultCustodianReport = '';
+    if (data.filesToCheck.length > 0) {
+      try {
+        const custodianResult = await context.vaultCustodian({
+          files_to_check: data.filesToCheck,
+        });
+        if (custodianResult.content && custodianResult.content[0]) {
+          vaultCustodianReport = '\n\n' + (custodianResult.content[0] as { text: string }).text;
+        }
+      } catch (error) {
+        vaultCustodianReport =
+          '\n\n⚠️  Vault custodian check failed: ' +
+          (error instanceof Error ? error.message : String(error));
+      }
+    }
+
+    // Clear state for next conversation
+    context.clearSessionState();
+
+    // Build summary message
+    let summary = `✅ Session finalized: ${data.sessionId}\n`;
+    summary += `📄 Session file: ${data.sessionFile}\n\n`;
+
+    if (data.topicsCreated.length > 0) {
+      summary += `📚 Topics linked (${data.topicsCreated.length}):\n`;
+      summary += data.topicsCreated.map(t => `   - ${t.title}`).join('\n') + '\n\n';
+    }
+
+    if (data.decisionsCreated.length > 0) {
+      summary += `🎯 Decisions linked (${data.decisionsCreated.length}):\n`;
+      summary += data.decisionsCreated.map(d => `   - ${d.title}`).join('\n') + '\n\n';
+    }
+
+    if (data.projectsCreated.length > 0) {
+      summary += `📦 Projects linked (${data.projectsCreated.length}):\n`;
+      summary += data.projectsCreated.map(p => `   - ${p.name}`).join('\n') + '\n\n';
+    }
+
+    if (data.filesAccessed.length > 0) {
+      summary += `📁 Files accessed: ${data.filesAccessed.length}\n`;
+    }
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: summary + data.repoDetectionMessage + vaultCustodianReport,
+        },
+      ],
+    };
+  }
 
   // Generate session ID from current timestamp and optional topic (using local timezone)
   const now = new Date();
@@ -304,7 +433,124 @@ export async function closeSession(
     tags: sessionTags,
   });
 
-  // Write session file
+  // PHASE 1: Analyze commits and return suggestions (Decision 022)
+  // Do NOT write session file or run vault_custodian yet
+  if (!args.skip_analysis && !args.finalize) {
+    // Default behavior: analyze commits and ask user
+    const sessionStartTime = context.getSessionStartTime();
+
+    if (detectedRepoInfo && sessionStartTime) {
+      // Find commits made during this session
+      const sessionCommits = await findSessionCommits(detectedRepoInfo.path, sessionStartTime);
+
+      if (sessionCommits.length > 0) {
+        // Analyze each commit for documentation impact
+        let commitAnalysisReport = `\n\n📝 **Commit Analysis (${sessionCommits.length} commit${sessionCommits.length > 1 ? 's' : ''} made during session)**\n\n`;
+
+        for (const commitHash of sessionCommits) {
+          try {
+            const analysis = await context.analyzeCommitImpact({
+              repo_path: detectedRepoInfo.path,
+              commit_hash: commitHash,
+              include_diff: false,
+            });
+
+            if (analysis.content && analysis.content[0]) {
+              commitAnalysisReport += `---\n${(analysis.content[0] as { text: string }).text}\n\n`;
+            }
+          } catch (_error) {
+            // Skip failed analyses
+            commitAnalysisReport += `⚠️  Failed to analyze commit ${commitHash.substring(0, 12)}\n\n`;
+          }
+        }
+
+        // Build repository detection message (for later)
+        let repoDetectionMessage = '';
+        if (detectedRepoInfo) {
+          repoDetectionMessage = `\n\n📦 Git Repository Auto-Linked:\n`;
+          repoDetectionMessage += `   ${detectedRepoInfo.name}\n`;
+          repoDetectionMessage += `   Path: ${detectedRepoInfo.path}\n`;
+          if (detectedRepoInfo.branch)
+            repoDetectionMessage += `   Branch: ${detectedRepoInfo.branch}\n`;
+        }
+
+        // Build filesToCheck list
+        const editedOrCreatedFiles = context.filesAccessed
+          .filter(
+            f =>
+              (f.action === 'edit' || f.action === 'create') && f.path.startsWith(context.vaultPath)
+          )
+          .map(f => f.path);
+
+        const filesToCheck: string[] = [
+          sessionFile,
+          ...context.topicsCreated.map(t => t.file),
+          ...context.decisionsCreated.map(d => d.file),
+          ...context.projectsCreated.map(p => p.file),
+          ...editedOrCreatedFiles,
+        ];
+
+        // Remove duplicates
+        const uniqueFilesToCheck = Array.from(new Set(filesToCheck));
+
+        // Save session data for Phase 2
+        const sessionData: SessionData = {
+          sessionId,
+          sessionFile,
+          sessionContent,
+          dateStr,
+          monthDir,
+          detectedRepoInfo,
+          topicsCreated: context.topicsCreated,
+          decisionsCreated: context.decisionsCreated,
+          projectsCreated: context.projectsCreated,
+          filesAccessed: context.filesAccessed,
+          filesToCheck: uniqueFilesToCheck,
+          repoDetectionMessage,
+        };
+
+        // Return commit analysis and instructions to Claude
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `${commitAnalysisReport}
+
+---
+
+**Phase 1 Complete: Commit Analysis**
+
+${sessionCommits.length} commit${sessionCommits.length > 1 ? 's were' : ' was'} made during this session. The analysis above identifies topics that may need updating.
+
+**Next Steps:**
+
+1. **Review the suggested documentation updates** from each commit analysis
+2. **Update relevant topics** using the suggestions (if applicable)
+3. **When finished with updates**, call close_session again with these parameters:
+
+\`\`\`typescript
+close_session({
+  summary: "${args.summary.replace(/"/g, '\\"')}",
+  ${args.topic ? `topic: "${args.topic.replace(/"/g, '\\"')}",` : ''}
+  finalize: true,
+  _invoked_by_slash_command: true,
+  session_data: ${JSON.stringify(sessionData, null, 2)}
+})
+\`\`\`
+
+**Or skip updates** if no documentation changes are needed:
+- Simply call with \`finalize: true\` and the session_data provided above`,
+            },
+          ],
+        };
+      }
+    }
+
+    // No commits found or no repo detected, proceed to legacy single-phase behavior
+    // (fall through to write file and run vault_custodian)
+  }
+
+  // Legacy/skip_analysis mode: Write session file immediately
   await fs.writeFile(sessionFile, sessionContent);
 
   // Set current session for back-linking
