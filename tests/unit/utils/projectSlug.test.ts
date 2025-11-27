@@ -339,6 +339,44 @@ repo_url: https://github.com/user/old-repo
     expect(slug).toBe('old-format-project');
   });
 
+  it('should find existing project with quoted YAML values (old format)', async () => {
+    // Regression test for bug where quoted frontmatter values weren't matched
+    const projectDir = path.join(projectsDir, 'quoted-format-project');
+    await fs.mkdir(projectDir, { recursive: true });
+    await fs.writeFile(
+      path.join(projectDir, 'project.md'),
+      `---
+project_name: "Quoted Project"
+repo_path: "/Users/test/quoted-repo"
+repo_url: "https://github.com/user/quoted-repo"
+---
+# Project`
+    );
+
+    const slug = await findExistingProjectSlug('/Users/test/quoted-repo', projectsDir);
+    expect(slug).toBe('quoted-format-project');
+  });
+
+  it('should find existing project with quoted YAML values (new format)', async () => {
+    // Regression test for bug where quoted frontmatter values weren't matched
+    const projectDir = path.join(projectsDir, 'quoted-new-format-project');
+    await fs.mkdir(projectDir, { recursive: true });
+    await fs.writeFile(
+      path.join(projectDir, 'project.md'),
+      `---
+title: "My Project"
+repository:
+  path: "/Users/test/my-quoted-repo"
+  name: "my-quoted-repo"
+  remote: "https://github.com/user/my-quoted-repo"
+---
+# Project`
+    );
+
+    const slug = await findExistingProjectSlug('/Users/test/my-quoted-repo', projectsDir);
+    expect(slug).toBe('quoted-new-format-project');
+  });
+
   it('should return null when no matching project exists', async () => {
     const slug = await findExistingProjectSlug('/Users/test/nonexistent', projectsDir);
     expect(slug).toBeNull();

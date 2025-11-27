@@ -203,8 +203,9 @@ export async function findExistingProjectSlug(
         // Check both old and new frontmatter formats for repository path
         // New format: "  path: /path/to/repo" (nested under repository:)
         // Old format: "repo_path: /path/to/repo" (flat)
-        const newFormatMatch = content.match(/^ {2}path: (.+)$/m);
-        const oldFormatMatch = content.match(/^repo_path: (.+)$/m);
+        // Note: Values may be quoted or unquoted in YAML frontmatter
+        const newFormatMatch = content.match(/^ {2}path: "?(.+?)"?$/m);
+        const oldFormatMatch = content.match(/^repo_path: "?(.+?)"?$/m);
 
         const existingPath = newFormatMatch?.[1] || oldFormatMatch?.[1];
 
