@@ -500,6 +500,12 @@ class ObsidianMCPServer {
               }
             );
 
+          case 'migrate_project_slugs':
+            return await tools.migrateProjectSlugs(validatedArgs as tools.MigrateProjectSlugsArgs, {
+              vaultPath: this.config.primaryVault.path,
+              gitService: this.gitService,
+            });
+
           case 'analyze_topic_content':
             return await tools.analyzeTopicContent(validatedArgs as tools.AnalyzeTopicContentArgs, {
               searchVault: this.searchVaultWrapper.bind(this),
@@ -1374,6 +1380,21 @@ SCOPE: Decisions can be vault-level (affecting the MCP system itself) or project
               description:
                 'Optional: Project slug to migrate (e.g., "obsidian-mcp-server"). If not provided, migrates all projects.',
             },
+            dry_run: {
+              type: 'boolean',
+              description:
+                'If true, shows what would be changed without making changes. Default: false.',
+            },
+          },
+        },
+      },
+      {
+        name: 'migrate_project_slugs',
+        description:
+          'Migrate existing project directories to use remote-based slug naming. Renames project directories and updates all wiki links across the vault to prevent slug collisions.',
+        inputSchema: {
+          type: 'object',
+          properties: {
             dry_run: {
               type: 'boolean',
               description:

@@ -10,4 +10,5 @@ export * from './linkSessionToRepository.js';
 export * from './createProjectPage.js';
 export * from './recordCommit.js';
 export * from './migrateCommitBranches.js';
+export * from './migrateProjectSlugs.js';
 export * from './analyzeCommitImpact.js';

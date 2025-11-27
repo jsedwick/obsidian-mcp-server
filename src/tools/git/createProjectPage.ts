@@ -7,6 +7,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { GitService } from '../../services/git/GitService.js';
 import { generateProjectTemplate } from '../../templates.js';
+import { getOrGenerateProjectSlug } from '../../utils/projectSlug.js';
 
 /**
  * Extract repository slug from various URL formats
@@ -152,16 +153,6 @@ async function findMarkdownFiles(dir: string): Promise<string[]> {
   return files;
 }
 
-/**
- * Slugify a string for use in filenames
- */
-function slugify(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-}
-
 export interface CreateProjectPageArgs {
   repo_path: string;
 }
@@ -187,8 +178,11 @@ export async function createProjectPage(
   const branch = await context.gitService.getCurrentBranch(args.repo_path);
   const remote = await context.gitService.getRemoteUrl(args.repo_path);
 
-  const slug = slugify(name);
-  const projectDir = path.join(context.vaultPath, 'projects', slug);
+  // Get or generate slug - checks for existing project first to prevent orphaning
+  // when remotes are added/changed
+  const projectsDir = path.join(context.vaultPath, 'projects');
+  const slug = await getOrGenerateProjectSlug(args.repo_path, remote, projectsDir);
+  const projectDir = path.join(projectsDir, slug);
   const projectFile = path.join(projectDir, 'project.md');
 
   // Create project directory structure

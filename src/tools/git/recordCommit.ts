@@ -9,18 +9,9 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import { GitService } from '../../services/git/GitService.js';
 import { generateCommitTemplate } from '../../templates.js';
+import { getOrGenerateProjectSlug } from '../../utils/projectSlug.js';
 
 const execAsync = promisify(exec);
-
-/**
- * Slugify a string for use in filenames
- */
-function slugify(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-}
 
 export interface RecordCommitArgs {
   repo_path: string;
@@ -49,8 +40,13 @@ export async function recordCommit(
 
   // Get repository info
   const name = await context.gitService.getRepositoryName(args.repo_path);
-  const slug = slugify(name);
-  const projectDir = path.join(context.vaultPath, 'projects', slug);
+  const remote = await context.gitService.getRemoteUrl(args.repo_path);
+
+  // Get or generate slug - checks for existing project first to prevent orphaning
+  // when remotes are added/changed
+  const projectsDir = path.join(context.vaultPath, 'projects');
+  const slug = await getOrGenerateProjectSlug(args.repo_path, remote, projectsDir);
+  const projectDir = path.join(projectsDir, slug);
   const commitsDir = path.join(projectDir, 'commits');
 
   await fs.mkdir(commitsDir, { recursive: true });

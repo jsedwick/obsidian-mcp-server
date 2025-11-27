@@ -231,6 +231,15 @@ export const MigrateCommitBranchesArgsSchema = z.object({
     .describe('If true, shows what would be changed without making changes'),
 });
 
+// migrate_project_slugs
+export const MigrateProjectSlugsArgsSchema = z.object({
+  dry_run: z
+    .boolean()
+    .optional()
+    .default(false)
+    .describe('If true, shows what would be changed without making changes'),
+});
+
 // analyze_commit_impact
 export const AnalyzeCommitImpactArgsSchema = z.object({
   repo_path: AbsolutePath.describe('Absolute path to the Git repository'),
@@ -352,6 +361,7 @@ export const ValidationSchemas = {
   link_session_to_repository: LinkSessionToRepositoryArgsSchema,
   list_recent_projects: ListRecentProjectsArgsSchema,
   migrate_commit_branches: MigrateCommitBranchesArgsSchema,
+  migrate_project_slugs: MigrateProjectSlugsArgsSchema,
   analyze_commit_impact: AnalyzeCommitImpactArgsSchema,
 
   // Decisions tools
