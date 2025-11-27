@@ -255,11 +255,17 @@ export function analyzeTopicContentInternal(args: {
     'done',
   ]);
 
-  // Extract words from title and content
-  const text = `${args.topic_name || ''} ${args.content}`.toLowerCase();
+  // Extract title words to exclude from tags (title already provides discoverability)
+  const titleText = (args.topic_name || '').toLowerCase();
+  const titleWords = new Set(
+    (titleText.match(/\b[a-z0-9]+(?:-[a-z0-9]+)*\b/g) || []).filter(w => w.length >= 3)
+  );
+
+  // Extract words from content only (not title - those words are already discoverable)
+  const contentText = args.content.toLowerCase();
 
   // Extract all words (3+ characters, alphanumeric and hyphens)
-  const words = text.match(/\b[a-z0-9]+(?:-[a-z0-9]+)*\b/g) || [];
+  const words = contentText.match(/\b[a-z0-9]+(?:-[a-z0-9]+)*\b/g) || [];
 
   // Count word frequency
   const wordFreq = new Map<string, number>();
@@ -285,14 +291,19 @@ export function analyzeTopicContentInternal(args: {
   hyphenatedTerms.forEach(term => technicalTerms.add(term.toLowerCase()));
 
   // Combine technical terms with high-frequency words
+  // Filter out title words since they already provide discoverability
   const candidateTags = new Set<string>();
 
-  // Add technical terms first (higher priority)
-  technicalTerms.forEach(term => candidateTags.add(term));
+  // Add technical terms first (higher priority), excluding title words
+  technicalTerms.forEach(term => {
+    if (!titleWords.has(term)) {
+      candidateTags.add(term);
+    }
+  });
 
-  // Add high-frequency words (appearing 2+ times)
+  // Add high-frequency words (appearing 2+ times), excluding title words
   Array.from(wordFreq.entries())
-    .filter(([_, count]) => count >= 2)
+    .filter(([word, count]) => count >= 2 && !titleWords.has(word))
     .sort((a, b) => b[1] - a[1])
     .slice(0, 10)
     .forEach(([word, _]) => candidateTags.add(word));
@@ -300,9 +311,10 @@ export function analyzeTopicContentInternal(args: {
   // Convert to array and limit to 7 tags
   const tags = Array.from(candidateTags).slice(0, 7);
 
-  // If we have too few tags, add single-occurrence technical terms
+  // If we have too few tags, add single-occurrence words (still excluding title words)
   if (tags.length < 3) {
     Array.from(wordFreq.entries())
+      .filter(([word, _]) => !titleWords.has(word))
       .sort((a, b) => b[1] - a[1])
       .slice(0, 7)
       .forEach(([word, _]) => {
