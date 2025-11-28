@@ -210,7 +210,24 @@ export async function closeSession(
 
   // PHASE 2: Finalization mode (Decision 022)
   // Claude has finished updating topics, now run vault_custodian and save session
-  if (args.finalize && args.session_data) {
+  if (args.finalize) {
+    // Validate session_data is present
+    if (!args.session_data) {
+      throw new Error(
+        '❌ Phase 2 Error: finalize=true requires session_data from Phase 1.\n\n' +
+          'The two-phase workflow requires calling close_session twice:\n' +
+          '1. First call: Receives commit analysis and session_data\n' +
+          '2. Second call: Pass finalize=true AND session_data from step 1\n\n' +
+          'Example:\n' +
+          'close_session({\n' +
+          '  summary: "...",\n' +
+          '  finalize: true,\n' +
+          '  session_data: { ...data from Phase 1... },\n' +
+          '  _invoked_by_slash_command: true\n' +
+          '})'
+      );
+    }
+
     const data = args.session_data;
 
     // Write session file (already generated in Phase 1)
