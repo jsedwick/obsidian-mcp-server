@@ -621,14 +621,11 @@ class ObsidianMCPServer {
 
     try {
       // Generate embedding for the text
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
       const result = await this.extractor(text, { pooling: 'mean', normalize: true });
 
       // Convert to array if needed - result type varies by transformers.js version
       let embedding: number[];
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
       if (result.data) {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
         embedding = Array.from(result.data as ArrayLike<number>);
       } else if (Array.isArray(result)) {
         const arr = result as unknown[];

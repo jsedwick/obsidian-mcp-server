@@ -10,9 +10,7 @@ import { fileURLToPath } from 'url';
 import path from 'path';
 
 // These names are required for ESM compatibility
-// eslint-disable-next-line @typescript-eslint/naming-convention
 const __filename = fileURLToPath(import.meta.url);
-// eslint-disable-next-line @typescript-eslint/naming-convention
 const __dirname = path.dirname(__filename);
 
 const VAULT_PATH =

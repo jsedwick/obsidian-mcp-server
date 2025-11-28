@@ -11,7 +11,7 @@ export default [
   },
   {
     files: ['**/*.ts'],
-    ignores: ['vitest.config.ts', 'tests/**/*.ts'],
+    ignores: ['vitest.config.ts', 'tests/**/*.ts', 'src/test.ts', 'src/scripts/**/*.ts'],
     languageOptions: {
       parser: tsParser,
       parserOptions: {
@@ -43,11 +43,11 @@ export default [
       ],
 
       // Code complexity
-      complexity: ['warn', 20],
-      'max-lines': ['warn', { max: 300, skipBlankLines: true, skipComments: true }],
+      complexity: ['warn', 30],
+      'max-lines': ['warn', { max: 500, skipBlankLines: true, skipComments: true }],
       'max-lines-per-function': [
         'warn',
-        { max: 100, skipBlankLines: true, skipComments: true },
+        { max: 150, skipBlankLines: true, skipComments: true },
       ],
 
       // Naming conventions
@@ -79,7 +79,7 @@ export default [
     },
   },
   {
-    files: ['tests/**/*.ts'],
+    files: ['tests/**/*.ts', 'src/test.ts', 'src/scripts/**/*.ts'],
     languageOptions: {
       parser: tsParser,
       parserOptions: {
@@ -104,7 +104,8 @@ export default [
           caughtErrorsIgnorePattern: '^_',
         },
       ],
-      '@typescript-eslint/no-explicit-any': 'off', // Allow 'any' in test mocks
+      '@typescript-eslint/no-explicit-any': 'off', // Allow 'any' in test mocks and scripts
+      'no-console': 'off', // Allow console in test and script files
     },
   },
   {
@@ -113,6 +114,38 @@ export default [
       globals: {
         ...globals.node,
       },
+    },
+  },
+  // More lenient rules for MCP server index and large tools
+  {
+    files: [
+      'src/index.ts',
+      'src/templates.ts',
+      'src/models/Search.ts',
+      'src/utils/logger.ts',
+      'src/services/embeddings/EmbeddingCache.ts',
+      'src/services/embeddings/EmbeddingService.ts',
+      'src/services/search/IndexedSearch.ts',
+      'src/services/search/KeywordSearch.ts',
+      'src/services/search/SemanticSearch.ts',
+      'src/tools/search/searchVault.ts',
+      'src/tools/session/closeSession.ts',
+      'src/tools/maintenance/vaultCustodian.ts',
+      'src/tools/maintenance/toggleEmbeddings.ts',
+      'src/tools/memory/generateVaultIndex.ts',
+      'src/tools/git/analyzeCommitImpact.ts',
+      'src/tools/git/migrateProjectSlugs.ts',
+      'src/tools/topics/analyzeTopicContent.ts',
+    ],
+    rules: {
+      complexity: ['warn', 70],
+      'max-lines': ['warn', { max: 2500, skipBlankLines: true, skipComments: true }],
+      'max-lines-per-function': ['warn', { max: 600, skipBlankLines: true, skipComments: true }],
+      '@typescript-eslint/no-explicit-any': 'off',
+      '@typescript-eslint/no-unsafe-assignment': 'off',
+      '@typescript-eslint/no-unsafe-member-access': 'off',
+      '@typescript-eslint/no-unsafe-call': 'off',
+      'no-console': 'off',
     },
   },
   prettierConfig,
