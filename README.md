@@ -4,22 +4,23 @@ An MCP (Model Context Protocol) server that enables Claude Code to automatically
 
 ## Features
 
+- **Two-Phase Close Workflow**: Automatic commit impact analysis when closing sessions - detects code changes, suggests documentation updates, keeps docs in sync with codebase
 - **Lazy Session Management**: Creates session notes retroactively when you run `/close`, organized by month
 - **Inverted Index Search**: BM25-based indexed search for 20-50x faster queries on large vaults (10k+ files), with automatic fallback to linear search
 - **Intelligent Search with Semantic Understanding**: Hybrid keyword + embedding-based search using local AI models (no API calls)
 - **Tiered Response Levels**: Control verbosity with minimal/summary/detailed/full response modes for efficient token usage
-- **Enhanced Search with Query Understanding**: AI-powered query expansion for improved discovery and contextual refinement
-- **AI-Powered Analysis**: Sub-agent integration for topic analysis, auto-tagging, and decision extraction
+- **AI-Powered Analysis**: Sub-agent integration for topic analysis and auto-tagging
 - **Git Commit Impact Analysis**: Automatic analysis of commits to identify documentation updates and architectural implications
-- **Topic Pages**: Create and maintain pages for technical concepts
-- **Topic Review System**: Find stale topics, review them, and keep knowledge fresh
-- **Decision Records**: Track architectural decisions with ADR format, with automated extraction from sessions
+- **Topic Pages**: Create and maintain pages for technical concepts with review tracking
+- **Topic Maintenance**: Find stale topics and archive outdated content
+- **Decision Records**: Track architectural decisions with ADR format, supporting vault-level and project-specific scoping
 - **Vault Maintenance**: Automatic integrity checking and file organization with vault custodian (runs automatically on session close)
 - **Git Integration**: Automatically detect repos, track commits, link code changes to sessions with smart repository detection
-- **Project Tracking**: Create project pages for repositories with commit history
+- **Project Tracking**: Create project pages for repositories with commit history and branch information
 - **Smart Linking**: Automatic Obsidian-style wiki links between content
 - **Recent Sessions Command**: List recent sessions via `/sessions` slash command with configurable detail levels
 - **Recent Projects Command**: List recent projects via `/projects` slash command with configurable detail levels
+- **Memory Continuity**: Vault index generation and memory base loading via `/mb` command for session start
 - **Zero Storage Overhead**: Text-based storage uses minimal disk space
 
 ## Installation
@@ -218,7 +219,7 @@ Once configured, Claude Code will automatically have access to these tools:
 
 ### Session Management
 
-**close_session** - Create a session retroactively to capture work done in this conversation
+**close_session** - Create a session retroactively with automatic commit impact analysis
 ```
 Summary: "Implemented JWT authentication with refresh token rotation"
 Topic: "API Authentication" (optional)
@@ -226,6 +227,23 @@ Creates: sessions/2025-11/2025-11-09_api-authentication.md
 Links: All topics, decisions, and projects created during conversation
 Runs: Vault custodian to validate created/edited files
 Detects: Git repositories based on files accessed
+
+Two-Phase Workflow (automatic):
+  Phase 1 - Commit Analysis (if commits detected since session start):
+    1. Detects commits made during session using session start time
+    2. Analyzes each commit's impact using analyze_commit_impact
+    3. Suggests topic updates based on code changes
+    4. Returns session_data and waits for topic updates
+
+  Phase 2 - Finalization (after topic updates or if no commits):
+    1. Writes session file to sessions/YYYY-MM/
+    2. Runs vault_custodian on all created/edited files
+    3. Clears session state for next conversation
+
+  Benefits:
+    - Documentation stays current with codebase
+    - No race conditions (custodian runs AFTER edits)
+    - Prompts for doc updates (prevents drift)
 
 Note: ONLY callable via /close slash command
 Sessions are created lazily - no session file until you explicitly run /close
@@ -280,6 +298,36 @@ Use when:
   - User asks for in-depth explanation
 
 Best practice: Search first to identify relevant topics, then load full content
+```
+
+### Memory & Continuity
+
+**get_memory_base** - Load vault index and session context at session start
+```
+Parameters: None
+Returns: Memory base content with procedural vault index
+
+Side effects:
+  - Sets explicit session start time (used for commit detection)
+  - Clears session state for fresh tracking
+
+Usage: Automatically invoked via /mb slash command at session start
+Provides: Recent files by category (topics, decisions, sessions, projects)
+```
+
+**generate_vault_index** - Generate procedural file index for memory base
+```
+Max files: 100 (default)
+Max size bytes: 10240 (default)
+Include tags: true (default)
+Include description: false (default)
+
+Creates: Index in memory-base.md organized by:
+  - Topics, decisions, sessions, projects
+  - Sorted by modification date (most recent first)
+  - Tags and descriptions for context
+
+Usage: Automatically run after session close to update index
 ```
 
 ## Advanced Features
@@ -486,21 +534,6 @@ Note: Available via /projects slash command in Claude Code
 Age threshold days: 365 (default)
 Include never reviewed: true (default)
 Returns: List of topics older than threshold
-```
-
-**review_topic** - Analyze a topic for outdated content
-```
-Topic: "JWT Authentication Flow"
-Analysis prompt: (optional custom instructions)
-Returns: Review analysis with concerns and suggested updates
-```
-
-**approve_topic_update** - Apply or dismiss a pending review
-```
-Review ID: "review_1730123456789_jwt-authentication-flow"
-Action: "update" | "keep" | "archive" | "dismiss"
-Modified content: (optional edited content)
-Updates: Topic with new content and review history
 ```
 
 **archive_topic** - Move topic to archive
@@ -714,9 +747,14 @@ When you have a conversation with Claude Code:
 
 3. **Session Close** (via `/close` command):
    - When conversation ends, run `/close` to persist the session
-   - Claude creates a timestamped session file in `sessions/YYYY-MM/` directory
+   - **Two-Phase Workflow** (if commits were made):
+     - **Phase 1**: Detects commits since session start, analyzes impact, suggests topic updates
+     - **Claude updates topics** based on code changes
+     - **Phase 2**: Finalizes session after topic updates complete
+   - **Single-Phase Mode** (if no commits):
+     - Creates session file immediately
    - Automatically links all topics, decisions, and projects created during conversation
-   - Runs vault custodian to validate files created/edited
+   - Runs vault custodian to validate files created/edited (after Claude's edits)
    - Automatically detects Git repositories you accessed based on tracked files
    - Optionally links session to relevant project pages
    - All context preserved for future reference
@@ -953,11 +991,12 @@ The Obsidian MCP Server has undergone a comprehensive Phase 1 Architectural Refa
 ### Backward Compatibility
 
 All existing functionality is preserved and enhanced:
-- ✅ All 22 MCP tools work identically to before
+- ✅ All 24 MCP tools available (some deprecated tools removed: enhanced_search, link_to_topic, review_topic, approve_topic_update, extract_decisions_from_session)
 - ✅ Vault files remain compatible
 - ✅ Frontmatter format unchanged
-- ✅ MCP tool API unchanged
+- ✅ Core MCP tool APIs unchanged
 - ✅ Automatic migration for existing vaults
+- ✅ New two-phase close workflow backward compatible (gracefully handles sessions without commits)
 
 ### Future Roadmap
 
