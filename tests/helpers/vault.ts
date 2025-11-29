@@ -9,7 +9,6 @@
  */
 
 import fs from 'fs/promises';
-import fssync from 'fs';
 import path from 'path';
 import os from 'os';
 
@@ -90,7 +89,7 @@ export async function createTestVault(
 export async function cleanupTestVault(vaultPath: string): Promise<void> {
   try {
     await fs.rm(vaultPath, { recursive: true, force: true });
-  } catch (error) {
+  } catch {
     // Ignore errors (vault may not exist)
   }
 }
@@ -143,7 +142,7 @@ session_id: ${sessionId}
 topics: ${JSON.stringify(metadata?.topics || [])}
 decisions: ${JSON.stringify(metadata?.decisions || [])}
 status: ${metadata?.status || 'completed'}
-${metadata?.repository ? `repository:\n  name: "${metadata.repository.name}"\n  path: "${metadata.repository.path}"` : ''}
+${metadata?.repository ? `repository:\n  path: ${metadata.repository.path}\n  name: ${metadata.repository.name}` : ''}
 ---
 
 ${content}

@@ -2,66 +2,70 @@
  * Unit tests for updateTopicPage tool
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { updateTopicPage } from '../../../../src/tools/topics/updateTopicPage.js';
 import {
   createTopicsToolsContext,
   createTestVault,
   cleanupTestVault,
-  createTopicFile,
-  readVaultFile,
-  vaultFileExists,
   type TopicsToolsContext,
 } from '../../../helpers/index.js';
+import { createTopicFile } from '../../../helpers/vault.js';
+import * as fs from 'fs/promises';
+import * as path from 'path';
 
 describe('updateTopicPage', () => {
   let vaultPath: string;
   let context: TopicsToolsContext;
 
   beforeEach(async () => {
-    vaultPath = await createTestVault('update-topic');
+    // Create a temporary vault for each test
+    vaultPath = await createTestVault('update-topic-test');
+
+    // Create context with the vault path
     context = createTopicsToolsContext({
       vaultPath,
-      createTopicPage: vi.fn().mockResolvedValue({ content: [{ type: 'text', text: 'Topic created' }] }),
+      currentSessionId: 'test-session-2025-01-15',
     });
   });
 
   afterEach(async () => {
+    // Clean up temporary vault
     await cleanupTestVault(vaultPath);
   });
 
   describe('existing topic update', () => {
     it('should append content by default', async () => {
-      await createTopicFile(vaultPath, 'test-topic', 'Test Topic', 'Original content');
+      await createTopicFile(vaultPath, 'test-topic', 'Test Topic', 'Original content.');
 
       await updateTopicPage(
         {
           topic: 'Test Topic',
-          content: 'Additional content',
+          content: 'More content.',
         },
         context
       );
 
-      const content = await readVaultFile(vaultPath, 'topics/test-topic.md');
-      expect(content).toContain('Original content');
-      expect(content).toContain('Additional content');
+      const content = await fs.readFile(path.join(vaultPath, 'topics/test-topic.md'), 'utf-8');
+      expect(content).toContain('Original content.');
+      expect(content).toContain('More content.');
     });
 
     it('should replace content when append is false', async () => {
-      await createTopicFile(vaultPath, 'test-topic', 'Test Topic', 'Original content');
+      await createTopicFile(vaultPath, 'test-topic', 'Test Topic', 'Original content.');
 
       await updateTopicPage(
         {
           topic: 'Test Topic',
-          content: '---\ntitle: "Test Topic"\n---\n\nNew content only',
+          content: 'New content.',
           append: false,
         },
         context
       );
 
-      const content = await readVaultFile(vaultPath, 'topics/test-topic.md');
-      expect(content).not.toContain('Original content');
-      expect(content).toContain('New content only');
+      const content = await fs.readFile(path.join(vaultPath, 'topics/test-topic.md'), 'utf-8');
+      expect(content).not.toContain('Original content.');
+      expect(content).toContain('New content.');
     });
 
     it('should preserve frontmatter when appending', async () => {
@@ -73,14 +77,15 @@ describe('updateTopicPage', () => {
       await updateTopicPage(
         {
           topic: 'Test Topic',
-          content: 'More content',
+          content: 'Appended content.',
         },
         context
       );
 
-      const content = await readVaultFile(vaultPath, 'topics/test-topic.md');
-      expect(content).toContain('created:');
-      expect(content).toContain('tags:');
+      const content = await fs.readFile(path.join(vaultPath, 'topics/test-topic.md'), 'utf-8');
+      expect(content).toContain('created: "2025-01-15"');
+      expect(content).toContain('tags: ["test"]');
+      expect(content).toContain('Appended content.');
     });
   });
 
@@ -89,14 +94,15 @@ describe('updateTopicPage', () => {
       await updateTopicPage(
         {
           topic: 'New Topic',
-          content: 'Brand new content',
+          content: 'This is a new topic.',
         },
         context
       );
 
+      // Verify createTopicPage was called since topic doesn't exist
       expect(context.createTopicPage).toHaveBeenCalledWith({
         topic: 'New Topic',
-        content: 'Brand new content',
+        content: 'This is a new topic.',
       });
     });
   });
@@ -108,14 +114,15 @@ describe('updateTopicPage', () => {
       await updateTopicPage(
         {
           topic: 'Test Topic',
-          content: '---\ntitle: "Test"\n---\n\nNew content',
+          content: '---\nnew_prop: true\n---\n\nNew content',
         },
         context
       );
 
-      const content = await readVaultFile(vaultPath, 'topics/test-topic.md');
-      const frontmatterCount = (content.match(/^---$/gm) || []).length;
-      expect(frontmatterCount).toBe(2); // Only one frontmatter block
+      const content = await fs.readFile(path.join(vaultPath, 'topics/test-topic.md'), 'utf-8');
+      expect(content).not.toContain('new_prop: true');
+      expect(content).toContain('Original');
+      expect(content).toContain('New content');
     });
 
     it('should handle content without frontmatter', async () => {
@@ -124,14 +131,14 @@ describe('updateTopicPage', () => {
       await updateTopicPage(
         {
           topic: 'Simple Topic',
-          content: 'More simple content',
+          content: 'and more',
         },
         context
       );
 
-      const content = await readVaultFile(vaultPath, 'topics/simple-topic.md');
+      const content = await fs.readFile(path.join(vaultPath, 'topics/simple-topic.md'), 'utf-8');
       expect(content).toContain('Simple content');
-      expect(content).toContain('More simple content');
+      expect(content).toContain('and more');
     });
   });
 });

@@ -201,6 +201,11 @@ export interface TopicsToolsContext extends BaseContext {
   currentSessionId: string | null;
   slugify: (text: string) => string;
   ensureVaultStructure: () => Promise<void>;
+  createTopicPage: (args: {
+    topic: string;
+    content: string;
+    auto_analyze?: boolean | 'true' | 'smart';
+  }) => Promise<{ content: Array<{ type: string; text: string }> }>;
   analyzeTopicContentInternal: (args: {
     content: string;
     topic_name?: string;
@@ -228,6 +233,9 @@ export function createTopicsToolsContext(
     currentSessionId: null,
     slugify,
     ensureVaultStructure: vi.fn().mockResolvedValue(undefined),
+    createTopicPage: vi.fn().mockResolvedValue({
+      content: [{ type: 'text', text: 'Topic created successfully' }],
+    }),
     analyzeTopicContentInternal: vi.fn().mockResolvedValue({
       tags: ['test', 'example'],
       summary: 'Test topic summary',

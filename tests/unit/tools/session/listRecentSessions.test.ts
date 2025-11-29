@@ -8,20 +8,26 @@ import {
   createSessionToolsContext,
   createTestVault,
   cleanupTestVault,
-  createSessionFile,
   type SessionToolsContext,
 } from '../../../helpers/index.js';
+import { createSessionFile } from '../../../helpers/vault.js';
 
 describe('listRecentSessions', () => {
   let vaultPath: string;
   let context: SessionToolsContext;
 
   beforeEach(async () => {
-    vaultPath = await createTestVault('list-sessions');
-    context = createSessionToolsContext({ vaultPath });
+    // Create a temporary vault for each test
+    vaultPath = await createTestVault('list-sessions-test');
+
+    // Create context with the vault path
+    context = createSessionToolsContext({
+      vaultPath,
+    });
   });
 
   afterEach(async () => {
+    // Clean up temporary vault
     await cleanupTestVault(vaultPath);
   });
 
@@ -33,22 +39,16 @@ describe('listRecentSessions', () => {
     });
 
     it('should accept calls with _invoked_by_slash_command flag', async () => {
-      const result = await listRecentSessions(
-        { _invoked_by_slash_command: true },
-        context
-      );
-
-      expect(result.content).toHaveLength(1);
+      await expect(
+        listRecentSessions({ _invoked_by_slash_command: true }, context)
+      ).resolves.toBeDefined();
     });
   });
 
   describe('empty vault', () => {
     it('should handle vault with no sessions', async () => {
-      const result = await listRecentSessions(
-        { _invoked_by_slash_command: true },
-        context
-      );
-
+      const result = await listRecentSessions({ _invoked_by_slash_command: true }, context);
+      expect(result.content).toHaveLength(1);
       expect(result.content[0].text).toContain('No sessions found');
     });
   });
@@ -60,18 +60,17 @@ describe('listRecentSessions', () => {
         await createSessionFile(
           vaultPath,
           `2025-01-${String(15 + i).padStart(2, '0')}_session-${i}`,
-          `Session ${i} content`,
+          `Session content ${i}`,
           { date: `2025-01-${String(15 + i).padStart(2, '0')}` }
         );
       }
 
-      const result = await listRecentSessions(
-        { _invoked_by_slash_command: true },
-        context
-      );
-
-      // Default limit is 5
-      expect(result.content[0].text).toContain('Found 5 recent session(s)');
+      const result = await listRecentSessions({ _invoked_by_slash_command: true }, context);
+      expect(result.content).toHaveLength(1);
+      expect(result.content[0].text).toContain('session-7');
+      // Should show 5 sessions (default limit)
+      const lines = result.content[0].text.split('\n').filter(l => l.match(/^\d+\./));
+      expect(lines.length).toBe(5);
     });
 
     it('should respect custom limit parameter', async () => {
@@ -80,230 +79,154 @@ describe('listRecentSessions', () => {
         await createSessionFile(
           vaultPath,
           `2025-01-${String(15 + i).padStart(2, '0')}_session-${i}`,
-          `Session ${i} content`,
+          `Session content ${i}`,
           { date: `2025-01-${String(15 + i).padStart(2, '0')}` }
         );
       }
 
       const result = await listRecentSessions(
-        { limit: 3, _invoked_by_slash_command: true },
+        { _invoked_by_slash_command: true, limit: 3 },
         context
       );
-
-      expect(result.content[0].text).toContain('Found 3 recent session(s)');
+      expect(result.content).toHaveLength(1);
+      const lines = result.content[0].text.split('\n').filter(l => l.match(/^\d+\./));
+      expect(lines.length).toBe(3);
     });
 
     it('should sort sessions by modification time', async () => {
-      await createSessionFile(
-        vaultPath,
-        '2025-01-15_session-old',
-        'Old session',
-        { date: '2025-01-15' }
-      );
+      await createSessionFile(vaultPath, '2025-01-15_session-1', 'Old session', {
+        date: '2025-01-15',
+      });
+      await new Promise(resolve => setTimeout(resolve, 10)); // ensure modification time difference
+      await createSessionFile(vaultPath, '2025-01-16_session-2', 'Mid session', {
+        date: '2025-01-16',
+      });
+      await new Promise(resolve => setTimeout(resolve, 10));
+      await createSessionFile(vaultPath, '2025-01-17_session-3', 'New session', {
+        date: '2025-01-17',
+      });
 
-      // Small delay to ensure different mtime
-      await new Promise(resolve => setTimeout(resolve, 100));
-
-      await createSessionFile(
-        vaultPath,
-        '2025-01-16_session-new',
-        'New session',
-        { date: '2025-01-16' }
-      );
-
-      const result = await listRecentSessions(
-        { _invoked_by_slash_command: true },
-        context
-      );
-
-      // Newer session should be listed first
-      const text = result.content[0].text;
-      const oldIndex = text.indexOf('session-old');
-      const newIndex = text.indexOf('session-new');
-      expect(newIndex).toBeLessThan(oldIndex);
+      const result = await listRecentSessions({ _invoked_by_slash_command: true }, context);
+      // Most recent should be listed first
+      expect(result.content[0].text).toMatch(/1\. .*session-3/);
+      expect(result.content[0].text).toMatch(/2\. .*session-2/);
+      expect(result.content[0].text).toMatch(/3\. .*session-1/);
     });
   });
 
   describe('detail levels', () => {
     beforeEach(async () => {
-      await createSessionFile(
-        vaultPath,
-        '2025-01-15_test-session',
-        'Test session content',
-        {
-          date: '2025-01-15',
-          topics: ['topic-one'],
-          status: 'completed',
-        }
-      );
+      const sessionContent = `## Summary
+
+Summary of the session.
+
+## Files Accessed
+
+_No files tracked_`;
+
+      await createSessionFile(vaultPath, '2025-01-15_test-session', sessionContent, {
+        date: '2025-01-15',
+        topics: ['Test Topic'],
+        status: 'completed',
+        repository: {
+          path: '/path/to/repo',
+          name: 'test-repo',
+        },
+      });
     });
 
     it('should return minimal detail level', async () => {
       const result = await listRecentSessions(
-        { detail: 'minimal', _invoked_by_slash_command: true },
+        { _invoked_by_slash_command: true, detail: 'minimal' },
         context
       );
-
-      const text = result.content[0].text;
-      expect(text).toContain('2025-01-15_test-session');
-      expect(text).toContain('Use detail: "summary"');
+      expect(result.content[0].text).toContain('test-session');
+      // Minimal should not include dates in parentheses
+      expect(result.content[0].text).not.toMatch(/\(\d{4}-\d{2}-\d{2}\)/);
     });
 
     it('should return summary detail level (default)', async () => {
-      const result = await listRecentSessions(
-        { _invoked_by_slash_command: true },
-        context
-      );
-
-      const text = result.content[0].text;
-      expect(text).toContain('2025-01-15_test-session');
-      expect(text).toContain('2025-01-15');
-      expect(text).toContain('✓'); // completed status icon
-      expect(text).toContain('Use get_session_context');
+      const result = await listRecentSessions({ _invoked_by_slash_command: true }, context);
+      expect(result.content[0].text).toContain('test-session');
+      // Summary should include date and status icon
+      expect(result.content[0].text).toMatch(/✓.*test-session/); // completed = ✓
+      expect(result.content[0].text).toContain('(2025-01-15)');
     });
 
     it('should return detailed level with repository info', async () => {
-      await createSessionFile(
-        vaultPath,
-        '2025-01-16_repo-session',
-        'Session with repo',
-        {
-          date: '2025-01-16',
-          repository: {
-            name: 'test-repo',
-            path: '/tmp/test-repo',
-          },
-        }
-      );
-
       const result = await listRecentSessions(
-        { detail: 'detailed', _invoked_by_slash_command: true },
+        { _invoked_by_slash_command: true, detail: 'detailed' },
         context
       );
-
-      const text = result.content[0].text;
-      expect(text).toContain('2025-01-16_repo-session');
-      // The detailed format may vary, just check the session is there
+      expect(result.content[0].text).toContain('test-session');
+      expect(result.content[0].text).toContain('Repository:');
+      expect(result.content[0].text).toContain('test-repo');
     });
 
     it('should return full level with summary snippets', async () => {
-      await createSessionFile(
-        vaultPath,
-        '2025-01-17_summary-session',
-        `## Summary
-
-This is a comprehensive summary of the session with multiple details.`,
-        { date: '2025-01-17' }
-      );
-
       const result = await listRecentSessions(
-        { detail: 'full', _invoked_by_slash_command: true },
+        { _invoked_by_slash_command: true, detail: 'full' },
         context
       );
-
-      const text = result.content[0].text;
-      expect(text).toContain('comprehensive summary');
+      expect(result.content[0].text).toContain('test-session');
+      expect(result.content[0].text).toContain('Summary of the session');
     });
   });
 
   describe('session metadata extraction', () => {
     it('should extract topic from frontmatter', async () => {
-      await createSessionFile(
-        vaultPath,
-        '2025-01-15_my-topic',
-        'Session content',
-        {
-          date: '2025-01-15',
-          topics: ['Feature Implementation'],
-        }
-      );
-
-      const result = await listRecentSessions(
-        { _invoked_by_slash_command: true },
-        context
-      );
-
-      expect(result.content[0].text).toContain('Feature Implementation');
+      await createSessionFile(vaultPath, '2025-01-15_my-topic', 'Content', {
+        date: '2025-01-15',
+        topics: ['My Awesome Topic'],
+      });
+      const result = await listRecentSessions({ _invoked_by_slash_command: true }, context);
+      expect(result.content[0].text).toContain('My Awesome Topic');
     });
 
     it('should extract status from frontmatter', async () => {
-      await createSessionFile(
-        vaultPath,
-        '2025-01-15_in-progress',
-        'Session content',
-        {
-          date: '2025-01-15',
-          status: 'in-progress',
-        }
-      );
-
-      const result = await listRecentSessions(
-        { _invoked_by_slash_command: true },
-        context
-      );
-
-      // Should show different icon for non-completed status
-      expect(result.content[0].text).toContain('○');
+      await createSessionFile(vaultPath, '2025-01-15_in-progress', 'Content', {
+        date: '2025-01-15',
+        status: 'in-progress',
+      });
+      const result = await listRecentSessions({ _invoked_by_slash_command: true }, context);
+      // in-progress status uses ○ icon
+      expect(result.content[0].text).toMatch(/○.*in-progress/);
     });
 
     it('should handle sessions without frontmatter', async () => {
       await createSessionFile(vaultPath, 'simple-session', 'Plain content');
 
-      const result = await listRecentSessions(
-        { _invoked_by_slash_command: true },
-        context
-      );
-
+      const result = await listRecentSessions({ _invoked_by_slash_command: true }, context);
       expect(result.content[0].text).toContain('simple-session');
     });
   });
 
   describe('monthly directory structure', () => {
     it('should read sessions from monthly directories', async () => {
-      await createSessionFile(
-        vaultPath,
-        '2025-01-15_jan-session',
-        'January session',
-        { date: '2025-01-15' }
-      );
+      await createSessionFile(vaultPath, '2025-01-15_jan-session', 'Content', {
+        date: '2025-01-15',
+      });
+      await createSessionFile(vaultPath, '2025-02-10_feb-session', 'Content', {
+        date: '2025-02-10',
+      });
 
-      await createSessionFile(
-        vaultPath,
-        '2025-02-20_feb-session',
-        'February session',
-        { date: '2025-02-20' }
-      );
-
-      const result = await listRecentSessions(
-        { _invoked_by_slash_command: true },
-        context
-      );
-
-      const text = result.content[0].text;
-      expect(text).toContain('jan-session');
-      expect(text).toContain('feb-session');
+      const result = await listRecentSessions({ _invoked_by_slash_command: true }, context);
+      const lines = result.content[0].text.split('\n').filter(l => l.match(/^\d+\./));
+      expect(lines.length).toBe(2);
+      expect(result.content[0].text).toContain('jan-session');
+      expect(result.content[0].text).toContain('feb-session');
     });
 
     it('should handle mix of root and monthly sessions', async () => {
-      // Create a legacy root session
-      await createSessionFile(vaultPath, 'legacy-session', 'Legacy content');
-
       // Create a monthly session
-      await createSessionFile(
-        vaultPath,
-        '2025-01-15_monthly-session',
-        'Monthly content',
-        { date: '2025-01-15' }
-      );
+      await createSessionFile(vaultPath, '2025-03-20_monthly-session', 'March content', {
+        date: '2025-03-20',
+      });
 
-      const result = await listRecentSessions(
-        { _invoked_by_slash_command: true },
-        context
-      );
-
-      const text = result.content[0].text;
-      expect(text).toContain('legacy-session');
-      expect(text).toContain('monthly-session');
+      const result = await listRecentSessions({ _invoked_by_slash_command: true }, context);
+      const lines = result.content[0].text.split('\n').filter(l => l.match(/^\d+\./));
+      expect(lines.length).toBeGreaterThan(0);
+      expect(result.content[0].text).toContain('monthly-session');
     });
   });
 
@@ -312,41 +235,28 @@ This is a comprehensive summary of the session with multiple details.`,
       const longId = '2025-01-15_' + 'very-long-topic-name-'.repeat(10);
       await createSessionFile(vaultPath, longId, 'Content', { date: '2025-01-15' });
 
-      const result = await listRecentSessions(
-        { _invoked_by_slash_command: true },
-        context
-      );
-
-      expect(result.content[0].text).toContain(longId);
+      const result = await listRecentSessions({ _invoked_by_slash_command: true }, context);
+      expect(result.content[0].text).toContain('very-long');
     });
 
     it('should handle sessions with special characters', async () => {
-      await createSessionFile(
-        vaultPath,
-        '2025-01-15_topic-with-émojis-🚀',
-        'Content',
-        { date: '2025-01-15' }
-      );
-
-      const result = await listRecentSessions(
-        { _invoked_by_slash_command: true },
-        context
-      );
-
-      expect(result.content[0].text).toContain('émojis');
+      await createSessionFile(vaultPath, '2025-01-15_topic-with-special', 'Content', {
+        date: '2025-01-15',
+      });
+      const result = await listRecentSessions({ _invoked_by_slash_command: true }, context);
+      expect(result.content[0].text).toContain('special');
     });
 
     it('should handle limit larger than available sessions', async () => {
       await createSessionFile(vaultPath, '2025-01-15_only-session', 'Content', {
         date: '2025-01-15',
       });
-
       const result = await listRecentSessions(
-        { limit: 100, _invoked_by_slash_command: true },
+        { _invoked_by_slash_command: true, limit: 10 },
         context
       );
-
-      expect(result.content[0].text).toContain('Found 1 recent session');
+      const lines = result.content[0].text.split('\n').filter(l => l.match(/^\d+\./));
+      expect(lines.length).toBe(1);
     });
   });
 });

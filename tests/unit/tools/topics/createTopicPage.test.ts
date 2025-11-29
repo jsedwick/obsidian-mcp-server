@@ -10,10 +10,10 @@ import {
   createTopicsToolsContext,
   createTestVault,
   cleanupTestVault,
-  readVaultFile,
-  vaultFileExists,
   type TopicsToolsContext,
 } from '../../../helpers/index.js';
+import * as fs from 'fs/promises';
+import * as path from 'path';
 
 describe('createTopicPage', () => {
   let vaultPath: string;
@@ -51,11 +51,14 @@ describe('createTopicPage', () => {
       expect(result.content[0].text).toContain('test-topic');
 
       // Verify file was created
-      const exists = await vaultFileExists(vaultPath, 'topics/test-topic.md');
+      const exists = await fs
+        .access(path.join(vaultPath, 'topics/test-topic.md'))
+        .then(() => true)
+        .catch(() => false);
       expect(exists).toBe(true);
 
       // Verify file content
-      const content = await readVaultFile(vaultPath, 'topics/test-topic.md');
+      const content = await fs.readFile(path.join(vaultPath, 'topics/test-topic.md'), 'utf-8');
       expect(content).toContain('title: "Test Topic"');
       expect(content).toContain('This is a test topic about feature X.');
     });
@@ -70,10 +73,10 @@ describe('createTopicPage', () => {
       );
 
       // Should create file with slugified name
-      const exists = await vaultFileExists(
-        vaultPath,
-        'topics/complex-topic-name-with-spaces-special.md'
-      );
+      const exists = await fs
+        .access(path.join(vaultPath, 'topics/complex-topic-name-with-spaces-special.md'))
+        .then(() => true)
+        .catch(() => false);
       expect(exists).toBe(true);
     });
   });
@@ -88,7 +91,7 @@ describe('createTopicPage', () => {
         context
       );
 
-      const content = await readVaultFile(vaultPath, 'topics/session-topic.md');
+      const content = await fs.readFile(path.join(vaultPath, 'topics/session-topic.md'), 'utf-8');
       expect(content).toContain('title: "Session Topic"');
       expect(content).toContain('created:');
       expect(content).toContain('last_reviewed:');
@@ -107,7 +110,10 @@ describe('createTopicPage', () => {
         context
       );
 
-      const content = await readVaultFile(vaultPath, 'topics/unanalyzed-topic.md');
+      const content = await fs.readFile(
+        path.join(vaultPath, 'topics/unanalyzed-topic.md'),
+        'utf-8'
+      );
       expect(content).toContain('tags:');
     });
   });
@@ -178,7 +184,10 @@ describe('createTopicPage', () => {
         context
       );
 
-      const content = await readVaultFile(vaultPath, 'topics/topic-with-sections.md');
+      const content = await fs.readFile(
+        path.join(vaultPath, 'topics/topic-with-sections.md'),
+        'utf-8'
+      );
       expect(content).toContain('## Related Sessions');
       expect(content).toContain('## Related Projects');
       expect(content).toContain('## Related Decisions');
@@ -206,31 +215,34 @@ describe('createTopicPage', () => {
       expect(result.content[0].text).toContain('Test Project');
 
       // Check file contains project link
-      const content = await readVaultFile(vaultPath, 'topics/topic-with-project.md');
+      const content = await fs.readFile(
+        path.join(vaultPath, 'topics/topic-with-project.md'),
+        'utf-8'
+      );
       expect(content).toContain('[[projects/test-project/project|Test Project]]');
     });
   });
 
   describe('multiple topics', () => {
     it('should create multiple topics independently', async () => {
-      await createTopicPage(
-        { topic: 'Topic One', content: 'First topic' },
-        context
-      );
+      await createTopicPage({ topic: 'Topic One', content: 'First topic' }, context);
 
-      await createTopicPage(
-        { topic: 'Topic Two', content: 'Second topic' },
-        context
-      );
+      await createTopicPage({ topic: 'Topic Two', content: 'Second topic' }, context);
 
-      await createTopicPage(
-        { topic: 'Topic Three', content: 'Third topic' },
-        context
-      );
+      await createTopicPage({ topic: 'Topic Three', content: 'Third topic' }, context);
 
-      const exists1 = await vaultFileExists(vaultPath, 'topics/topic-one.md');
-      const exists2 = await vaultFileExists(vaultPath, 'topics/topic-two.md');
-      const exists3 = await vaultFileExists(vaultPath, 'topics/topic-three.md');
+      const exists1 = await fs
+        .access(path.join(vaultPath, 'topics/topic-one.md'))
+        .then(() => true)
+        .catch(() => false);
+      const exists2 = await fs
+        .access(path.join(vaultPath, 'topics/topic-two.md'))
+        .then(() => true)
+        .catch(() => false);
+      const exists3 = await fs
+        .access(path.join(vaultPath, 'topics/topic-three.md'))
+        .then(() => true)
+        .catch(() => false);
 
       expect(exists1).toBe(true);
       expect(exists2).toBe(true);
@@ -252,7 +264,7 @@ describe('createTopicPage', () => {
         context
       );
 
-      const content = await readVaultFile(vaultPath, 'topics/long-topic.md');
+      const content = await fs.readFile(path.join(vaultPath, 'topics/long-topic.md'), 'utf-8');
       expect(content).toContain(longContent);
     });
 
@@ -267,7 +279,7 @@ describe('createTopicPage', () => {
         context
       );
 
-      const content = await readVaultFile(vaultPath, 'topics/special-topic.md');
+      const content = await fs.readFile(path.join(vaultPath, 'topics/special-topic.md'), 'utf-8');
       expect(content).toContain(specialContent);
     });
 
@@ -280,10 +292,16 @@ describe('createTopicPage', () => {
         context
       );
 
-      const exists = await vaultFileExists(vaultPath, 'topics/topic-with-mojis-and-unicode.md');
+      const exists = await fs
+        .access(path.join(vaultPath, 'topics/topic-with-mojis-and-unicode.md'))
+        .then(() => true)
+        .catch(() => false);
       expect(exists).toBe(true);
 
-      const content = await readVaultFile(vaultPath, 'topics/topic-with-mojis-and-unicode.md');
+      const content = await fs.readFile(
+        path.join(vaultPath, 'topics/topic-with-mojis-and-unicode.md'),
+        'utf-8'
+      );
       expect(content).toContain('Content with 中文字符 and émojis 🎉');
     });
   });
