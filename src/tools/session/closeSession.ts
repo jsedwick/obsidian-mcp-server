@@ -154,6 +154,7 @@ export interface SessionData {
   filesAccessed: FileAccess[];
   filesToCheck: string[];
   repoDetectionMessage: string;
+  autoCommitMessage?: string;
 }
 
 export interface CloseSessionResult {
@@ -283,7 +284,11 @@ export async function closeSession(
       content: [
         {
           type: 'text',
-          text: summary + data.repoDetectionMessage + vaultCustodianReport,
+          text:
+            summary +
+            data.repoDetectionMessage +
+            (data.autoCommitMessage || '') +
+            vaultCustodianReport,
         },
       ],
     };
@@ -309,6 +314,7 @@ export async function closeSession(
   // This allows the project to be included in the session's Projects section
   let detectedRepoInfo: { path: string; name: string; branch?: string; remote?: string } | null =
     null;
+  let autoCommitMessage = '';
 
   // Always attempt repo detection - either from tracked files or from CWD
   try {
@@ -385,6 +391,7 @@ export async function closeSession(
             await context.createProjectPage({ repo_path: topCandidate.path });
 
             // Auto-detect and record unrecorded commits on the current branch
+            /*
             const repoSlug = context.slugify(topCandidate.name);
             const unrecordedCommits = await findUnrecordedCommits(
               topCandidate.path,
@@ -408,6 +415,7 @@ export async function closeSession(
                 }
               }
             }
+            */
           } catch (_error) {
             // If project creation fails, continue anyway
           }
@@ -416,6 +424,33 @@ export async function closeSession(
     }
   } catch (_error) {
     // Silently fail - repo detection is optional
+  }
+
+  // Auto-commit uncommitted changes
+  if (detectedRepoInfo) {
+    try {
+      const { stdout: gitStatus } = await execAsync('git status --porcelain', {
+        cwd: detectedRepoInfo.path,
+      });
+
+      if (gitStatus.trim()) {
+        await execAsync('git add .', { cwd: detectedRepoInfo.path });
+
+        const commitTitle = 'feat: Auto-commit changes from session';
+        // Escape summary for commit body
+        const commitBody = args.summary.replace(/'/g, "'\\''");
+
+        await execAsync(`git commit -m '${commitTitle}' -m '${commitBody}'`, {
+          cwd: detectedRepoInfo.path,
+        });
+
+        autoCommitMessage = '\n\n✅ Automatically committed uncommitted changes.';
+      }
+    } catch (error) {
+      autoCommitMessage =
+        '\n\n⚠️  Could not automatically commit changes: ' +
+        (error instanceof Error ? error.message : String(error));
+    }
   }
 
   // Build topics list from created content
@@ -524,6 +559,7 @@ export async function closeSession(
           filesAccessed: context.filesAccessed,
           filesToCheck: uniqueFilesToCheck,
           repoDetectionMessage,
+          autoCommitMessage,
         };
 
         // Return commit analysis and instructions to Claude
@@ -667,7 +703,7 @@ close_session({
     content: [
       {
         type: 'text',
-        text: summary + repoDetectionMessage + vaultCustodianReport,
+        text: summary + repoDetectionMessage + autoCommitMessage + vaultCustodianReport,
       },
     ],
   };
