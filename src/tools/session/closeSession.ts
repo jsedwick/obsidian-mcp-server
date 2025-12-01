@@ -147,9 +147,7 @@ export async function runPhase1Analysis(
   try {
     sessionCommits = await findSessionCommits(detectedRepoInfo.path, sessionStartTime);
   } catch (error) {
-    commitDetectionError = `⚠️  Failed to detect session commits: ${
-      error instanceof GitError ? error.originalError : String(error)
-    }\n\n`;
+    commitDetectionError = `⚠️  Failed to detect session commits: ${String(error)}\n\n`;
   }
 
   if (sessionCommits.length === 0) {
@@ -271,7 +269,7 @@ export async function runPhase1Analysis(
 }
 
 export async function runPhase2Finalization(
-  args: CloseSessionArgs,
+  _args: CloseSessionArgs,
   context: CloseSessionContext,
   sessionData: SessionData
 ): Promise<CloseSessionResult> {
@@ -336,13 +334,13 @@ export async function runPhase2Finalization(
 }
 
 export async function runSinglePhaseClose(
-  args: CloseSessionArgs,
+  _args: CloseSessionArgs,
   context: CloseSessionContext,
   sessionId: string,
   sessionFile: string,
   sessionContent: string,
-  dateStr: string,
-  monthDir: string,
+  _dateStr: string,
+  _monthDir: string,
   detectedRepoInfo: { path: string; name: string; branch?: string; remote?: string } | null,
   autoCommitMessage: string
 ): Promise<CloseSessionResult> {

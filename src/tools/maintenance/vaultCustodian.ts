@@ -498,6 +498,7 @@ async function moveRelatedSectionsToBottom(file: string): Promise<string[]> {
     '## Related Sessions',
     '## Related Projects',
     '## Related Decisions',
+    '## Related Git Commits',
   ];
 
   // Find all Related sections and their content
@@ -694,6 +695,100 @@ async function removeAspirationalLinks(
 }
 
 /**
+ * Migrate old "## Git Commit" sections to "## Related Git Commits"
+ * Consolidates multiple "## Git Commit" sections into a single "## Related Git Commits" section
+ */
+async function migrateGitCommitSections(file: string): Promise<string[]> {
+  const fixes: string[] = [];
+  const content = await fs.readFile(file, 'utf-8');
+  const lines = content.split('\n');
+
+  // Find all "## Git Commit" sections and collect their content
+  const gitCommitIndices: number[] = [];
+  const gitCommitLinks: string[] = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+
+    if (line === '## Git Commit') {
+      gitCommitIndices.push(i);
+
+      // Collect links under this header
+      let j = i + 1;
+      while (j < lines.length && !lines[j].trim().startsWith('#')) {
+        const linkLine = lines[j].trim();
+        if (linkLine.startsWith('- [[')) {
+          gitCommitLinks.push(linkLine);
+        }
+        j++;
+      }
+    }
+  }
+
+  // If we found any "## Git Commit" sections, migrate them
+  if (gitCommitIndices.length > 0) {
+    // Remove all "## Git Commit" sections and their content
+    const linesToRemove = new Set<number>();
+    for (const index of gitCommitIndices) {
+      linesToRemove.add(index);
+
+      // Remove content lines until next header
+      let j = index + 1;
+      while (j < lines.length && !lines[j].trim().startsWith('#')) {
+        linesToRemove.add(j);
+        j++;
+      }
+    }
+
+    // Rebuild content without old sections
+    const newLines = lines.filter((_, index) => !linesToRemove.has(index));
+
+    // Find or create "## Related Git Commits" section
+    const relatedCommitsIndex = newLines.findIndex(
+      line => line.trim() === '## Related Git Commits'
+    );
+
+    if (relatedCommitsIndex !== -1) {
+      // Section exists, add links after it
+      const existingLinks = new Set<string>();
+
+      // Collect existing links to avoid duplicates
+      let j = relatedCommitsIndex + 1;
+      while (j < newLines.length && !newLines[j].trim().startsWith('#')) {
+        const linkLine = newLines[j].trim();
+        if (linkLine.startsWith('- [[')) {
+          existingLinks.add(linkLine);
+        }
+        j++;
+      }
+
+      // Add new links that don't already exist
+      const linksToAdd = gitCommitLinks.filter(link => !existingLinks.has(link));
+      if (linksToAdd.length > 0) {
+        newLines.splice(relatedCommitsIndex + 1, 0, ...linksToAdd);
+      }
+    } else {
+      // Section doesn't exist, add it at the end with all links
+      if (newLines.length > 0 && newLines[newLines.length - 1].trim() !== '') {
+        newLines.push('');
+      }
+      newLines.push('## Related Git Commits');
+      newLines.push(...gitCommitLinks);
+    }
+
+    // Write updated content
+    const newContent = newLines.join('\n');
+    await fs.writeFile(file, newContent);
+
+    fixes.push(
+      `Migrated ${gitCommitIndices.length} "## Git Commit" section(s) to "## Related Git Commits"`
+    );
+  }
+
+  return fixes;
+}
+
+/**
  * Deduplicate headers in a file, especially Related sections
  */
 async function deduplicateHeaders(file: string): Promise<string[]> {
@@ -708,6 +803,8 @@ async function deduplicateHeaders(file: string): Promise<string[]> {
     '## Related Projects',
     '## Related Topics',
     '## Related Decisions',
+    '## Related Git Commits',
+    '## Git Commit',
   ];
 
   // First pass: identify all headers and their positions
@@ -1059,7 +1156,24 @@ ${content}`;
       }
     }
 
-    // Check 7: Deduplicate headers
+    // Check 7: Migrate old "## Git Commit" sections
+    for (const file of allFiles) {
+      try {
+        const migrationFixes = await migrateGitCommitSections(file);
+        if (migrationFixes.length > 0) {
+          const relativeFile = path.relative(context.vaultPath, file);
+          for (const fix of migrationFixes) {
+            fixes.push(`${relativeFile}: ${fix}`);
+          }
+        }
+      } catch (error) {
+        console.error(
+          `Error migrating Git Commit sections in ${file}: ${error instanceof Error ? error.message : String(error)}`
+        );
+      }
+    }
+
+    // Check 8: Deduplicate headers
     for (const file of allFiles) {
       try {
         const headerFixes = await deduplicateHeaders(file);
@@ -1076,7 +1190,7 @@ ${content}`;
       }
     }
 
-    // Check 8: Move Related sections to bottom
+    // Check 9: Move Related sections to bottom
     for (const file of allFiles) {
       try {
         const relatedFixes = await moveRelatedSectionsToBottom(file);

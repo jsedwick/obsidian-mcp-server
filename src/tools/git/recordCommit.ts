@@ -133,9 +133,25 @@ export async function recordCommit(
 
   // Update session file with commit reference
   if (context.currentSessionFile) {
-    const sessionContent = await fs.readFile(context.currentSessionFile, 'utf-8');
-    const appendContent = `\n## Git Commit\n- [[projects/${slug}/commits/${shortHash}|${shortHash}]]: ${subject}\n`;
-    await fs.writeFile(context.currentSessionFile, sessionContent + appendContent);
+    let sessionContent = await fs.readFile(context.currentSessionFile, 'utf-8');
+    const commitLink = `- [[projects/${slug}/commits/${shortHash}|${shortHash}]]: ${subject}`;
+
+    // Look for "## Related Git Commits" section and add the commit link there
+    const relatedCommitsRegex = /^## Related Git Commits$/m;
+
+    if (relatedCommitsRegex.test(sessionContent)) {
+      // Section exists, add link after the header
+      sessionContent = sessionContent.replace(
+        relatedCommitsRegex,
+        `## Related Git Commits\n${commitLink}`
+      );
+    } else {
+      // Section doesn't exist, append it at the end
+      if (!sessionContent.endsWith('\n')) sessionContent += '\n';
+      sessionContent += `\n## Related Git Commits\n${commitLink}\n`;
+    }
+
+    await fs.writeFile(context.currentSessionFile, sessionContent);
   }
 
   return {

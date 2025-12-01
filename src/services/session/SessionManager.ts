@@ -230,11 +230,11 @@ export class SessionManager {
     content += `## Summary\n\n${options.summary}\n\n`;
 
     // Related sections (will be populated by vault_custodian)
-    content += '## Related\n\n';
-    content += '### Sessions\n\n';
-    content += '### Topics\n\n';
-    content += '### Decisions\n\n';
-    content += '### Projects\n\n';
+    content += '## Related Topics\n\n';
+    content += '## Related Sessions\n\n';
+    content += '## Related Decisions\n\n';
+    content += '## Related Projects\n\n';
+    content += '## Related Git Commits\n\n';
 
     return content;
   }
