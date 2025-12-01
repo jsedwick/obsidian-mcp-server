@@ -1288,6 +1288,13 @@ When user runs `/close`, a two-phase workflow executes to **aggressively prevent
    - Don't just update topics mentioned in commit - find related ones
    - Your goal: **perfect sync between code and documentation**
 
+4. **Use TodoWrite to track updates:**
+   - When Phase 1 presents suggestions, create a TodoWrite checklist
+   - Mark each topic update as "pending" initially
+   - Move to "in_progress" as you work on each one
+   - Mark "completed" only when that topic is fully updated
+   - Only call finalize when ALL todos are completed
+
 
 
 **Example workflow:**
@@ -1300,8 +1307,18 @@ Commit changes authentication flow →
           Search "login" and "JWT" →
             Find 2 more topics →
               Update 1 more →
-                Now call finalize
+                ✅ All updates complete
+                NOW call close_session with finalize: true
 ```
+
+**CRITICAL: How to finalize after updates:**
+
+After completing ALL documentation updates, you MUST call `close_session` again with:
+- `finalize: true`
+- The `session_data` from Phase 1
+- Same `summary` and `topic` parameters
+
+The system will provide you with the exact call syntax. **Do NOT skip this step.**
 
 
 
