@@ -182,6 +182,95 @@ If user explicitly says "/sessions" or "show me recent sessions":
 
 
 
+# 🟠 RULE #3A: AGGRESSIVELY PREVENT DOCUMENTATION DRIFT
+
+
+
+**Documentation drift is your enemy. Fight it relentlessly.**
+
+
+
+## Core Principle
+
+Code changes constantly. Documentation must change with it. Your role is to **ensure perfect sync** between codebase and documentation.
+
+
+
+## When Documentation Drift Happens
+
+**Old workflow (BAD):**
+1. Developer makes code changes
+2. Commits the code
+3. Forgets to update documentation
+4. Documentation becomes outdated
+5. Future work builds on wrong assumptions
+
+
+
+**New workflow (GOOD - Decision 022):**
+1. Developer makes code changes
+2. Commits the code
+3. `/close` triggers Phase 1 analysis
+4. **You identify ALL affected topics** (not just obvious ones)
+5. **You immediately update them** (no permission needed)
+6. Documentation stays accurate
+
+
+
+## Your Responsibilities During Phase 1 /close
+
+1. **Think broadly** - Consider conceptual relationships, not just file mentions
+2. **Search proactively** - Use `search_vault` to find related topics
+3. **Read and verify** - Check if topics are outdated
+4. **Update immediately** - No permission needed during /close Phase 1
+5. **Err on the side of updating** - Better to update unnecessarily than leave outdated
+
+
+
+## Examples of Broad Thinking
+
+**Scenario**: Commit changes JWT token expiration from 15min to 30min
+
+**Narrow thinking (BAD):**
+- Update only the file that changed (src/auth/jwt.ts)
+
+**Broad thinking (GOOD):**
+- Search "JWT" → Find authentication-flow topic → Update token duration
+- Search "authentication" → Find login-process topic → Update timeout expectations
+- Search "session" → Find session-management topic → Update session length docs
+- Search "API" → Find API-usage topic → Update client-side token refresh logic
+
+
+
+**Scenario**: Commit refactors error handling to use new ErrorHandler class
+
+**Narrow thinking (BAD):**
+- Update only error-handling topic
+
+**Broad thinking (GOOD):**
+- Search "error" → Find error-handling, logging, debugging topics → Update all
+- Search "exception" → Find exception-hierarchy topic → Update with new patterns
+- Search "API error" → Find API-documentation topic → Update error response format
+- Create new topic about ErrorHandler class usage
+
+
+
+## Why This Matters
+
+Documentation drift compounds over time:
+- Session 1: 1 outdated topic
+- Session 5: 5 outdated topics
+- Session 20: System documentation is unreliable
+- Session 50: Documentation is useless, ignored by everyone
+
+**Your aggressive updates prevent this spiral.**
+
+
+
+---
+
+
+
 # 🟠 RULE #4: Creating Content
 
 
@@ -264,11 +353,13 @@ mcp__obsidian-context-manager__create_topic_page
    - `review_history`: add entry with date, action, notes
    - **Never remove existing frontmatter fields**
 
-6. **Ask for approval** when:
-   - Major restructuring (replacing sections)
-   - Removing substantial content
-   - Changing topic scope/focus
-   - Uncertain about relevance
+6. **Permission policy:**
+   - **During Phase 1 /close workflow**: Do NOT ask for approval - preventing documentation drift is your core responsibility
+   - **During normal sessions**: Ask for approval when:
+     - Major restructuring (replacing sections)
+     - Removing substantial content
+     - Changing topic scope/focus
+     - Uncertain about relevance
 
 **Token cost:** Acceptable trade-off for maintaining high-quality "gold standard" documentation.
 
@@ -1151,27 +1242,106 @@ Results are ranked by combining multiple signals:
 ---
 
 
-# ✅ Session End Checklist
+# ✅ Two-Phase /close Workflow (Decision 022)
 
 
 
-When user runs `/close`:
+## Overview: Aggressive Documentation Drift Prevention
+
+When user runs `/close`, a two-phase workflow executes to **aggressively prevent documentation drift**:
+
+**Phase 1**: Analyze commits → Identify affected topics → **You update documentation** (no permission needed)
+**Phase 2**: Finalize session → Save files → Run vault_custodian
 
 
 
-1. **Session file created** in `sessions/YYYY-MM/`
+## Phase 1: Commit Analysis & Documentation Updates
 
-2. **Repositories detected** from files accessed
-
-3. **Auto-linking completed** (topics ↔ decisions ↔ projects ↔ commits)
-
-4. **Vault custodian runs** (validates organization, fixes links)
-
-5. **Context persisted** for future conversations
+**What happens automatically:**
+1. System detects Git repositories accessed during session
+2. Finds commits made since session start (`git log --since`)
+3. Runs `analyze_commit_impact` on each commit
+4. Presents you with comprehensive analysis and suggestions
 
 
 
-**You don't need to do anything special - the system handles it all.**
+**Your responsibilities (CRITICAL):**
+
+1. **PROACTIVELY ANALYZE** commit impact:
+   - Read analysis suggestions carefully
+   - Think **beyond direct file mentions** - consider conceptual relationships
+   - Search vault for related topics using keywords from commits
+   - Example: Authentication commit → search for ALL auth-related topics
+   - Example: API change → search for usage examples, integration guides, etc.
+
+2. **IMMEDIATELY UPDATE** affected documentation:
+   - **Do NOT ask user for permission** - this is your core responsibility
+   - Use `search_vault` to find potentially affected topics
+   - Use `Read` to understand current topic state
+   - Use `Edit` or `Write` to update outdated content
+   - Use `create_topic_page` for new concepts
+   - **Err on the side of updating** - better to update unnecessarily than leave outdated
+
+3. **Be aggressive about accuracy:**
+   - If a topic MIGHT be outdated, read it and verify
+   - Update even tangentially related topics if commit makes them inaccurate
+   - Don't just update topics mentioned in commit - find related ones
+   - Your goal: **perfect sync between code and documentation**
+
+
+
+**Example workflow:**
+```
+Commit changes authentication flow →
+  Search "authentication" →
+    Find 3 topics →
+      Read each →
+        Update 2 that are outdated, 1 is still accurate →
+          Search "login" and "JWT" →
+            Find 2 more topics →
+              Update 1 more →
+                Now call finalize
+```
+
+
+
+## Phase 2: Finalization (Automatic)
+
+**What happens:**
+1. Session file saved to `sessions/YYYY-MM/`
+2. `vault_custodian` validates and organizes all files
+3. Repositories linked to session
+4. All cross-links updated (topics ↔ sessions ↔ projects ↔ commits)
+5. Session state cleared
+
+
+
+**Result:**
+- Documentation is current and accurate
+- No drift between code and docs
+- Future sessions build on accurate foundation
+
+
+
+## Special Cases
+
+**No commits detected:**
+- Skips Phase 1 entirely
+- Goes directly to Phase 2 (legacy single-phase close)
+
+**User wants quick close:**
+- Only skip if you've verified NO documentation is affected
+- Default behavior: always check and update
+
+
+
+## Why This Matters
+
+**Documentation drift** is the enemy of knowledge management:
+- Old workflow: Make commits → forget to update → docs become outdated
+- New workflow: Make commits → **forced analysis** → **mandatory updates** → docs stay current
+
+Your role is to **aggressively maintain documentation accuracy**. When in doubt, UPDATE.
 
 
 

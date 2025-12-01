@@ -247,9 +247,21 @@ export async function runPhase1Analysis(
           `${sessionCommits.length} commit${
             sessionCommits.length > 1 ? 's were' : ' was'
           } made during this session. The analysis above identifies topics that may need updating.` +
-          '\n\n**Next Steps:**\n\n1. **Review the suggested documentation updates** from each commit analysis' +
-          '\n2. **Update relevant topics** using the suggestions (if applicable)' +
-          '\n3. **When finished with updates**, call close_session again with these parameters:\n\n' +
+          '\n\n**Next Steps - AGGRESSIVE DOCUMENTATION DRIFT PREVENTION:**\n\n' +
+          "1. **PROACTIVELY ANALYZE** each commit's impact:\n" +
+          '   - Read the analysis suggestions carefully\n' +
+          '   - Think beyond direct mentions - consider conceptual relationships\n' +
+          '   - Search vault for related topics that might be affected\n' +
+          '   - If a commit changes authentication, consider ALL auth-related topics\n' +
+          '   - If a commit changes an API, consider topics about usage, integration, examples\n\n' +
+          '2. **IMMEDIATELY UPDATE** all affected documentation:\n' +
+          '   - **Do NOT ask for user permission** - preventing documentation drift is your core responsibility\n' +
+          '   - Read existing topics to understand their current state\n' +
+          '   - Update ANY topic that might be outdated due to these commits\n' +
+          '   - Use `search_vault` to find related topics, then `Read` + `Edit`/`Write` to update them\n' +
+          '   - Create new topics with `create_topic_page` if concepts warrant documentation\n' +
+          '   - **Err on the side of updating** rather than leaving documentation outdated\n\n' +
+          '3. **Only when ALL documentation is current**, call close_session again:\n\n' +
           '```typescript\n' +
           'close_session({\n' +
           `  summary: "${summary}",\n` +
@@ -260,9 +272,7 @@ export async function runPhase1Analysis(
 ` +
           '})\n' +
           '```\n\n' +
-          '**Or skip updates** if no documentation changes are needed:' +
-          '\n' +
-          '- Simply call with `finalize: true` and the session_data provided above',
+          '**Skip updates ONLY if** you have verified that no topics are affected by analyzing the commit impact.',
       },
     ],
   };

@@ -120,7 +120,7 @@ export async function analyzeCommitImpact(
     }
 
     // Build impact analysis prompt
-    const analysisPrompt = `Analyze this Git commit and provide impact assessment for documentation updates.
+    const analysisPrompt = `Analyze this Git commit and provide COMPREHENSIVE impact assessment for documentation updates.
 
 ## Commit Information
 - **Hash**: ${hash.substring(0, 12)}
@@ -135,7 +135,9 @@ ${commitFiles}
 ${args.include_diff ? `## Full Diff\n\`\`\`\n${commitDiff}\n\`\`\`` : `## Summary\n${commitDiff}`}
 
 ## Your Task
-Analyze this commit and provide:
+Analyze this commit with a focus on preventing documentation drift. Be PROACTIVE and AGGRESSIVE about identifying documentation that needs updates.
+
+Provide:
 
 1. **Summary** (2-3 sentences): What was changed and why?
 2. **Key Changes**: List 3-5 main technical changes
@@ -146,10 +148,19 @@ Analyze this commit and provide:
    - 4: Major feature or architectural change
    - 5: Fundamental system redesign
 
-4. **Affected Topics**: Which existing topics should be updated? (provide topic names)
+4. **Affected Topics** (CRITICAL - Be thorough):
+   - Which existing topics should be updated? (provide topic names)
+   - Look beyond direct file mentions - consider conceptual relationships
+   - If a commit changes authentication logic, consider ALL auth-related topics
+   - If a commit changes an API, consider topics about API usage, integration, examples
+   - Even if a topic only tangentially relates, include it if the commit might make it outdated
+
 5. **New Topics**: Should new documentation be created?
 6. **Related Decisions**: Does this relate to any architectural decisions?
 7. **Suggested Actions**: What documentation updates are recommended?
+   - Be specific about what needs to change
+   - Include both directly affected AND conceptually related topics
+   - Err on the side of over-documenting rather than under-documenting
 
 Respond in JSON format:
 {
@@ -192,15 +203,23 @@ To complete this analysis, use a sub-agent with the following prompt:
 ${analysisPrompt}
 \`\`\`
 
-## Next Steps
+## Next Steps - CRITICAL FOR PREVENTING DOCUMENTATION DRIFT
 
 1. **Run Analysis**: Execute the prompt through a sub-agent to get structured impact assessment
-2. **Review Suggestions**: Check which topics need updates based on the analysis
-3. **Update Documentation**:
-   - For affected topics: Use \`update_topic_page\` with new information
-   - For new topics: Use \`create_topic_page\` with commit context
+
+2. **AGGRESSIVELY UPDATE Documentation**:
+   - **Do NOT ask for user permission** - documentation drift prevention is your responsibility
+   - **Be proactive** - if the analysis suggests a topic MIGHT be affected, read it and update it
+   - **Think broadly** - consider conceptual relationships, not just direct mentions
+   - For affected topics: Use \`update_topic_page\` or \`Edit\` to incorporate changes
+   - For new topics: Use \`create_topic_page\` with comprehensive commit context
    - For decisions: Use \`create_decision\` if architectural choices were made
-4. **Link Commit**: The commit is already recorded via \`record_commit\`, ensure it links to updated topics
+   - **Read existing topics before updating** to understand current state
+   - **Verify topic accuracy** - if a topic is outdated due to this commit, fix it NOW
+
+3. **Link Commit**: The commit is already recorded via \`record_commit\`, ensure it links to updated topics
+
+**Remember**: Your goal is to keep documentation in perfect sync with code. When in doubt, UPDATE.
 `,
         },
       ],
