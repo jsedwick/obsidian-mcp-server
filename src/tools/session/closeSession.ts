@@ -219,6 +219,7 @@ export async function runPhase1Analysis(
   const uniqueFilesToCheck = Array.from(new Set(filesToCheck));
 
   const sessionData: SessionData = {
+    phase: 1, // Mark as Phase 1 output
     sessionId,
     sessionFile,
     sessionContent,
@@ -449,6 +450,7 @@ export interface CloseSessionArgs {
  * Session data passed between Phase 1 and Phase 2
  */
 export interface SessionData {
+  phase: 1 | 2; // Explicit phase tracking to prevent loops
   sessionId: string;
   sessionFile: string;
   sessionContent: string;
@@ -540,6 +542,34 @@ export async function closeSession(
 
   // PHASE 2: Finalization mode (Decision 022)
   if (args.finalize) {
+    // Validate phase marker to prevent loops
+    if (args.session_data!.phase !== 1) {
+      throw new Error(
+        '❌ Phase 2 Error: session_data.phase must be 1 (from Phase 1 analysis).\n\n' +
+          `Received: phase ${args.session_data!.phase}\n\n` +
+          'This error prevents accidental loops. Only session_data from Phase 1 can be used for finalization.'
+      );
+    }
+
+    // Check if session was already finalized (extra safety against loops)
+    try {
+      await fs.access(args.session_data!.sessionFile);
+      // File exists - session already closed
+      return {
+        content: [
+          {
+            type: 'text',
+            text:
+              `⚠️  Session ${args.session_data!.sessionId} was already finalized.\n\n` +
+              `File: ${args.session_data!.sessionFile}\n\n` +
+              'If you need to make changes, edit the session file directly or create a new session.',
+          },
+        ],
+      };
+    } catch {
+      // File doesn't exist - proceed with finalization
+    }
+
     return runPhase2Finalization(args, context, args.session_data!);
   }
 

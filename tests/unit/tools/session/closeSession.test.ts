@@ -332,6 +332,7 @@ describe('closeSession - Two-Phase Workflow', () => {
   describe('runPhase2Finalization', () => {
     it('should save session file and run vault custodian', async () => {
       const sessionData: SessionData = {
+        phase: 1, // Phase 1 output
         sessionId: '2025-01-15_14-30-00',
         sessionFile: path.join(vaultPath, 'sessions/2025-01/2025-01-15_14-30-00.md'),
         sessionContent: '# Test session content',
