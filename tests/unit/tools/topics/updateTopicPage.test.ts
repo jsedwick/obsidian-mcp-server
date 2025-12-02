@@ -87,6 +87,44 @@ describe('updateTopicPage', () => {
       expect(content).toContain('tags: ["test"]');
       expect(content).toContain('Appended content.');
     });
+
+    it('should automatically update last_reviewed date when appending', async () => {
+      await createTopicFile(vaultPath, 'test-topic', 'Test Topic', 'Content', {
+        created: '2025-01-15',
+        last_reviewed: '2025-01-15',
+      });
+
+      await updateTopicPage(
+        {
+          topic: 'Test Topic',
+          content: 'Updated content.',
+        },
+        context
+      );
+
+      const content = await fs.readFile(path.join(vaultPath, 'topics/test-topic.md'), 'utf-8');
+      const today = new Date().toISOString().split('T')[0];
+      expect(content).toContain(`last_reviewed: ${today}`);
+      expect(content).not.toContain('last_reviewed: 2025-01-15');
+    });
+
+    it('should add last_reviewed date if not present', async () => {
+      await createTopicFile(vaultPath, 'test-topic', 'Test Topic', 'Content', {
+        created: '2025-01-15',
+      });
+
+      await updateTopicPage(
+        {
+          topic: 'Test Topic',
+          content: 'Updated content.',
+        },
+        context
+      );
+
+      const content = await fs.readFile(path.join(vaultPath, 'topics/test-topic.md'), 'utf-8');
+      const today = new Date().toISOString().split('T')[0];
+      expect(content).toContain(`last_reviewed: ${today}`);
+    });
   });
 
   describe('non-existent topic creation', () => {

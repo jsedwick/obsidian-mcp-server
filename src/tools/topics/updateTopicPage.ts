@@ -59,8 +59,25 @@ export async function updateTopicPage(
       args.content.match(/^---\n[\s\S]*?\n---\n([\s\S]*)$/) || args.content.match(/^([\s\S]*)$/);
     const newBody = newBodyMatch ? newBodyMatch[1] : args.content;
 
-    // Reconstruct file with preserved frontmatter + appended body
-    const newContent = `---\n${frontmatter}\n---\n${existingBody}\n${newBody}`;
+    // Update last_reviewed date in frontmatter (per Decision 011)
+    const today = new Date().toISOString().split('T')[0];
+    const frontmatterLines = frontmatter.split('\n');
+    const lastReviewedIndex = frontmatterLines.findIndex(line =>
+      line.trim().startsWith('last_reviewed:')
+    );
+
+    if (lastReviewedIndex >= 0) {
+      // Update existing last_reviewed
+      frontmatterLines[lastReviewedIndex] = `last_reviewed: ${today}`;
+    } else {
+      // Add last_reviewed if not present
+      frontmatterLines.push(`last_reviewed: ${today}`);
+    }
+
+    const updatedFrontmatter = frontmatterLines.join('\n');
+
+    // Reconstruct file with updated frontmatter + appended body
+    const newContent = `---\n${updatedFrontmatter}\n---\n${existingBody}\n${newBody}`;
     await fs.writeFile(topicFile, newContent);
   } else {
     await fs.writeFile(topicFile, args.content);
