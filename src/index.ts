@@ -167,6 +167,8 @@ class ObsidianMCPServer {
   private projectsCreated: Array<{ slug: string; name: string; file: string }> = [];
   // Explicit session start time (set when get_memory_base is called)
   private sessionStartTime: Date | null = null;
+  // Track if Phase 1 analysis has completed to prevent loop bug
+  private phase1Completed: boolean = false;
   private embeddingConfig: EmbeddingConfig;
   // LRU cache with 2000 entry limit (~6MB for embeddings at 384 dimensions × 4 bytes × 2000)
   // Prevents unbounded memory growth during heavy search sessions
@@ -404,6 +406,8 @@ class ObsidianMCPServer {
               slugify: this.slugify.bind(this),
               setCurrentSession: this.setCurrentSession.bind(this),
               clearSessionState: this.clearSessionState.bind(this),
+              hasPhase1Completed: this.hasPhase1Completed.bind(this),
+              markPhase1Complete: this.markPhase1Complete.bind(this),
               getMostRecentSessionDate: this.getMostRecentSessionDate.bind(this),
               getSessionStartTime: this.getSessionStartTime.bind(this),
             });
@@ -1692,12 +1696,21 @@ Check the sessions/ directory for recent conversations.
     this.currentSessionFile = sessionFile;
   }
 
+  private hasPhase1Completed(): boolean {
+    return this.phase1Completed;
+  }
+
+  private markPhase1Complete(): void {
+    this.phase1Completed = true;
+  }
+
   private clearSessionState(): void {
     this.filesAccessed = [];
     this.topicsCreated = [];
     this.decisionsCreated = [];
     this.projectsCreated = [];
     this.sessionStartTime = null;
+    this.phase1Completed = false;
   }
 
   // ==================== End Tool Wrapper Methods ====================
