@@ -257,9 +257,37 @@ export function analyzeTopicContentInternal(args: {
 
   // Extract title words to exclude from tags (title already provides discoverability)
   const titleText = (args.topic_name || '').toLowerCase();
-  const titleWords = new Set(
-    (titleText.match(/\b[a-z0-9]+(?:-[a-z0-9]+)*\b/g) || []).filter(w => w.length >= 3)
-  );
+  const titleWords = new Set<string>();
+
+  // Extract both complete hyphenated terms AND all sub-combinations
+  const titleTerms = titleText.match(/\b[a-z0-9]+(?:-[a-z0-9]+)*\b/g) || [];
+  titleTerms.forEach(term => {
+    if (term.length >= 3) {
+      // Add the complete term (e.g., "two-phase-close-fallback-fix")
+      titleWords.add(term);
+
+      // Split into components
+      const components = term.split('-');
+
+      // Add all individual components (e.g., "two", "phase", "close", "fallback", "fix")
+      components.forEach(component => {
+        if (component.length >= 3) {
+          titleWords.add(component);
+        }
+      });
+
+      // Add all contiguous sub-combinations (e.g., "two-phase", "phase-close", "close-fallback", "fallback-fix")
+      // This prevents hyphenated terms that appear in the title from appearing as tags
+      for (let i = 0; i < components.length - 1; i++) {
+        for (let j = i + 1; j < components.length; j++) {
+          const subterm = components.slice(i, j + 1).join('-');
+          if (subterm.length >= 3) {
+            titleWords.add(subterm);
+          }
+        }
+      }
+    }
+  });
 
   // Extract words from content only (not title - those words are already discoverable)
   const contentText = args.content.toLowerCase();
