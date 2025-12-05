@@ -506,6 +506,8 @@ interface CloseSessionContext {
   slugify: (text: string) => string;
   setCurrentSession: (sessionId: string, sessionFile: string) => void;
   clearSessionState: () => void;
+  hasPhase1Completed: () => boolean;
+  markPhase1Complete: () => void;
   getMostRecentSessionDate: (repoSlug: string) => Promise<Date | null>;
   getSessionStartTime: () => Date | null; // Get first file access timestamp
 }
@@ -739,7 +741,18 @@ export async function closeSession(
 
   // PHASE 1: Analyze commits and return suggestions (Decision 022)
   if (!args.skip_analysis && !args.finalize) {
-    return runPhase1Analysis(
+    // Prevent Phase 1 from running more than once per session (prevents loop bug)
+    if (context.hasPhase1Completed()) {
+      throw new Error(
+        '❌ Phase 1 Error: Commit analysis already completed for this session.\n\n' +
+          'Phase 1 can only run once per session. You should either:\n' +
+          '1. Call close_session with finalize: true and session_data from Phase 1\n' +
+          '2. Use skip_analysis: true to bypass commit analysis entirely\n\n' +
+          'This prevents the Phase 1 loop bug where commit analysis repeats indefinitely.'
+      );
+    }
+
+    const result = await runPhase1Analysis(
       args,
       context,
       sessionId,
@@ -750,6 +763,11 @@ export async function closeSession(
       detectedRepoInfo,
       autoCommitMessage
     );
+
+    // Mark Phase 1 as completed to prevent re-running
+    context.markPhase1Complete();
+
+    return result;
   }
 
   return runSinglePhaseClose(

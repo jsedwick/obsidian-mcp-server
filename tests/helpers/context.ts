@@ -64,6 +64,8 @@ export interface SessionToolsContext extends BaseContext {
   recordCommit?: (args: { repo_path: string; commit_hash: string }) => Promise<any>;
   setCurrentSession?: (sessionId: string, sessionFile: string) => void;
   clearSessionState?: () => void;
+  hasPhase1Completed?: () => boolean;
+  markPhase1Complete?: () => void;
 }
 
 /**
@@ -77,6 +79,9 @@ export function createSessionToolsContext(
   const decisionsCreated: Array<{ number: string; title: string; file: string }> = [];
   const projectsCreated: Array<{ slug: string; name: string; file: string }> = [];
   const commitsRecorded: Array<{ hash: string; repoPath: string; file: string }> = [];
+
+  // Track Phase 1 completion state
+  let phase1Completed = false;
 
   return {
     vaultPath: '/tmp/test-vault',
@@ -104,7 +109,13 @@ export function createSessionToolsContext(
     vaultCustodian: vi.fn().mockResolvedValue({ content: [{ text: 'Vault check complete' }] }),
     recordCommit: vi.fn().mockResolvedValue({ content: [] }),
     setCurrentSession: vi.fn(),
-    clearSessionState: vi.fn(),
+    clearSessionState: vi.fn().mockImplementation(() => {
+      phase1Completed = false;
+    }),
+    hasPhase1Completed: vi.fn().mockImplementation(() => phase1Completed),
+    markPhase1Complete: vi.fn().mockImplementation(() => {
+      phase1Completed = true;
+    }),
     ...overrides,
   };
 }
