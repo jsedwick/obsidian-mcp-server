@@ -1167,6 +1167,22 @@ SCOPE: Decisions can be vault-level (affecting the MCP system itself) or project
                 'Internal parameter - must be true to invoke this tool. Only set by slash commands.',
               default: false,
             },
+            finalize: {
+              type: 'boolean',
+              description:
+                'Phase 2 flag: Set to true to finalize the session after documentation updates. Requires session_data from Phase 1.',
+              default: false,
+            },
+            session_data: {
+              type: 'object',
+              description:
+                'Session state from Phase 1. Required when finalize=true. Contains session ID, file path, and metadata needed for finalization.',
+            },
+            skip_analysis: {
+              type: 'boolean',
+              description: 'Skip commit analysis and go straight to single-phase finalization.',
+              default: false,
+            },
           },
           required: ['summary'],
         },
