@@ -1141,21 +1141,6 @@ SCOPE: Decisions can be vault-level (affecting the MCP system itself) or project
         },
       },
       {
-        name: 'link_to_topic',
-        description:
-          "Get the Obsidian link format for a topic, creating the page if it doesn't exist.",
-        inputSchema: {
-          type: 'object',
-          properties: {
-            topic: {
-              type: 'string',
-              description: 'Topic name to link to',
-            },
-          },
-          required: ['topic'],
-        },
-      },
-      {
         name: 'close_session',
         description:
           'Create a session retroactively to capture the work done in this conversation. ONLY callable via the /close slash command. Call this at the end of a conversation to persist the session to the vault.',
