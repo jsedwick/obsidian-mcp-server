@@ -327,6 +327,13 @@ class ObsidianMCPServer {
         // This provides runtime type safety and helpful error messages
         const validatedArgs = validateToolArgs(name as any, args);
 
+        // Set session start time on first tool call if not already set
+        // This ensures Phase 1 of two-phase close workflow has a valid start time
+        // even if /mb is not explicitly run at session start
+        if (!this.sessionStartTime) {
+          this.sessionStartTime = new Date();
+        }
+
         switch (name) {
           case 'search_vault':
             return await tools.searchVault(validatedArgs as tools.SearchVaultArgs, {

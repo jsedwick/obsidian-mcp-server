@@ -82,6 +82,55 @@ export const ListRecentSessionsArgsSchema = z.object({
 });
 
 // close_session
+// SessionData schema for Phase 2 finalization (must match CloseSessionArgs.session_data)
+const SessionDataSchema = z.object({
+  phase: z.literal(1).describe('Phase marker - must be 1 for Phase 2 finalization'),
+  sessionId: z.string(),
+  sessionFile: z.string(),
+  sessionContent: z.string(),
+  dateStr: z.string(),
+  monthDir: z.string(),
+  detectedRepoInfo: z
+    .object({
+      path: z.string(),
+      name: z.string(),
+      branch: z.string().optional(),
+      remote: z.string().optional(),
+    })
+    .nullable(),
+  topicsCreated: z.array(
+    z.object({
+      slug: z.string(),
+      title: z.string(),
+      file: z.string(),
+    })
+  ),
+  decisionsCreated: z.array(
+    z.object({
+      slug: z.string(),
+      title: z.string(),
+      file: z.string(),
+    })
+  ),
+  projectsCreated: z.array(
+    z.object({
+      slug: z.string(),
+      name: z.string(),
+      file: z.string(),
+    })
+  ),
+  filesAccessed: z.array(
+    z.object({
+      path: z.string(),
+      action: z.enum(['read', 'edit', 'create']),
+      timestamp: z.string().optional(),
+    })
+  ),
+  filesToCheck: z.array(z.string()),
+  repoDetectionMessage: z.string(),
+  autoCommitMessage: z.string().optional(),
+});
+
 export const CloseSessionArgsSchema = z.object({
   summary: NonEmptyString.describe('Summary of what was accomplished in this conversation'),
   topic: z.string().optional().describe('Optional topic or title for this session'),
@@ -89,6 +138,20 @@ export const CloseSessionArgsSchema = z.object({
     .boolean()
     .optional()
     .describe('Internal flag - set by slash commands only'),
+  // Phase 2 parameters (Decision 022 - Two-phase close workflow)
+  finalize: z
+    .boolean()
+    .optional()
+    .default(false)
+    .describe('Phase 2 flag: Set to true to finalize session after documentation updates'),
+  session_data: SessionDataSchema.optional().describe(
+    'Session state from Phase 1. Required when finalize=true'
+  ),
+  skip_analysis: z
+    .boolean()
+    .optional()
+    .default(false)
+    .describe('Skip commit analysis and go straight to single-phase finalization'),
 });
 
 // detect_session_repositories
