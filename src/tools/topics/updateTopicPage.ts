@@ -7,6 +7,67 @@
 import fs from 'fs/promises';
 import path from 'path';
 
+/**
+ * Find the position of Related sections that are NOT inside code blocks.
+ * Returns the index of the first real Related section, or -1 if none found.
+ */
+function findRealRelatedSectionIndex(content: string): number {
+  const lines = content.split('\n');
+  let inCodeBlock = false;
+  let relatedStartLine = -1;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    // Track code block state (triple backticks)
+    if (line.trim().startsWith('```')) {
+      inCodeBlock = !inCodeBlock;
+      continue;
+    }
+
+    // Skip if we're inside a code block
+    if (inCodeBlock) {
+      continue;
+    }
+
+    // Check for Related section headers (not inside code blocks)
+    if (/^## Related (?:Topics|Sessions|Projects|Decisions|Git Commits)/.test(line)) {
+      relatedStartLine = i;
+      break;
+    }
+  }
+
+  if (relatedStartLine === -1) {
+    return -1;
+  }
+
+  // Calculate character index from line number
+  let charIndex = 0;
+  for (let i = 0; i < relatedStartLine; i++) {
+    charIndex += lines[i].length + 1; // +1 for newline
+  }
+
+  return charIndex;
+}
+
+/**
+ * Smart append that inserts content before Related sections,
+ * but only if those sections are not inside code blocks.
+ */
+function smartAppendContent(existingBody: string, newBody: string): string {
+  const relatedIndex = findRealRelatedSectionIndex(existingBody);
+
+  if (relatedIndex > 0) {
+    // Insert new content before Related sections
+    const bodyBeforeRelated = existingBody.slice(0, relatedIndex);
+    const relatedSections = existingBody.slice(relatedIndex);
+    return `${bodyBeforeRelated}\n${newBody}\n${relatedSections}`;
+  } else {
+    // No Related sections found outside code blocks, append normally
+    return `${existingBody}\n${newBody}`;
+  }
+}
+
 export interface UpdateTopicPageArgs {
   topic: string;
   content: string;
@@ -79,19 +140,8 @@ export async function updateTopicPage(
 
     // Smart append: insert before Related sections if they exist at the end
     // This prevents new content from being placed after Related Topics/Sessions/etc.
-    const relatedSectionPattern = /\n(## Related (?:Topics|Sessions|Projects|Decisions)[\s\S]*)$/;
-    const relatedMatch = existingBody.match(relatedSectionPattern);
-
-    let finalBody: string;
-    if (relatedMatch) {
-      // Insert new content before Related sections
-      const bodyBeforeRelated = existingBody.slice(0, relatedMatch.index);
-      const relatedSections = relatedMatch[1];
-      finalBody = `${bodyBeforeRelated}\n${newBody}\n${relatedSections}`;
-    } else {
-      // No Related sections found, append normally
-      finalBody = `${existingBody}\n${newBody}`;
-    }
+    // IMPORTANT: Must ignore Related sections inside code blocks
+    const finalBody = smartAppendContent(existingBody, newBody);
 
     // Reconstruct file with updated frontmatter + modified body
     const newContent = `---\n${updatedFrontmatter}\n---\n${finalBody}`;

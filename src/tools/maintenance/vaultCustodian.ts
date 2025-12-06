@@ -262,10 +262,12 @@ async function findCorrectLinkPath(linkPath: string, vaultPath: string): Promise
 }
 
 /**
- * Extract all wiki links from markdown content
+ * Extract all wiki links from markdown content with their positions
  */
-function extractWikiLinks(content: string): Array<{ link: string; display?: string }> {
-  const links: Array<{ link: string; display?: string }> = [];
+function extractWikiLinks(
+  content: string
+): Array<{ link: string; display?: string; index: number }> {
+  const links: Array<{ link: string; display?: string; index: number }> = [];
   const linkRegex = /\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g;
   let match;
 
@@ -273,6 +275,7 @@ function extractWikiLinks(content: string): Array<{ link: string; display?: stri
     links.push({
       link: match[1],
       display: match[2],
+      index: match.index,
     });
   }
 
@@ -471,9 +474,9 @@ async function validateReciprocalLinks(
       const content = await fs.readFile(file, 'utf-8');
       const links = extractWikiLinks(content);
 
-      for (const { link } of links) {
-        // Skip if link looks like it should be skipped
-        if (shouldSkipLinkValidation(link, content, 0)) {
+      for (const { link, index } of links) {
+        // Skip if link looks like it should be skipped (including code blocks)
+        if (shouldSkipLinkValidation(link, content, index)) {
           continue;
         }
 

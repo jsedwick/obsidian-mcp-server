@@ -231,6 +231,93 @@ title: Test Topic
     await fs.rm(tmpDir, { recursive: true });
   });
 
+  it('should skip wiki links inside code blocks for reciprocal link validation', async () => {
+    // This tests the bug fix for code block detection in validateReciprocalLinks
+    // Previously, the matchIndex was always passed as 0, breaking code block detection
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'vault-codeblock-test-'));
+
+    // Create vault structure
+    const topicsDir = path.join(tmpDir, 'topics');
+    const projectDir = path.join(tmpDir, 'projects', 'some-project');
+    await fs.mkdir(topicsDir, { recursive: true });
+    await fs.mkdir(projectDir, { recursive: true });
+
+    // Create an actual project file that could receive spurious reciprocal links
+    const projectPath = path.join(projectDir, 'project.md');
+    await fs.writeFile(
+      projectPath,
+      `---
+project_name: some-project
+---
+
+# Project: some-project
+
+## Overview
+A test project.
+
+## Related Topics
+`
+    );
+
+    // Create a topic with wiki links INSIDE code blocks (examples in documentation)
+    // These should NOT trigger reciprocal link creation
+    const topicPath = path.join(topicsDir, 'documentation-examples.md');
+    const topicContent = `---
+title: Documentation Examples
+---
+
+# Documentation Examples
+
+This topic shows example markdown with wiki links in code blocks.
+
+## Example Scenarios
+
+### Scenario 1: Session Creates Topic
+\`\`\`markdown
+# Session file
+## Topics Created
+- JWT Authentication
+
+# Topic file
+## Related Projects
+- [[projects/some-project/project]]
+\`\`\`
+
+The above is just an example - the link should not create a reciprocal link.
+
+## Related Topics
+`;
+
+    await fs.writeFile(topicPath, topicContent);
+
+    // Run vaultCustodian
+    const { vaultCustodian } = await import('../../../../src/tools/maintenance/vaultCustodian.js');
+
+    const result = await vaultCustodian(
+      { files_to_check: [topicPath, projectPath] },
+      {
+        vaultPath: tmpDir,
+        ensureVaultStructure: async () => {},
+        findSessionFile: async () => null,
+      }
+    );
+
+    // Read the project file - it should NOT have a reciprocal link added
+    // because the [[projects/some-project/project]] link was inside a code block
+    const projectContent = await fs.readFile(projectPath, 'utf-8');
+
+    // The project file should NOT contain a link back to documentation-examples
+    // If the bug exists, it would have added: - [[topics/documentation-examples|Documentation Examples]]
+    expect(projectContent).not.toContain('documentation-examples');
+
+    // Verify the result doesn't mention adding reciprocal links for code block content
+    const reportText = result.content[0].text;
+    expect(reportText).not.toContain('documentation-examples');
+
+    // Cleanup
+    await fs.rm(tmpDir, { recursive: true });
+  });
+
   it.skip('should validate vault structure', () => {
     // TODO: Implement after reading vaultCustodian source
   });
