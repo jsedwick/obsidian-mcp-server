@@ -51,6 +51,7 @@ export interface CreateDecisionContext {
   }>;
   trackDecisionCreation: (decision: { slug: string; title: string; file: string }) => void;
   getRemoteUrl: (repoPath: string) => Promise<string | null>;
+  trackFileAccess?: (path: string, action: 'read' | 'edit' | 'create') => void;
 }
 
 export async function createDecision(
@@ -214,6 +215,11 @@ To proceed anyway, call create_decision again with force: true.`,
     }
 
     await fs.writeFile(decisionFile, updatedContent);
+  }
+
+  // Track file access for two-phase close workflow (ensures vault_custodian processes this file)
+  if (context.trackFileAccess) {
+    context.trackFileAccess(decisionFile, 'create');
   }
 
   const scopeMsg = scope === 'vault' ? ' (vault-level)' : ` (project: ${scope})`;

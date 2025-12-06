@@ -58,6 +58,7 @@ export interface CreateTopicPageContext {
       }>;
   findRelatedProjects: (topicContent: string) => Promise<Array<{ link: string; name: string }>>;
   trackTopicCreation: (topic: { slug: string; title: string; file: string }) => void;
+  trackFileAccess?: (path: string, action: 'read' | 'edit' | 'create') => void;
 }
 
 export async function createTopicPage(
@@ -160,6 +161,11 @@ export async function createTopicPage(
     );
 
     await fs.writeFile(topicFile, updatedContent);
+  }
+
+  // Track file access for two-phase close workflow (ensures vault_custodian processes this file)
+  if (context.trackFileAccess) {
+    context.trackFileAccess(topicFile, 'create');
   }
 
   return {

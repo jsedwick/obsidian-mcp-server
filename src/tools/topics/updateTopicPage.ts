@@ -28,6 +28,7 @@ export interface UpdateTopicPageContext {
     content: string;
     auto_analyze?: boolean | 'true' | 'smart';
   }) => Promise<UpdateTopicPageResult>;
+  trackFileAccess?: (path: string, action: 'read' | 'edit' | 'create') => void;
 }
 
 export async function updateTopicPage(
@@ -97,6 +98,11 @@ export async function updateTopicPage(
     await fs.writeFile(topicFile, newContent);
   } else {
     await fs.writeFile(topicFile, args.content);
+  }
+
+  // Track file access for two-phase close workflow (ensures vault_custodian processes this file)
+  if (context.trackFileAccess) {
+    context.trackFileAccess(topicFile, 'edit');
   }
 
   return {
