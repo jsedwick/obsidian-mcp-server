@@ -7,4 +7,14 @@
  */
 
 export { createDecision } from './createDecision.js';
-export type { CreateDecisionArgs, CreateDecisionResult, CreateDecisionContext } from './createDecision.js';
+export type {
+  CreateDecisionArgs,
+  CreateDecisionResult,
+  CreateDecisionContext,
+} from './createDecision.js';
+
+export { migrateDecisionSlugs } from './migrateDecisionSlugs.js';
+export type {
+  MigrateDecisionSlugsArgs,
+  MigrateDecisionSlugsResult,
+} from './migrateDecisionSlugs.js';

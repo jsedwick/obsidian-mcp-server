@@ -372,6 +372,7 @@ class ObsidianMCPServer {
               ensureVaultStructure: this.ensureVaultStructure.bind(this),
               findRelatedContentInText: this.findRelatedContentInText.bind(this),
               trackDecisionCreation: decision => this.decisionsCreated.push(decision),
+              getRemoteUrl: (repoPath: string) => this.gitService.getRemoteUrl(repoPath),
             });
 
           case 'update_topic_page':
@@ -520,6 +521,15 @@ class ObsidianMCPServer {
               vaultPath: this.config.primaryVault.path,
               gitService: this.gitService,
             });
+
+          case 'migrate_decision_slugs':
+            return await tools.migrateDecisionSlugs(
+              validatedArgs as tools.MigrateDecisionSlugsArgs,
+              {
+                vaultPath: this.config.primaryVault.path,
+                gitService: this.gitService,
+              }
+            );
 
           case 'analyze_topic_content':
             return await tools.analyzeTopicContent(validatedArgs as tools.AnalyzeTopicContentArgs, {
@@ -1059,7 +1069,7 @@ A decision should have: context, multiple alternatives considered, rationale for
 
 NOTE: If your title contains implementation keywords (fix, bug, implement, etc.), the tool will suggest using create_topic_page instead. Use force: true if the decision is genuinely strategic despite the keywords (e.g., decision to fix architecture that also includes implementation guide).
 
-SCOPE: Decisions can be vault-level (affecting the MCP system itself) or project-specific (affecting a particular codebase). If project is not specified, decision is created as vault-level.`,
+SCOPE: Decisions can be vault-level (affecting the MCP system itself) or project-specific (affecting a particular codebase). Use repo_path to auto-generate a collision-resistant project slug. If neither repo_path nor project is specified, decision is created as vault-level.`,
         inputSchema: {
           type: 'object',
           properties: {
@@ -1075,10 +1085,15 @@ SCOPE: Decisions can be vault-level (affecting the MCP system itself) or project
               type: 'string',
               description: 'Optional context for the decision',
             },
+            repo_path: {
+              type: 'string',
+              description:
+                'Absolute path to Git repository. Auto-generates collision-resistant project slug from remote URL (e.g., "uoregon-jsdev-obsidian-mcp-server"). Preferred over project parameter.',
+            },
             project: {
               type: 'string',
               description:
-                'Optional project slug (e.g., "obsidian-mcp-server", "accessibility-automatic-testing"). If provided, decision is created in decisions/{project}/. If omitted, decision is vault-level and created in decisions/vault/.',
+                'Manual project slug override. Deprecated: prefer repo_path for automatic slug generation to prevent collisions.',
             },
             force: {
               type: 'boolean',
@@ -1410,6 +1425,21 @@ SCOPE: Decisions can be vault-level (affecting the MCP system itself) or project
         name: 'migrate_project_slugs',
         description:
           'Migrate existing project directories to use remote-based slug naming. Renames project directories and updates all wiki links across the vault to prevent slug collisions.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            dry_run: {
+              type: 'boolean',
+              description:
+                'If true, shows what would be changed without making changes. Default: false.',
+            },
+          },
+        },
+      },
+      {
+        name: 'migrate_decision_slugs',
+        description:
+          'Migrate existing decision directories to use remote-based slug naming (aligned with project slug naming). Renames decision directories and updates all wiki links across the vault to prevent slug collisions.',
         inputSchema: {
           type: 'object',
           properties: {

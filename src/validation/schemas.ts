@@ -327,12 +327,29 @@ export const CreateDecisionArgsSchema = z.object({
     'Decision content (rationale, alternatives, consequences)'
   ),
   context: z.string().optional().describe('Optional context for the decision'),
-  project: z.string().optional().describe('Optional project slug (e.g., "obsidian-mcp-server")'),
+  repo_path: AbsolutePath.optional().describe(
+    'Absolute path to Git repository. If provided, auto-generates collision-resistant project slug from remote URL (preferred over project parameter)'
+  ),
+  project: z
+    .string()
+    .optional()
+    .describe(
+      'Optional manual project slug override. Deprecated: prefer repo_path for automatic slug generation'
+    ),
   force: z
     .boolean()
     .optional()
     .default(false)
     .describe('Set to true to bypass keyword detection warnings'),
+});
+
+// migrate_decision_slugs
+export const MigrateDecisionSlugsArgsSchema = z.object({
+  dry_run: z
+    .boolean()
+    .optional()
+    .default(false)
+    .describe('If true, shows what would be changed without making changes'),
 });
 
 /**
@@ -429,6 +446,7 @@ export const ValidationSchemas = {
 
   // Decisions tools
   create_decision: CreateDecisionArgsSchema,
+  migrate_decision_slugs: MigrateDecisionSlugsArgsSchema,
 
   // Maintenance tools
   vault_custodian: VaultCustodianArgsSchema,

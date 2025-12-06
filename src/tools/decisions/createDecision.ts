@@ -20,12 +20,15 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { generateDecisionTemplate } from '../../templates.js';
+import { generateProjectSlug } from '../../utils/projectSlug.js';
 
 export interface CreateDecisionArgs {
   title: string;
   content: string;
   context?: string;
+  /** @deprecated Use repo_path instead for automatic slug generation */
   project?: string;
+  repo_path?: string;
   force?: boolean;
 }
 
@@ -47,6 +50,7 @@ export interface CreateDecisionContext {
     projects: Array<{ link: string; name: string }>;
   }>;
   trackDecisionCreation: (decision: { slug: string; title: string; file: string }) => void;
+  getRemoteUrl: (repoPath: string) => Promise<string | null>;
 }
 
 export async function createDecision(
@@ -136,7 +140,15 @@ To proceed anyway, call create_decision again with force: true.`,
   }
 
   // Determine decision scope: project-specific or vault-level
-  const scope = args.project || 'vault';
+  // Priority: repo_path (auto-generate) > project (manual) > vault (default)
+  let scope: string;
+  if (args.repo_path) {
+    // Auto-generate project slug from repo path (same strategy as projects)
+    const remoteUrl = await context.getRemoteUrl(args.repo_path);
+    scope = generateProjectSlug(args.repo_path, remoteUrl);
+  } else {
+    scope = args.project || 'vault';
+  }
   const decisionsDir = path.join(context.vaultPath, 'decisions', scope);
 
   // Ensure the project-specific or vault directory exists
