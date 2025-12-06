@@ -162,15 +162,29 @@ async function findCorrectLinkPath(linkPath: string, vaultPath: string): Promise
     // Continue checking
   }
 
-  // Check decisions directory (exact match)
-  const decisionPath = path.join(vaultPath, 'decisions', `${filename}.md`);
+  // Check decisions directory (flat and nested project subdirectories)
+  const decisionsDir = path.join(vaultPath, 'decisions');
+
+  // First check if linkPath includes a project subdirectory (e.g., "project-slug/015-decision-name")
+  if (linkPath.includes('/')) {
+    // Link has nested path - check if it exists as-is in decisions/
+    const nestedDecisionPath = path.join(decisionsDir, `${linkPath}.md`);
+    try {
+      await fs.access(nestedDecisionPath);
+      return linkPath; // Return full nested path for wiki-style links
+    } catch {
+      // Continue checking
+    }
+  }
+
+  // Check flat decisions directory (exact match)
+  const decisionPath = path.join(decisionsDir, `${filename}.md`);
   try {
     await fs.access(decisionPath);
     return filename;
   } catch {
-    // Try fuzzy matching - find file that starts with this name
+    // Try fuzzy matching in flat directory
     try {
-      const decisionsDir = path.join(vaultPath, 'decisions');
       const decisionFiles = await fs.readdir(decisionsDir);
       const match = decisionFiles.find(f => f.startsWith(filename) && f.endsWith('.md'));
       if (match) {
@@ -179,6 +193,25 @@ async function findCorrectLinkPath(linkPath: string, vaultPath: string): Promise
     } catch {
       // Continue checking
     }
+  }
+
+  // Check nested project subdirectories for matching decision filename
+  try {
+    const entries = await fs.readdir(decisionsDir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        const subdir = entry.name;
+        const nestedPath = path.join(decisionsDir, subdir, `${filename}.md`);
+        try {
+          await fs.access(nestedPath);
+          return `${subdir}/${filename}`;
+        } catch {
+          // Continue checking other subdirectories
+        }
+      }
+    }
+  } catch {
+    // decisions dir doesn't exist or can't be read
   }
 
   // Check for project files (projects/project-name/project.md)
@@ -882,6 +915,141 @@ async function deduplicateHeaders(file: string): Promise<string[]> {
   return fixes;
 }
 
+/**
+ * Extract the target slug from a wiki link, normalizing different formats
+ * Examples:
+ *   [[claude-code-hooks]] -> "claude-code-hooks"
+ *   [[topics/claude-code-hooks|Claude Code Hooks]] -> "claude-code-hooks"
+ *   [[decisions/vault/009-foo|Foo]] -> "009-foo"
+ *   [[projects/my-project/project|My Project]] -> "my-project/project"
+ */
+function extractLinkTarget(linkLine: string): string | null {
+  // Match wiki link pattern: - [[path|display]] or - [[path]]
+  const match = linkLine.match(/\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/);
+  if (!match) return null;
+
+  const linkPath = match[1];
+
+  // Extract the base name, handling various path formats
+  // For topics/decisions: strip the directory prefix, keep just the slug
+  // For projects: keep project-slug/project to distinguish project files
+  // For commits: keep project-slug/commits/hash
+  if (linkPath.startsWith('topics/')) {
+    return path.basename(linkPath);
+  }
+  if (linkPath.startsWith('decisions/')) {
+    // decisions/vault/009-foo or decisions/project-slug/009-foo
+    return path.basename(linkPath);
+  }
+  if (linkPath.startsWith('projects/')) {
+    // Keep the relative path within projects/ for uniqueness
+    // e.g., "my-project/project" or "my-project/commits/abc123"
+    return linkPath.replace('projects/', '');
+  }
+  if (linkPath.startsWith('sessions/')) {
+    return path.basename(linkPath);
+  }
+
+  // For bare links, just return as-is
+  return path.basename(linkPath);
+}
+
+/**
+ * Deduplicate links within Related sections
+ * Handles different link formats pointing to the same target
+ */
+async function deduplicateSectionLinks(file: string): Promise<string[]> {
+  const fixes: string[] = [];
+  const content = await fs.readFile(file, 'utf-8');
+  const lines = content.split('\n');
+
+  const relatedHeaders = [
+    '## Related Sessions',
+    '## Related Projects',
+    '## Related Topics',
+    '## Related Decisions',
+    '## Related Git Commits',
+  ];
+
+  let modified = false;
+  const newLines: string[] = [];
+  let inRelatedSection = false;
+  let currentSectionLinks = new Map<string, { line: string; index: number }>();
+  let duplicatesRemoved = 0;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const trimmedLine = line.trim();
+
+    // Check if we're entering a Related section
+    if (relatedHeaders.includes(trimmedLine)) {
+      // If we were in a previous section, flush it
+      if (inRelatedSection) {
+        // Already handled by the header detection below
+      }
+      inRelatedSection = true;
+      currentSectionLinks = new Map();
+      newLines.push(line);
+      continue;
+    }
+
+    // Check if we're leaving a Related section (hit another header or end)
+    if (trimmedLine.startsWith('#') && inRelatedSection) {
+      inRelatedSection = false;
+      currentSectionLinks = new Map();
+      newLines.push(line);
+      continue;
+    }
+
+    // If we're in a Related section and this is a link line
+    if (inRelatedSection && trimmedLine.startsWith('- [[')) {
+      const target = extractLinkTarget(trimmedLine);
+
+      if (target) {
+        if (currentSectionLinks.has(target)) {
+          // Duplicate found - decide which to keep
+          const existing = currentSectionLinks.get(target)!;
+
+          // Prefer the more complete format (with display text and path)
+          const existingHasDisplay = existing.line.includes('|');
+          const currentHasDisplay = trimmedLine.includes('|');
+          const existingHasPath = existing.line.includes('/');
+          const currentHasPath = trimmedLine.includes('/');
+
+          // Score: display text = 2 points, path = 1 point
+          const existingScore = (existingHasDisplay ? 2 : 0) + (existingHasPath ? 1 : 0);
+          const currentScore = (currentHasDisplay ? 2 : 0) + (currentHasPath ? 1 : 0);
+
+          if (currentScore > existingScore) {
+            // Replace the existing with current (better format)
+            // Find and replace in newLines
+            const existingIndex = newLines.lastIndexOf(existing.line);
+            if (existingIndex !== -1) {
+              newLines[existingIndex] = line;
+              currentSectionLinks.set(target, { line, index: existingIndex });
+            }
+          }
+          // Either way, skip adding this line (it's a duplicate)
+          duplicatesRemoved++;
+          modified = true;
+          continue;
+        } else {
+          currentSectionLinks.set(target, { line, index: newLines.length });
+        }
+      }
+    }
+
+    newLines.push(line);
+  }
+
+  if (modified) {
+    await fs.writeFile(file, newLines.join('\n'));
+    fixes.push(`Removed ${duplicatesRemoved} duplicate link(s) from Related sections`);
+  }
+
+  return fixes;
+}
+
 export async function vaultCustodian(
   args: VaultCustodianArgs,
   context: {
@@ -1190,7 +1358,24 @@ ${content}`;
       }
     }
 
-    // Check 9: Move Related sections to bottom
+    // Check 9: Deduplicate links within Related sections
+    for (const file of allFiles) {
+      try {
+        const linkFixes = await deduplicateSectionLinks(file);
+        if (linkFixes.length > 0) {
+          const relativeFile = path.relative(context.vaultPath, file);
+          for (const fix of linkFixes) {
+            fixes.push(`${relativeFile}: ${fix}`);
+          }
+        }
+      } catch (error) {
+        console.error(
+          `Error deduplicating section links in ${file}: ${error instanceof Error ? error.message : String(error)}`
+        );
+      }
+    }
+
+    // Check 10: Move Related sections to bottom
     for (const file of allFiles) {
       try {
         const relatedFixes = await moveRelatedSectionsToBottom(file);
