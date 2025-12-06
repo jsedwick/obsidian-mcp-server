@@ -714,12 +714,16 @@ export async function closeSession(
   // Proactively search for related existing content mentioned in the summary
   const relatedContent = await context.findRelatedContentInText(args.summary);
 
-  // Extract tags from session summary using heuristic analysis
-  const tagAnalysis = analyzeTopicContentInternal({
-    content: args.summary,
-    topic_name: args.topic || 'Work session',
-  });
-  const sessionTags = tagAnalysis.tags;
+  // Extract tags from session summary using heuristic analysis (smart mode: 500+ words only)
+  // Short summaries produce generic, uninformative tags like "changes", "made", "updated"
+  const wordCount = args.summary.split(/\s+/).length;
+  const sessionTags =
+    wordCount >= 500
+      ? analyzeTopicContentInternal({
+          content: args.summary,
+          topic_name: args.topic || 'Work session',
+        }).tags
+      : [];
 
   // Build session content using template
   const sessionContent = generateSessionTemplate({
