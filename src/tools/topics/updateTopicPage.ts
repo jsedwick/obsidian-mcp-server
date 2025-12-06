@@ -76,8 +76,24 @@ export async function updateTopicPage(
 
     const updatedFrontmatter = frontmatterLines.join('\n');
 
-    // Reconstruct file with updated frontmatter + appended body
-    const newContent = `---\n${updatedFrontmatter}\n---\n${existingBody}\n${newBody}`;
+    // Smart append: insert before Related sections if they exist at the end
+    // This prevents new content from being placed after Related Topics/Sessions/etc.
+    const relatedSectionPattern = /\n(## Related (?:Topics|Sessions|Projects|Decisions)[\s\S]*)$/;
+    const relatedMatch = existingBody.match(relatedSectionPattern);
+
+    let finalBody: string;
+    if (relatedMatch) {
+      // Insert new content before Related sections
+      const bodyBeforeRelated = existingBody.slice(0, relatedMatch.index);
+      const relatedSections = relatedMatch[1];
+      finalBody = `${bodyBeforeRelated}\n${newBody}\n${relatedSections}`;
+    } else {
+      // No Related sections found, append normally
+      finalBody = `${existingBody}\n${newBody}`;
+    }
+
+    // Reconstruct file with updated frontmatter + modified body
+    const newContent = `---\n${updatedFrontmatter}\n---\n${finalBody}`;
     await fs.writeFile(topicFile, newContent);
   } else {
     await fs.writeFile(topicFile, args.content);

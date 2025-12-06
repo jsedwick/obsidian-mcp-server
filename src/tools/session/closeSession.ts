@@ -290,11 +290,21 @@ export async function runPhase2Finalization(
 
   context.setCurrentSession(data.sessionId, data.sessionFile);
 
+  // Dynamic filesToCheck: merge Phase 1 files with any files modified between Phase 1 and Phase 2
+  // This catches documentation updates made during commit analysis review
+  const phase2EditedFiles = context.filesAccessed
+    .filter(
+      f => (f.action === 'edit' || f.action === 'create') && f.path.startsWith(context.vaultPath)
+    )
+    .map(f => f.path);
+
+  const allFilesToCheck = Array.from(new Set([...data.filesToCheck, ...phase2EditedFiles]));
+
   let vaultCustodianReport = '';
-  if (data.filesToCheck.length > 0) {
+  if (allFilesToCheck.length > 0) {
     try {
       const custodianResult = await context.vaultCustodian({
-        files_to_check: data.filesToCheck,
+        files_to_check: allFilesToCheck,
       });
       if (custodianResult.content && custodianResult.content[0]) {
         vaultCustodianReport = '\n\n' + (custodianResult.content[0] as { text: string }).text;
