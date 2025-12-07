@@ -1419,7 +1419,40 @@ ${content}`;
 
       if (warnings.length > 0) {
         report += `## Warnings (${warnings.length})\n`;
+
+        // Group warnings by file for a condensed summary
+        const warningsByFile = new Map<string, string[]>();
+        const otherWarnings: string[] = [];
+
         for (const warning of warnings) {
+          // Parse warnings that follow the "Broken link in file: [[link]]" pattern
+          const brokenLinkMatch = warning.match(/^Broken link in ([^:]+): \[\[([^\]]+)\]\]/);
+          if (brokenLinkMatch) {
+            const file = brokenLinkMatch[1];
+            const link = brokenLinkMatch[2];
+            if (!warningsByFile.has(file)) {
+              warningsByFile.set(file, []);
+            }
+            warningsByFile.get(file)!.push(link);
+          } else {
+            otherWarnings.push(warning);
+          }
+        }
+
+        // Output condensed broken link warnings grouped by file
+        if (warningsByFile.size > 0) {
+          report += '\n**Broken links by file:**\n';
+          for (const [file, links] of warningsByFile.entries()) {
+            report += `- \`${file}\`\n`;
+            for (const link of links) {
+              report += `  - [[${link}]]\n`;
+            }
+          }
+          report += '\n';
+        }
+
+        // Output other warnings normally
+        for (const warning of otherWarnings) {
           report += `- ⚠️  ${warning}\n`;
         }
         report += '\n';
