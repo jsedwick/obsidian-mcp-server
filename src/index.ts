@@ -156,6 +156,9 @@ class ObsidianMCPServer {
   private config: ServerConfig;
   private currentSessionId: string | null = null;
   private currentSessionFile: string | null = null;
+  // Limit file access tracking to prevent unbounded memory growth
+  // 5000 entries is sufficient for session tracking while keeping memory bounded
+  private static readonly MAX_FILES_ACCESSED = 5000;
   private filesAccessed: Array<{
     path: string;
     action: 'read' | 'edit' | 'create';
@@ -362,9 +365,7 @@ class ObsidianMCPServer {
               analyzeTopicContentInternal: this.analyzeTopicContentInternal.bind(this),
               findRelatedProjects: this.findRelatedProjects.bind(this),
               trackTopicCreation: topic => this.topicsCreated.push(topic),
-              trackFileAccess: (path: string, action: 'read' | 'edit' | 'create') => {
-                this.filesAccessed.push({ path, action, timestamp: new Date().toISOString() });
-              },
+              trackFileAccess: this.trackFileAccess.bind(this),
             });
 
           case 'create_decision':
@@ -376,9 +377,7 @@ class ObsidianMCPServer {
               findRelatedContentInText: this.findRelatedContentInText.bind(this),
               trackDecisionCreation: decision => this.decisionsCreated.push(decision),
               getRemoteUrl: (repoPath: string) => this.gitService.getRemoteUrl(repoPath),
-              trackFileAccess: (path: string, action: 'read' | 'edit' | 'create') => {
-                this.filesAccessed.push({ path, action, timestamp: new Date().toISOString() });
-              },
+              trackFileAccess: this.trackFileAccess.bind(this),
             });
 
           case 'update_topic_page':
@@ -386,9 +385,7 @@ class ObsidianMCPServer {
               vaultPath: this.config.primaryVault.path,
               slugify: this.slugify.bind(this),
               createTopicPage: this.createTopicPageWrapper.bind(this),
-              trackFileAccess: (path: string, action: 'read' | 'edit' | 'create') => {
-                this.filesAccessed.push({ path, action, timestamp: new Date().toISOString() });
-              },
+              trackFileAccess: this.trackFileAccess.bind(this),
             });
 
           case 'get_session_context':
@@ -1758,6 +1755,18 @@ Check the sessions/ directory for recent conversations.
     this.projectsCreated = [];
     this.sessionStartTime = null;
     this.phase1Completed = false;
+  }
+
+  /**
+   * Track file access with bounded array size.
+   * When limit is reached, older entries are removed (FIFO).
+   */
+  private trackFileAccess(filePath: string, action: 'read' | 'edit' | 'create'): void {
+    // If at capacity, remove oldest entry (FIFO)
+    if (this.filesAccessed.length >= ObsidianMCPServer.MAX_FILES_ACCESSED) {
+      this.filesAccessed.shift();
+    }
+    this.filesAccessed.push({ path: filePath, action, timestamp: new Date().toISOString() });
   }
 
   // ==================== End Tool Wrapper Methods ====================

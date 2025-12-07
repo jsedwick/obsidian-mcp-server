@@ -631,9 +631,22 @@ async function moveRelatedSectionsToBottom(file: string): Promise<string[]> {
   for (const header of relatedHeaders) {
     if (sections.has(header)) {
       linesToKeep.push(''); // Add blank line before section
-      linesToKeep.push(...sections.get(header)!.content);
+      // Filter out blank lines from section content (except the header)
+      const sectionContent = sections.get(header)!.content;
+      const cleanedContent = sectionContent.filter((line, index) => {
+        // Always keep the header (first line)
+        if (index === 0) return true;
+        // Skip blank lines within the section
+        return line.trim() !== '';
+      });
+      linesToKeep.push(...cleanedContent);
       fixes.push(`Moved "${header}" to bottom of document`);
     }
+  }
+
+  // Remove any trailing blank lines from the final content
+  while (linesToKeep.length > 0 && linesToKeep[linesToKeep.length - 1].trim() === '') {
+    linesToKeep.pop();
   }
 
   // Write the updated content
@@ -1004,40 +1017,49 @@ async function deduplicateSectionLinks(file: string): Promise<string[]> {
       continue;
     }
 
-    // If we're in a Related section and this is a link line
-    if (inRelatedSection && trimmedLine.startsWith('- [[')) {
-      const target = extractLinkTarget(trimmedLine);
+    // If we're in a Related section
+    if (inRelatedSection) {
+      // Skip blank lines within Related sections - they shouldn't be there
+      if (trimmedLine === '') {
+        modified = true;
+        continue;
+      }
 
-      if (target) {
-        if (currentSectionLinks.has(target)) {
-          // Duplicate found - decide which to keep
-          const existing = currentSectionLinks.get(target)!;
+      // Process link lines
+      if (trimmedLine.startsWith('- [[')) {
+        const target = extractLinkTarget(trimmedLine);
 
-          // Prefer the more complete format (with display text and path)
-          const existingHasDisplay = existing.line.includes('|');
-          const currentHasDisplay = trimmedLine.includes('|');
-          const existingHasPath = existing.line.includes('/');
-          const currentHasPath = trimmedLine.includes('/');
+        if (target) {
+          if (currentSectionLinks.has(target)) {
+            // Duplicate found - decide which to keep
+            const existing = currentSectionLinks.get(target)!;
 
-          // Score: display text = 2 points, path = 1 point
-          const existingScore = (existingHasDisplay ? 2 : 0) + (existingHasPath ? 1 : 0);
-          const currentScore = (currentHasDisplay ? 2 : 0) + (currentHasPath ? 1 : 0);
+            // Prefer the more complete format (with display text and path)
+            const existingHasDisplay = existing.line.includes('|');
+            const currentHasDisplay = trimmedLine.includes('|');
+            const existingHasPath = existing.line.includes('/');
+            const currentHasPath = trimmedLine.includes('/');
 
-          if (currentScore > existingScore) {
-            // Replace the existing with current (better format)
-            // Find and replace in newLines
-            const existingIndex = newLines.lastIndexOf(existing.line);
-            if (existingIndex !== -1) {
-              newLines[existingIndex] = line;
-              currentSectionLinks.set(target, { line, index: existingIndex });
+            // Score: display text = 2 points, path = 1 point
+            const existingScore = (existingHasDisplay ? 2 : 0) + (existingHasPath ? 1 : 0);
+            const currentScore = (currentHasDisplay ? 2 : 0) + (currentHasPath ? 1 : 0);
+
+            if (currentScore > existingScore) {
+              // Replace the existing with current (better format)
+              // Find and replace in newLines
+              const existingIndex = newLines.lastIndexOf(existing.line);
+              if (existingIndex !== -1) {
+                newLines[existingIndex] = line;
+                currentSectionLinks.set(target, { line, index: existingIndex });
+              }
             }
+            // Either way, skip adding this line (it's a duplicate)
+            duplicatesRemoved++;
+            modified = true;
+            continue;
+          } else {
+            currentSectionLinks.set(target, { line, index: newLines.length });
           }
-          // Either way, skip adding this line (it's a duplicate)
-          duplicatesRemoved++;
-          modified = true;
-          continue;
-        } else {
-          currentSectionLinks.set(target, { line, index: newLines.length });
         }
       }
     }
