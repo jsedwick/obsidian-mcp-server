@@ -348,7 +348,7 @@ describe('closeSession - Two-Phase Workflow', () => {
         projectsCreated: [],
         filesAccessed: [],
         filesToCheck: [path.join(vaultPath, 'sessions/2025-01/2025-01-15_14-30-00.md')],
-        repoDetectionMessage: '\n📦 Git Repository Auto-Linked: test-repo',
+        repoDetectionMessage: '\nGit Repository Auto-Linked:\n  Name: test-repo',
         autoCommitMessage: '',
       };
 
@@ -377,7 +377,7 @@ describe('closeSession - Two-Phase Workflow', () => {
       expect(result.content).toHaveLength(1);
       expect(result.content[0].text).toContain('Session finalized:');
       expect(result.content[0].text).toContain('2025-01-15_14-30-00');
-      expect(result.content[0].text).toContain('Topics linked (1)');
+      expect(result.content[0].text).toContain('Topics linked: 1');
       expect(result.content[0].text).toContain('Test Topic');
       expect(result.content[0].text).toContain('Git Repository Auto-Linked');
 
@@ -461,12 +461,12 @@ describe('closeSession - Two-Phase Workflow', () => {
 
       const result = await runPhase2Finalization(args, context, sessionData);
 
-      expect(result.content[0].text).toContain('Topics linked (2)');
+      expect(result.content[0].text).toContain('Topics linked: 2');
       expect(result.content[0].text).toContain('Topic 1');
       expect(result.content[0].text).toContain('Topic 2');
-      expect(result.content[0].text).toContain('Decisions linked (1)');
+      expect(result.content[0].text).toContain('Decisions linked: 1');
       expect(result.content[0].text).toContain('Decision 1');
-      expect(result.content[0].text).toContain('Projects linked (1)');
+      expect(result.content[0].text).toContain('Projects linked: 1');
       expect(result.content[0].text).toContain('Project 1');
       expect(result.content[0].text).toContain('Files accessed: 2');
     });

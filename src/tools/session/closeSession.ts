@@ -191,15 +191,14 @@ export async function runPhase1Analysis(
 
   let repoDetectionMessage = '';
   if (detectedRepoInfo) {
-    repoDetectionMessage = `
-
-📦 Git Repository Auto-Linked:
-`;
-    repoDetectionMessage += `   ${detectedRepoInfo.name}
-`;
-    repoDetectionMessage += `   Path: ${detectedRepoInfo.path}
-`;
-    if (detectedRepoInfo.branch) repoDetectionMessage += `   Branch: ${detectedRepoInfo.branch}\n`;
+    const repoLines = [
+      '',
+      'Git Repository Auto-Linked:',
+      `  Name: ${detectedRepoInfo.name}`,
+      `  Path: ${detectedRepoInfo.path}`,
+    ];
+    if (detectedRepoInfo.branch) repoLines.push(`  Branch: ${detectedRepoInfo.branch}`);
+    repoDetectionMessage = repoLines.join('\n');
   }
 
   const editedOrCreatedFiles = context.filesAccessed
@@ -318,26 +317,28 @@ export async function runPhase2Finalization(
 
   context.clearSessionState();
 
-  let summary = `✅ Session finalized: ${data.sessionId}\n`;
-  summary += `📄 Session file: ${data.sessionFile}\n\n`;
+  const lines: string[] = [
+    `Session finalized: ${data.sessionId}`,
+    `Session file: ${data.sessionFile}`,
+  ];
 
   if (data.topicsCreated.length > 0) {
-    summary += `📚 Topics linked (${data.topicsCreated.length}):\n`;
-    summary += data.topicsCreated.map(t => `   - ${t.title}`).join('\n') + '\n\n';
+    lines.push(`Topics linked: ${data.topicsCreated.length}`);
+    data.topicsCreated.forEach(t => lines.push(`  - ${t.title}`));
   }
 
   if (data.decisionsCreated.length > 0) {
-    summary += `🎯 Decisions linked (${data.decisionsCreated.length}):\n`;
-    summary += data.decisionsCreated.map(d => `   - ${d.title}`).join('\n') + '\n\n';
+    lines.push(`Decisions linked: ${data.decisionsCreated.length}`);
+    data.decisionsCreated.forEach(d => lines.push(`  - ${d.title}`));
   }
 
   if (data.projectsCreated.length > 0) {
-    summary += `📦 Projects linked (${data.projectsCreated.length}):\n`;
-    summary += data.projectsCreated.map(p => `   - ${p.name}`).join('\n') + '\n\n';
+    lines.push(`Projects linked: ${data.projectsCreated.length}`);
+    data.projectsCreated.forEach(p => lines.push(`  - ${p.name}`));
   }
 
   if (data.filesAccessed.length > 0) {
-    summary += `📁 Files accessed: ${data.filesAccessed.length}\n`;
+    lines.push(`Files accessed: ${data.filesAccessed.length}`);
   }
 
   return {
@@ -345,7 +346,7 @@ export async function runPhase2Finalization(
       {
         type: 'text',
         text:
-          summary +
+          lines.join('\n') +
           data.repoDetectionMessage +
           (data.autoCommitMessage || '') +
           vaultCustodianReport,
@@ -371,36 +372,39 @@ export async function runSinglePhaseClose(
 
   let repoDetectionMessage = '';
   if (detectedRepoInfo) {
-    repoDetectionMessage = `\n\n📦 Git Repository Auto-Linked:\n`;
-    repoDetectionMessage += `   ${detectedRepoInfo.name}\n`;
-    repoDetectionMessage += `   Path: ${detectedRepoInfo.path}\n`;
-    if (detectedRepoInfo.branch) repoDetectionMessage += `   Branch: ${detectedRepoInfo.branch}\n`;
-    repoDetectionMessage += `   ✅ Project page created/updated\n`;
+    const repoLines = [
+      '',
+      'Git Repository Auto-Linked:',
+      `  Name: ${detectedRepoInfo.name}`,
+      `  Path: ${detectedRepoInfo.path}`,
+    ];
+    if (detectedRepoInfo.branch) repoLines.push(`  Branch: ${detectedRepoInfo.branch}`);
+    repoLines.push('  Project page created/updated');
     if (context.topicsCreated.length > 0) {
-      repoDetectionMessage += `   ✅ ${context.topicsCreated.length} topic(s) linked to project\n`;
+      repoLines.push(`  ${context.topicsCreated.length} topic(s) linked to project`);
     }
+    repoDetectionMessage = repoLines.join('\n');
   }
 
-  let summary = `✅ Session created: ${sessionId}\n`;
-  summary += `📄 Session file: ${sessionFile}\n\n`;
+  const lines: string[] = [`Session created: ${sessionId}`, `Session file: ${sessionFile}`];
 
   if (context.topicsCreated.length > 0) {
-    summary += `📚 Topics linked (${context.topicsCreated.length}):\n`;
-    summary += context.topicsCreated.map(t => `   - ${t.title}`).join('\n') + '\n\n';
+    lines.push(`Topics linked: ${context.topicsCreated.length}`);
+    context.topicsCreated.forEach(t => lines.push(`  - ${t.title}`));
   }
 
   if (context.decisionsCreated.length > 0) {
-    summary += `🎯 Decisions linked (${context.decisionsCreated.length}):\n`;
-    summary += context.decisionsCreated.map(d => `   - ${d.title}`).join('\n') + '\n\n';
+    lines.push(`Decisions linked: ${context.decisionsCreated.length}`);
+    context.decisionsCreated.forEach(d => lines.push(`  - ${d.title}`));
   }
 
   if (context.projectsCreated.length > 0) {
-    summary += `📦 Projects linked (${context.projectsCreated.length}):\n`;
-    summary += context.projectsCreated.map(p => `   - ${p.name}`).join('\n') + '\n\n';
+    lines.push(`Projects linked: ${context.projectsCreated.length}`);
+    context.projectsCreated.forEach(p => lines.push(`  - ${p.name}`));
   }
 
   if (context.filesAccessed.length > 0) {
-    summary += `📁 Files accessed: ${context.filesAccessed.length}\n`;
+    lines.push(`Files accessed: ${context.filesAccessed.length}`);
   }
 
   const editedOrCreatedFiles = context.filesAccessed
@@ -439,7 +443,7 @@ export async function runSinglePhaseClose(
     content: [
       {
         type: 'text',
-        text: summary + repoDetectionMessage + autoCommitMessage + vaultCustodianReport,
+        text: lines.join('\n') + repoDetectionMessage + autoCommitMessage + vaultCustodianReport,
       },
     ],
   };
