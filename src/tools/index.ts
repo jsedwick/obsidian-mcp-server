@@ -1,5 +1,5 @@
 /**
- * Tool Registry - Exports all 22 MCP tools
+ * Tool Registry - Exports all 25 MCP tools
  *
  * This module serves as the central registry for all Obsidian MCP Server tools.
  * Tools are organized by category for better maintainability.
@@ -14,7 +14,7 @@ export * from './search/index.js';
 // Topic tools (4)
 export * from './topics/index.js';
 
-// Review tools (3)
+// Review tools (1)
 export * from './review/index.js';
 
 // Git/Project tools (7)
@@ -58,16 +58,20 @@ export * from './memory/index.js';
  * - analyze_commit_impact
  * - link_session_to_repository
  * - migrate_commit_branches
+ * - migrate_project_slugs
  * - list_recent_projects
- * - detect_session_repositories (git-related)
  *
  * DECISIONS (2 tools):
  * - create_decision
- * - extract_decisions_from_session
+ * - migrate_decision_slugs
  *
  * MAINTENANCE (2 tools):
  * - vault_custodian
  * - toggle_embeddings
+ *
+ * MEMORY (2 tools):
+ * - get_memory_base
+ * - generate_vault_index
  *
  * Total: 25 tools
  */
