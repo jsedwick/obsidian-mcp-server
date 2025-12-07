@@ -190,11 +190,10 @@ async function formatProjectList(
       break;
 
     case ResponseDetail.SUMMARY:
-      // Name, path, created date, status (default - current behavior)
+      // Name, path, created date
       projects.forEach((p, idx) => {
-        const statusIcon = p.status === 'active' ? '●' : '○';
         const titleText = p.title || p.file;
-        resultText += `${idx + 1}. ${statusIcon} **${titleText}**\n`;
+        resultText += `${idx + 1}. ${titleText}\n`;
         if (p.repoPath) resultText += `   Repository: ${p.repoPath}\n`;
         if (p.created) resultText += `   Created: ${p.created}\n`;
         resultText += `\n`;
@@ -204,12 +203,12 @@ async function formatProjectList(
 
     case ResponseDetail.DETAILED:
       // + Recent commits from project page
-      for (const p of projects) {
-        const statusIcon = p.status === 'active' ? '●' : '○';
+      for (let idx = 0; idx < projects.length; idx++) {
+        const p = projects[idx];
         const titleText = p.title || p.file;
-        resultText += `${statusIcon} **${titleText}**\n`;
-        if (p.repoPath) resultText += `Repository: ${p.repoPath}\n`;
-        if (p.created) resultText += `Created: ${p.created}\n`;
+        resultText += `${idx + 1}. ${titleText}\n`;
+        if (p.repoPath) resultText += `   Repository: ${p.repoPath}\n`;
+        if (p.created) resultText += `   Created: ${p.created}\n`;
 
         // Extract recent commits from project page
         try {
@@ -218,7 +217,10 @@ async function formatProjectList(
           if (activityMatch) {
             const activities = activityMatch[1].trim().split('\n').slice(0, 5);
             if (activities.length > 0) {
-              resultText += `Recent commits:\n${activities.join('\n')}\n`;
+              resultText += `   Recent commits:\n`;
+              activities.forEach(a => {
+                resultText += `   ${a}\n`;
+              });
             }
           }
         } catch {
@@ -231,13 +233,17 @@ async function formatProjectList(
 
     case ResponseDetail.FULL:
       // Full project pages
-      for (const p of projects) {
+      for (let idx = 0; idx < projects.length; idx++) {
+        const p = projects[idx];
+        const titleText = p.title || p.file;
+        resultText += `${idx + 1}. ${titleText}\n`;
         try {
           const content = await fs.readFile(p.filePath, 'utf-8');
-          resultText += `\n---\n\n${content}\n`;
+          resultText += `\n${content}\n`;
         } catch {
           resultText += `\nError reading ${p.filePath}\n`;
         }
+        resultText += `\n---\n`;
       }
       break;
   }

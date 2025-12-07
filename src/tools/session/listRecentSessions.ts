@@ -208,20 +208,19 @@ function formatMinimalSessions(sessions: SessionFile[]): string {
     const topicText = s.topic ? `: ${s.topic}` : '';
     resultText += `${idx + 1}. ${s.sessionId}${topicText}\n`;
   });
-  resultText += `\n💡 Use detail: "summary" for dates and status`;
+  resultText += `\n💡 Use detail: "summary" for dates`;
   return resultText;
 }
 
 function formatSummarySessions(sessions: SessionFile[]): string {
   let resultText = '';
   sessions.forEach((s, idx) => {
-    const statusIcon = s.status === 'completed' ? '✓' : '○';
     const topicText = s.topic ? `: ${s.topic}` : '';
-    const dateText = s.date ? ` (${s.date})` : '';
-    resultText += `${idx + 1}. ${statusIcon} ${s.sessionId}${topicText}${dateText}\n`;
+    resultText += `${idx + 1}. ${s.sessionId}${topicText}\n`;
+    if (s.date) resultText += `   Date: ${s.date}\n`;
+    resultText += '\n';
   });
-  resultText += `\n💡 Use get_session_context(session_id) for full content`;
-  resultText += `\n💡 Use detail: "detailed" for file and commit info`;
+  resultText += `💡 Use detail: "detailed" for file and commit info`;
   return resultText;
 }
 
@@ -229,11 +228,10 @@ async function formatDetailedSessions(sessions: SessionFile[]): Promise<string> 
   let resultText = '';
   for (let idx = 0; idx < sessions.length; idx++) {
     const s = sessions[idx];
-    const statusIcon = s.status === 'completed' ? '✓' : '○';
     const topicText = s.topic ? `: ${s.topic}` : '';
-    const dateText = s.date ? ` (${s.date})` : '';
 
-    resultText += `${idx + 1}. ${statusIcon} ${s.sessionId}${topicText}${dateText}\n`;
+    resultText += `${idx + 1}. ${s.sessionId}${topicText}\n`;
+    if (s.date) resultText += `   Date: ${s.date}\n`;
 
     try {
       const content = await fs.readFile(s.filePath, 'utf-8');
@@ -260,7 +258,7 @@ async function formatDetailedSessions(sessions: SessionFile[]): Promise<string> 
     }
     resultText += '\n';
   }
-  resultText += `💡 Use get_session_context(session_id) for complete content`;
+  resultText += `💡 Use detail: "full" for session summaries`;
   return resultText;
 }
 
@@ -268,10 +266,9 @@ async function formatFullSessions(sessions: SessionFile[]): Promise<string> {
   let resultText = '';
   for (let idx = 0; idx < sessions.length; idx++) {
     const s = sessions[idx];
-    const statusIcon = s.status === 'completed' ? '✓' : '○';
     const topicText = s.topic ? `: ${s.topic}` : '';
 
-    resultText += `${idx + 1}. ${statusIcon} ${s.sessionId}${topicText}\n`;
+    resultText += `${idx + 1}. ${s.sessionId}${topicText}\n`;
     resultText += `   Date: ${s.date || 'Unknown'}\n`;
 
     try {

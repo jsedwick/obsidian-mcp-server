@@ -148,9 +148,8 @@ _No files tracked_`;
     it('should return summary detail level (default)', async () => {
       const result = await listRecentSessions({ _invoked_by_slash_command: true }, context);
       expect(result.content[0].text).toContain('test-session');
-      // Summary should include date and status icon
-      expect(result.content[0].text).toMatch(/✓.*test-session/); // completed = ✓
-      expect(result.content[0].text).toContain('(2025-01-15)');
+      // Summary should include date on separate line
+      expect(result.content[0].text).toContain('Date: 2025-01-15');
     });
 
     it('should return detailed level with repository info', async () => {
@@ -189,8 +188,8 @@ _No files tracked_`;
         status: 'in-progress',
       });
       const result = await listRecentSessions({ _invoked_by_slash_command: true }, context);
-      // in-progress status uses ○ icon
-      expect(result.content[0].text).toMatch(/○.*in-progress/);
+      // Session should be listed with its filename
+      expect(result.content[0].text).toContain('2025-01-15_in-progress');
     });
 
     it('should handle sessions without frontmatter', async () => {
