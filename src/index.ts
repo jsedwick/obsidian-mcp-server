@@ -1506,7 +1506,7 @@ SCOPE: Decisions can be vault-level (affecting the MCP system itself) or project
       {
         name: 'get_memory_base',
         description:
-          'Retrieve the current contents of the rolling memory file. Used at session start to provide continuity from recent conversations.',
+          'Retrieve the vault index file showing recently modified files. Used at session start for user orientation (see recent work) and to establish session timing for commit detection. Provides file existence awareness, not semantic context.',
         inputSchema: {
           type: 'object',
           properties: {},

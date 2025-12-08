@@ -1,8 +1,12 @@
 /**
  * Tool: get_memory_base
  *
- * Description: Retrieve the current contents of the rolling memory file.
- * Used at session start to provide continuity from recent conversations.
+ * Description: Retrieve the vault index file showing recently modified files.
+ * Used at session start for user orientation (see recent work) and to establish
+ * session timing for the two-phase close workflow's commit detection.
+ *
+ * Note: This provides file existence awareness, not semantic context.
+ * Claude still needs search_vault for substantive questions about content.
  */
 
 import * as fs from 'fs/promises';
