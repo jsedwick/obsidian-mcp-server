@@ -168,6 +168,12 @@ export class KeywordSearch {
       }
     }
 
+    // Archive penalty - demote archived content but don't exclude
+    const filePath = absolutePath || `${dir}/${relPath}`;
+    if (filePath.includes('/archive/') && hasMatch) {
+      keywordScore -= 15; // Significant penalty to rank below current content
+    }
+
     // Topic review scoring (recently reviewed topics score higher)
     if (dir === 'topics' && hasMatch) {
       if (frontmatterMatch) {
