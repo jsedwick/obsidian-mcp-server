@@ -8,10 +8,10 @@
     "obsidian-mcp-server": "./dist/index.js"
   },
   "scripts": {
-    "build": "tsc && cp .obsidian-mcp.json dist/ 2>/dev/null || true",
+    "build": "tsc",
     "watch": "tsc --watch",
     "start": "node dist/index.js",
-    "dev": "tsc && cp .obsidian-mcp.json dist/ 2>/dev/null || true && node dist/index.js",
+    "dev": "tsc && node dist/index.js",
     "test": "vitest run",
     "test:watch": "vitest watch",
     "test:ui": "vitest --ui",

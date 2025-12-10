@@ -21,7 +21,6 @@ function loadVaultPath() {
   const projectRoot = path.join(currentDir, '..');
 
   const configPaths = [
-    path.join(currentDir, '.obsidian-mcp.json'),     // dist/.obsidian-mcp.json (built)
     path.join(projectRoot, '.obsidian-mcp.json'),    // project-root/.obsidian-mcp.json
     path.join(process.env.HOME || '', '.obsidian-mcp.json'),  // ~/.obsidian-mcp.json
     path.join(process.env.HOME || '', '.config', '.obsidian-mcp.json')  // ~/.config/.obsidian-mcp.json

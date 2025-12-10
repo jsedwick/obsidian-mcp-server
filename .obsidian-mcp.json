@@ -9,6 +9,11 @@
       "path": "/Users/jsedwick/Documents/Obsidian/Work/",
       "name": "Work Vault",
       "authority": "curated"
+    },
+    {
+      "path": "/Users/jsedwick/Documents/Obsidian/Home/Home",
+      "name": "Home Vault",
+      "authority": "curated"
     }
   ]
 }

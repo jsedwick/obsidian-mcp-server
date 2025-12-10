@@ -1196,15 +1196,6 @@ create_multi_vault_config() {
 EOF
         print_file_created "$VAULT_CONFIG" \
             "Vault configuration (primary + secondary vaults)"
-
-        # Copy to dist/ directory if it exists
-        if [ -d "$SCRIPT_DIR/dist" ]; then
-            cp "$VAULT_CONFIG" "$SCRIPT_DIR/dist/" 2>/dev/null || true
-            if [ -f "$SCRIPT_DIR/dist/.obsidian-mcp.json" ]; then
-                print_file_created "$SCRIPT_DIR/dist/.obsidian-mcp.json" \
-                    "Vault configuration copied to build directory"
-            fi
-        fi
     else
         print_info "[DRY RUN] Would create: $VAULT_CONFIG"
         print_info "[DRY RUN] Content preview:"
@@ -1216,10 +1207,6 @@ EOF
         echo -e "  },"
         echo -e "  \"secondaryVaults\": $SECONDARY_JSON"
         echo -e "}${NC}"
-
-        if [ -d "$SCRIPT_DIR/dist" ]; then
-            print_info "[DRY RUN] Would copy to: $SCRIPT_DIR/dist/.obsidian-mcp.json"
-        fi
     fi
 
     echo ""
