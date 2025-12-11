@@ -411,6 +411,23 @@ export const GenerateVaultIndexArgsSchema = z.object({
 });
 
 /**
+ * MODE TOOLS (2 tools)
+ */
+
+// Vault mode enum
+const VaultModeSchema = z.enum(['work', 'personal'], {
+  errorMap: () => ({ message: 'mode must be one of: work, personal' }),
+});
+
+// switch_mode
+export const SwitchModeArgsSchema = z.object({
+  mode: VaultModeSchema.describe('The vault mode to switch to'),
+});
+
+// get_current_mode
+export const GetCurrentModeArgsSchema = z.object({}).describe('No arguments required');
+
+/**
  * Validation schemas registry
  * Maps tool names to their Zod schemas
  */
@@ -457,6 +474,10 @@ export const ValidationSchemas = {
   // Memory tools
   get_memory_base: GetMemoryBaseArgsSchema,
   generate_vault_index: GenerateVaultIndexArgsSchema,
+
+  // Mode tools
+  switch_mode: SwitchModeArgsSchema,
+  get_current_mode: GetCurrentModeArgsSchema,
 } as const;
 
 /**

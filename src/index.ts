@@ -19,7 +19,7 @@ import { validateToolArgs, ValidationError } from './validation/index.js';
 import { IndexBuilder } from './services/search/index/IndexBuilder.js';
 import { IndexedSearch } from './services/search/IndexedSearch.js';
 import { DEFAULT_INDEX_CONFIG } from './models/IndexModels.js';
-import type { VaultConfig, VaultAuthority } from './models/Vault.js';
+import type { VaultConfig, VaultAuthority, VaultMode } from './models/Vault.js';
 import { LRUCache } from './utils/LRUCache.js';
 import { createLogger } from './utils/logger.js';
 
@@ -31,72 +31,145 @@ interface ServerConfig {
   secondaryVaults: VaultConfig[];
 }
 
-// Load configuration
-function loadConfig(): ServerConfig {
-  // Try multiple locations for config file (in order of preference)
+/**
+ * Full configuration containing all vaults from all modes
+ * Used internally to support mode switching
+ */
+interface FullServerConfig {
+  allPrimaryVaults: VaultConfig[];
+  allSecondaryVaults: VaultConfig[];
+  hasModeSupport: boolean; // True if config uses new primaryVaults[] format
+}
+
+// Current mode state (default: work)
+let currentMode: VaultMode = 'work';
+
+// Full configuration (loaded once, contains all vaults from all modes)
+let fullConfig: FullServerConfig | null = null;
+
+/**
+ * Get the current vault mode
+ */
+function getCurrentMode(): VaultMode {
+  return currentMode;
+}
+
+/**
+ * Check if mode switching is available
+ * Mode switching requires the new primaryVaults[] config format
+ */
+function isModeSupported(): boolean {
+  return fullConfig?.hasModeSupport ?? false;
+}
+
+/**
+ * Get available modes based on configured vaults
+ */
+function getAvailableModes(): VaultMode[] {
+  if (!fullConfig) return ['work'];
+  const modes = new Set<VaultMode>();
+  for (const vault of [...fullConfig.allPrimaryVaults, ...fullConfig.allSecondaryVaults]) {
+    modes.add(vault.mode || 'work');
+  }
+  return Array.from(modes);
+}
+
+/**
+ * Load full configuration from file (all vaults, all modes)
+ */
+function loadFullConfig(): FullServerConfig {
   const currentDir = path.dirname(fileURLToPath(import.meta.url));
   const projectRoot = path.join(currentDir, '..');
 
   const configPaths = [
-    path.join(projectRoot, '.obsidian-mcp.json'), // project-root/.obsidian-mcp.json
-    path.join(process.env.HOME || '', '.obsidian-mcp.json'), // ~/.obsidian-mcp.json
-    path.join(process.env.HOME || '', '.config', '.obsidian-mcp.json'), // ~/.config/.obsidian-mcp.json
+    path.join(projectRoot, '.obsidian-mcp.json'),
+    path.join(process.env.HOME || '', '.obsidian-mcp.json'),
+    path.join(process.env.HOME || '', '.config', '.obsidian-mcp.json'),
   ];
 
-  // Try each path until we find one that exists
+  const normalizePath = (p: string): string => p.replace(/\/+$/, '');
+
   for (const configPath of configPaths) {
     try {
       const configData = fssync.readFileSync(configPath, 'utf-8');
       const config: unknown = JSON.parse(configData);
 
-      // Type guard for config structure
-      if (
-        !config ||
-        typeof config !== 'object' ||
-        !('primaryVault' in config) ||
-        !config.primaryVault ||
-        typeof config.primaryVault !== 'object' ||
-        !('path' in config.primaryVault) ||
-        typeof config.primaryVault.path !== 'string'
-      ) {
-        continue; // Try next config path
+      if (!config || typeof config !== 'object') continue;
+
+      // Check for new format: primaryVaults array
+      if ('primaryVaults' in config && Array.isArray(config.primaryVaults)) {
+        const typedConfig = config as {
+          primaryVaults: Array<{
+            path: string;
+            name?: string;
+            authority?: VaultAuthority;
+            mode?: VaultMode;
+          }>;
+          secondaryVaults?: Array<{
+            path: string;
+            name?: string;
+            authority?: VaultAuthority;
+            mode?: VaultMode;
+          }>;
+        };
+
+        return {
+          allPrimaryVaults: typedConfig.primaryVaults.map(v => ({
+            path: normalizePath(v.path),
+            name: v.name || path.basename(v.path),
+            authority: v.authority || 'default',
+            mode: v.mode || 'work',
+          })),
+          allSecondaryVaults: (typedConfig.secondaryVaults || []).map(v => ({
+            path: normalizePath(v.path),
+            name: v.name || path.basename(v.path),
+            authority: v.authority || 'default',
+            mode: v.mode || 'work',
+          })),
+          hasModeSupport: true,
+        };
       }
 
-      // Helper to normalize paths (remove trailing slashes)
-      const normalizePath = (p: string): string => p.replace(/\/+$/, '');
+      // Legacy format: single primaryVault object
+      if (
+        'primaryVault' in config &&
+        config.primaryVault &&
+        typeof config.primaryVault === 'object' &&
+        'path' in config.primaryVault &&
+        typeof config.primaryVault.path === 'string'
+      ) {
+        const typedConfig = config as {
+          primaryVault: { path: string; name?: string; authority?: VaultAuthority };
+          secondaryVaults?: Array<{ path: string; name?: string; authority?: VaultAuthority }>;
+        };
 
-      // Type-safe config object after validation
-      const typedConfig = config as {
-        primaryVault: { path: string; name?: string; authority?: VaultAuthority };
-        secondaryVaults?: Array<{ path: string; name?: string; authority?: VaultAuthority }>;
-      };
-
-      return {
-        primaryVault: {
-          path: normalizePath(typedConfig.primaryVault.path),
-          name: typedConfig.primaryVault.name || 'Primary Vault',
-          authority: typedConfig.primaryVault.authority || 'default',
-        },
-        secondaryVaults: (typedConfig.secondaryVaults || []).map(v => ({
-          path: normalizePath(v.path),
-          name: v.name || path.basename(v.path),
-          authority: v.authority || 'default',
-        })),
-      };
+        return {
+          allPrimaryVaults: [
+            {
+              path: normalizePath(typedConfig.primaryVault.path),
+              name: typedConfig.primaryVault.name || 'Primary Vault',
+              authority: typedConfig.primaryVault.authority || 'default',
+              mode: 'work', // Legacy configs default to work mode
+            },
+          ],
+          allSecondaryVaults: (typedConfig.secondaryVaults || []).map(v => ({
+            path: normalizePath(v.path),
+            name: v.name || path.basename(v.path),
+            authority: v.authority || 'default',
+            mode: 'work', // Legacy configs default to work mode
+          })),
+          hasModeSupport: false,
+        };
+      }
     } catch {
-      // Try next config path
       continue;
     }
   }
 
-  // If no config file found, fall back to environment variables
-  // Helper to normalize paths (remove trailing slashes)
-  const normalizePath = (p: string): string => p.replace(/\/+$/, '');
-
+  // Fall back to environment variables (legacy, work mode only)
   const primaryPath =
     process.env.OBSIDIAN_VAULT_PATH || path.join(process.env.HOME || '', 'obsidian-vault');
 
-  // Parse secondary vaults from env (comma-separated paths)
   const secondaryPaths = process.env.OBSIDIAN_SECONDARY_VAULTS
     ? process.env.OBSIDIAN_SECONDARY_VAULTS.split(',')
         .map(p => p.trim())
@@ -104,17 +177,56 @@ function loadConfig(): ServerConfig {
     : [];
 
   return {
-    primaryVault: {
-      path: normalizePath(primaryPath),
-      name: process.env.OBSIDIAN_VAULT_NAME || 'Primary Vault',
-      authority: 'default',
-    },
-    secondaryVaults: secondaryPaths.map((p, idx) => ({
+    allPrimaryVaults: [
+      {
+        path: normalizePath(primaryPath),
+        name: process.env.OBSIDIAN_VAULT_NAME || 'Primary Vault',
+        authority: 'default',
+        mode: 'work',
+      },
+    ],
+    allSecondaryVaults: secondaryPaths.map((p, idx) => ({
       path: normalizePath(p),
       name: `Secondary Vault ${idx + 1}`,
       authority: 'default',
+      mode: 'work',
     })),
+    hasModeSupport: false,
   };
+}
+
+/**
+ * Get configuration filtered by the current mode
+ */
+function getConfigForMode(mode: VaultMode): ServerConfig {
+  if (!fullConfig) {
+    fullConfig = loadFullConfig();
+  }
+
+  // Filter vaults by mode
+  const primaryVaults = fullConfig.allPrimaryVaults.filter(v => (v.mode || 'work') === mode);
+  const secondaryVaults = fullConfig.allSecondaryVaults.filter(v => (v.mode || 'work') === mode);
+
+  // If no primary vault for this mode, throw an error
+  if (primaryVaults.length === 0) {
+    throw new Error(`No primary vault configured for mode: ${mode}`);
+  }
+
+  return {
+    primaryVault: primaryVaults[0], // First primary vault for this mode
+    secondaryVaults: secondaryVaults,
+  };
+}
+
+/**
+ * Load configuration for the current mode
+ * This is the main entry point - backwards compatible with existing code
+ */
+function loadConfig(): ServerConfig {
+  if (!fullConfig) {
+    fullConfig = loadFullConfig();
+  }
+  return getConfigForMode(currentMode);
 }
 
 const CONFIG = loadConfig();
@@ -312,6 +424,130 @@ class ObsidianMCPServer {
     }
 
     return authorities;
+  }
+
+  /**
+   * Switch to a different vault mode and reinitialize vault-dependent structures
+   *
+   * @param mode - The mode to switch to ('work' or 'personal')
+   * @returns Result object with success status and message
+   */
+  private switchMode(mode: VaultMode): {
+    success: boolean;
+    message: string;
+    previousMode: VaultMode;
+    currentMode: VaultMode;
+  } {
+    const previousMode = currentMode;
+
+    // Check if mode switching is supported
+    if (!isModeSupported()) {
+      return {
+        success: false,
+        message:
+          'Mode switching is not available. Your configuration uses the legacy format. To enable mode switching, update your .obsidian-mcp.json to use the primaryVaults[] array format with mode properties.',
+        previousMode,
+        currentMode: previousMode,
+      };
+    }
+
+    // Check if the requested mode is available
+    const availableModes = getAvailableModes();
+    if (!availableModes.includes(mode)) {
+      return {
+        success: false,
+        message: `Mode "${mode}" is not configured. Available modes: ${availableModes.join(', ')}`,
+        previousMode,
+        currentMode: previousMode,
+      };
+    }
+
+    // If already in the requested mode, return early
+    if (mode === previousMode) {
+      return {
+        success: true,
+        message: `Already in ${mode} mode.`,
+        previousMode,
+        currentMode: mode,
+      };
+    }
+
+    // Update the global mode
+    currentMode = mode;
+
+    // Get the new configuration for this mode
+    try {
+      this.config = getConfigForMode(mode);
+    } catch (error) {
+      // Rollback on failure
+      currentMode = previousMode;
+      return {
+        success: false,
+        message: `Failed to switch to ${mode} mode: ${error instanceof Error ? error.message : String(error)}`,
+        previousMode,
+        currentMode: previousMode,
+      };
+    }
+
+    // Reinitialize embedding config with new vault paths
+    const cacheDirs = new Map<string, string>();
+    cacheDirs.set(
+      this.config.primaryVault.path,
+      path.join(this.config.primaryVault.path, '.embedding-cache')
+    );
+    for (const vault of this.config.secondaryVaults) {
+      cacheDirs.set(vault.path, path.join(vault.path, '.embedding-cache'));
+    }
+    this.embeddingConfig.cacheDirs = cacheDirs;
+    this.embeddingToggleFile = path.join(this.config.primaryVault.path, '.embedding-toggle.json');
+
+    // Clear embedding cache (will be repopulated as needed)
+    this.embeddingCache.clear();
+
+    // Reinitialize index builders and indexed searches for new vaults
+    this.indexBuilders.clear();
+    this.indexedSearches.clear();
+
+    if (DEFAULT_INDEX_CONFIG.enabled) {
+      const vaultAuthorities = this.buildVaultAuthoritiesMap();
+
+      // Primary vault
+      const primaryCacheDir = path.join(
+        this.config.primaryVault.path,
+        DEFAULT_INDEX_CONFIG.cacheDir
+      );
+      const primaryBuilder = new IndexBuilder(primaryCacheDir);
+      this.indexBuilders.set(this.config.primaryVault.path, primaryBuilder);
+      this.indexedSearches.set(
+        this.config.primaryVault.path,
+        new IndexedSearch(primaryBuilder, primaryCacheDir, vaultAuthorities)
+      );
+
+      // Secondary vaults
+      for (const vault of this.config.secondaryVaults) {
+        const cacheDir = path.join(vault.path, DEFAULT_INDEX_CONFIG.cacheDir);
+        const builder = new IndexBuilder(cacheDir);
+        this.indexBuilders.set(vault.path, builder);
+        this.indexedSearches.set(
+          vault.path,
+          new IndexedSearch(builder, cacheDir, vaultAuthorities)
+        );
+      }
+    }
+
+    logger.info('Mode switched', {
+      previousMode,
+      currentMode: mode,
+      primaryVault: this.config.primaryVault.name,
+      secondaryVaults: this.config.secondaryVaults.length,
+    });
+
+    return {
+      success: true,
+      message: `Switched from ${previousMode} mode to ${mode} mode. Now using ${this.config.primaryVault.name} as primary vault.`,
+      previousMode,
+      currentMode: mode,
+    };
   }
 
   private setupHandlers(): void {
@@ -565,6 +801,46 @@ class ObsidianMCPServer {
               this.config.primaryVault.path,
               this.config.secondaryVaults.map(v => ({ path: v.path, name: v.name }))
             );
+
+          case 'switch_mode': {
+            const { mode } = validatedArgs as { mode: VaultMode };
+            const result = this.switchMode(mode);
+
+            // Format response
+            let responseText = result.message;
+            if (result.success) {
+              responseText += `\n\n**Current Mode:** ${result.currentMode}`;
+              responseText += `\n**Primary Vault:** ${this.config.primaryVault.name}`;
+              if (this.config.secondaryVaults.length > 0) {
+                responseText += `\n**Secondary Vaults:** ${this.config.secondaryVaults.map(v => v.name).join(', ')}`;
+              }
+            }
+
+            return {
+              content: [{ type: 'text', text: responseText }],
+            };
+          }
+
+          case 'get_current_mode': {
+            const modeSupported = isModeSupported();
+            const availableModes = getAvailableModes();
+
+            let responseText = `**Current Mode:** ${getCurrentMode()}`;
+            if (modeSupported) {
+              responseText += `\n**Available Modes:** ${availableModes.join(', ')}`;
+            } else {
+              responseText += `\n\n*Mode switching is not available. Your configuration uses the legacy format.*`;
+            }
+            responseText += `\n\n**Active Vaults:**`;
+            responseText += `\n- Primary: ${this.config.primaryVault.name} (${this.config.primaryVault.path})`;
+            for (const vault of this.config.secondaryVaults) {
+              responseText += `\n- Secondary: ${vault.name} (${vault.path})`;
+            }
+
+            return {
+              content: [{ type: 'text', text: responseText }],
+            };
+          }
 
           default:
             throw new Error(`Unknown tool: ${name}`);
@@ -1535,6 +1811,31 @@ SCOPE: Decisions can be vault-level (affecting the MCP system itself) or project
               description: 'Include frontmatter description in index entries (default: false)',
             },
           },
+        },
+      },
+      {
+        name: 'switch_mode',
+        description:
+          'Switch between work and personal vault modes. Each mode uses different vaults for complete context separation. Requires the new primaryVaults[] config format with mode properties. Default mode is "work".',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            mode: {
+              type: 'string',
+              enum: ['work', 'personal'],
+              description: 'The mode to switch to',
+            },
+          },
+          required: ['mode'],
+        },
+      },
+      {
+        name: 'get_current_mode',
+        description:
+          'Get the current vault mode and list available modes. Shows which vaults are currently active.',
+        inputSchema: {
+          type: 'object',
+          properties: {},
         },
       },
     ];

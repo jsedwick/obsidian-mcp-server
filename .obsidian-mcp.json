@@ -1,19 +1,28 @@
 {
-  "primaryVault": {
-    "path": "/Users/jsedwick/Documents/Obsidian/Claude/Claude/",
-    "name": "Claude Vault",
-    "authority": "default"
-  },
+   "primaryVaults": [
+     {
+       "path": "/Users/jsedwick/Documents/Obsidian/Claude/Claude",
+       "name": "Work Vault",
+       "mode": "work"
+     },
+     {
+       "path": "/Users/jsedwick/Documents/Obsidian/Personal",
+       "name": "Personal Vault",
+       "mode": "personal"
+     }
+   ],
   "secondaryVaults": [
     {
       "path": "/Users/jsedwick/Documents/Obsidian/Work/",
       "name": "Work Vault",
-      "authority": "curated"
+      "authority": "curated",
+      "mode": "work"
     },
     {
       "path": "/Users/jsedwick/Documents/Obsidian/Home/Home",
       "name": "Home Vault",
-      "authority": "curated"
+      "authority": "curated",
+      "mode": "personal"
     }
   ]
 }

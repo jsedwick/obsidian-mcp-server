@@ -14,6 +14,17 @@
 export type VaultAuthority = 'curated' | 'default' | 'conversational';
 
 /**
+ * Vault mode for context separation
+ *
+ * Allows users to maintain separate work and personal contexts.
+ * The MCP operates in one mode at a time, only using vaults matching that mode.
+ *
+ * - work: Professional/work-related context (default)
+ * - personal: Personal/home context
+ */
+export type VaultMode = 'work' | 'personal';
+
+/**
  * Configuration for a single vault
  */
 export interface VaultConfig {
@@ -28,6 +39,13 @@ export interface VaultConfig {
    * - conversational: Historical/draft content (ranks with sessions)
    */
   authority?: VaultAuthority;
+  /**
+   * Mode this vault belongs to.
+   * Defaults to 'work' if not specified.
+   *
+   * When the MCP is in a given mode, only vaults matching that mode are active.
+   */
+  mode?: VaultMode;
 }
 
 /**
