@@ -278,6 +278,168 @@ export async function runPhase1Analysis(
   };
 }
 
+/**
+ * Extract meaningful keywords from session summary for semantic search
+ * Removes stop words and extracts technical terms
+ */
+function extractKeywords(summary: string): string[] {
+  // Common stop words to filter out
+  const stopWords = new Set([
+    'a',
+    'an',
+    'and',
+    'are',
+    'as',
+    'at',
+    'be',
+    'by',
+    'for',
+    'from',
+    'has',
+    'he',
+    'in',
+    'is',
+    'it',
+    'its',
+    'of',
+    'on',
+    'that',
+    'the',
+    'to',
+    'was',
+    'will',
+    'with',
+    'we',
+    'this',
+    'but',
+    'they',
+    'have',
+    'had',
+    'what',
+    'when',
+    'where',
+    'who',
+    'which',
+    'why',
+    'how',
+  ]);
+
+  // Extract words, filter stop words, keep significant terms
+  const words = summary
+    .toLowerCase()
+    .replace(/[^\w\s-]/g, ' ') // Keep hyphens for technical terms
+    .split(/\s+/)
+    .filter(word => word.length > 3 && !stopWords.has(word));
+
+  // Return unique keywords, limit to 10
+  return Array.from(new Set(words)).slice(0, 10);
+}
+
+/**
+ * Discover related topics using semantic search on session summary
+ * Filters to primary vault topics only to avoid cross-vault pollution
+ */
+async function discoverRelatedTopics(
+  summary: string,
+  context: CloseSessionContext
+): Promise<Array<{ path: string; title: string }>> {
+  try {
+    // Extract keywords for search
+    const keywords = extractKeywords(summary);
+    if (keywords.length === 0) {
+      return [];
+    }
+
+    // Search vault with keywords
+    const searchResult = await context.searchVault({
+      query: keywords.join(' '),
+      max_results: 15, // Get more results to filter down
+      detail: 'summary',
+    });
+
+    if (!searchResult.content || searchResult.content.length === 0) {
+      return [];
+    }
+
+    // Parse search results (format: "Search results for...")
+    const resultText = (searchResult.content[0] as { text: string }).text;
+    const fileMatches = resultText.matchAll(/\*\*(.+?)\*\*/g);
+
+    const topics: Array<{ path: string; title: string }> = [];
+
+    for (const match of fileMatches) {
+      const filePath = match[1];
+
+      // Filter: Only include topics from primary vault
+      if (
+        filePath.startsWith(context.vaultPath) && // In primary vault
+        filePath.includes('/topics/') && // Is a topic file
+        !filePath.includes('/archive/') // Not archived
+      ) {
+        // Extract topic title from filename
+        const fileName = path.basename(filePath, '.md');
+        const title = fileName
+          .split('-')
+          .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+          .join(' ');
+
+        topics.push({ path: filePath, title });
+
+        // Limit to top 5 topics
+        if (topics.length >= 5) {
+          break;
+        }
+      }
+    }
+
+    return topics;
+  } catch (error) {
+    // Silent failure - discovery is non-critical
+    console.error('Topic discovery failed:', error);
+    return [];
+  }
+}
+
+/**
+ * Add discovered related topics to session file content
+ * Finds or creates "## Related Topics" section and adds wiki links
+ */
+function addRelatedTopicsToSession(
+  sessionContent: string,
+  topics: Array<{ path: string; title: string }>
+): string {
+  if (topics.length === 0) {
+    return sessionContent;
+  }
+
+  // Create wiki links for discovered topics
+  const topicLinks = topics.map(t => `- [[${t.path}|${t.title}]]`).join('\n');
+
+  // Check if "## Related Topics" section exists
+  const relatedTopicsRegex = /## Related Topics\n([^\n].*?)(?=\n##|$)/s;
+  const match = sessionContent.match(relatedTopicsRegex);
+
+  if (match) {
+    // Section exists - check if it has content
+    const existingContent = match[1].trim();
+
+    if (existingContent === '_None found_' || existingContent === '') {
+      // Replace empty section with discovered topics
+      return sessionContent.replace(relatedTopicsRegex, `## Related Topics\n${topicLinks}\n`);
+    } else {
+      // Append to existing content (avoid duplicates)
+      const updatedContent = `${existingContent}\n${topicLinks}`;
+      return sessionContent.replace(relatedTopicsRegex, `## Related Topics\n${updatedContent}\n`);
+    }
+  } else {
+    // Section doesn't exist - should not happen with template, but handle gracefully
+    return sessionContent.replace(
+      /## Related Projects/,
+      `## Related Topics\n${topicLinks}\n\n## Related Projects`
+    );
+  }
+}
+
 export async function runPhase2Finalization(
   _args: CloseSessionArgs,
   context: CloseSessionContext,
@@ -289,6 +451,15 @@ export async function runPhase2Finalization(
 
   context.setCurrentSession(data.sessionId, data.sessionFile);
 
+  // Discover related topics using semantic search
+  const discoveredTopics = await discoverRelatedTopics(_args.summary, context);
+  if (discoveredTopics.length > 0) {
+    // Add discovered topics to session file
+    const updatedContent = addRelatedTopicsToSession(data.sessionContent, discoveredTopics);
+    await fs.writeFile(data.sessionFile, updatedContent);
+    data.sessionContent = updatedContent; // Update session data
+  }
+
   // Dynamic filesToCheck: merge Phase 1 files with any files modified between Phase 1 and Phase 2
   // This catches documentation updates made during commit analysis review
   const phase2EditedFiles = context.filesAccessed
@@ -297,7 +468,9 @@ export async function runPhase2Finalization(
     )
     .map(f => f.path);
 
-  const allFilesToCheck = Array.from(new Set([...data.filesToCheck, ...phase2EditedFiles]));
+  const allFilesToCheck = Array.from(
+    new Set([...data.filesToCheck, ...phase2EditedFiles, ...discoveredTopics.map(t => t.path)])
+  );
 
   let vaultCustodianReport = '';
   if (allFilesToCheck.length > 0) {
@@ -370,6 +543,15 @@ export async function runSinglePhaseClose(
 
   context.setCurrentSession(sessionId, sessionFile);
 
+  // Discover related topics using semantic search
+  const discoveredTopics = await discoverRelatedTopics(_args.summary, context);
+  if (discoveredTopics.length > 0) {
+    // Add discovered topics to session file
+    const updatedContent = addRelatedTopicsToSession(sessionContent, discoveredTopics);
+    await fs.writeFile(sessionFile, updatedContent);
+    sessionContent = updatedContent; // Update for potential Phase 2 use
+  }
+
   let repoDetectionMessage = '';
   if (detectedRepoInfo) {
     const repoLines = [
@@ -419,6 +601,7 @@ export async function runSinglePhaseClose(
     ...context.decisionsCreated.map(d => d.file),
     ...context.projectsCreated.map(p => p.file),
     ...editedOrCreatedFiles,
+    ...discoveredTopics.map(t => t.path), // Add discovered topics for reciprocal linking
   ];
 
   const uniqueFilesToCheck = Array.from(new Set(filesToCheck));
@@ -524,6 +707,11 @@ interface CloseSessionContext {
   markPhase1Complete: () => void;
   getMostRecentSessionDate: (repoSlug: string) => Promise<Date | null>;
   getSessionStartTime: () => Date | null; // Get first file access timestamp
+  searchVault: (args: {
+    query: string;
+    max_results?: number;
+    detail?: string;
+  }) => Promise<{ content: Array<{ text: string }> }>;
 }
 
 export async function closeSession(

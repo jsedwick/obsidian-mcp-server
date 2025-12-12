@@ -659,6 +659,7 @@ class ObsidianMCPServer {
               markPhase1Complete: this.markPhase1Complete.bind(this),
               getMostRecentSessionDate: this.getMostRecentSessionDate.bind(this),
               getSessionStartTime: this.getSessionStartTime.bind(this),
+              searchVault: this.searchVaultWrapper.bind(this),
             });
 
           case 'find_stale_topics':
