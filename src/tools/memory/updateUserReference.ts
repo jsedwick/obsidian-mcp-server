@@ -9,7 +9,13 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 
 export interface UpdateUserReferenceArgs {
-  section: 'user_identity' | 'technical_context' | 'work_team' | 'personal' | 'additional';
+  section:
+    | 'user_identity'
+    | 'technical_context'
+    | 'current_project'
+    | 'work_team'
+    | 'personal'
+    | 'additional';
   key: string;
   value: string;
 }
@@ -21,6 +27,7 @@ export interface UpdateUserReferenceResult {
 const SECTION_MAPPING: Record<string, string> = {
   user_identity: 'User Identity',
   technical_context: 'Technical Context',
+  current_project: 'Current Project',
   work_team: 'Work Team Members',
   personal: 'Personal',
   additional: 'Additional',
@@ -45,6 +52,12 @@ function createTemplate(): string {
 
 - **Primary Technologies:** [Not yet specified]
 - **Development Environment:** [Not yet specified]
+
+## Current Project
+
+- **Project Name:** [Not yet specified]
+- **Last Updated:** [Not yet specified]
+- **Description:** [Not yet specified]
 
 ## Work Team Members
 
