@@ -39,13 +39,12 @@ function createTemplate(): string {
 
 - **Name:** [Not yet specified]
 - **Pronouns:** [Not yet specified]
-- **Role/Title:** [Not yet specified]
+- **Role:** [Not yet specified]
 
 ## Technical Context
 
 - **Primary Technologies:** [Not yet specified]
 - **Development Environment:** [Not yet specified]
-- **Current Projects:** [Not yet specified]
 
 ## Work Team Members
 
