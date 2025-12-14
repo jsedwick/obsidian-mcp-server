@@ -803,6 +803,12 @@ class ObsidianMCPServer {
               this.config.secondaryVaults.map(v => ({ path: v.path, name: v.name }))
             );
 
+          case 'update_user_reference':
+            return await tools.updateUserReference(
+              validatedArgs as tools.UpdateUserReferenceArgs,
+              this.config.primaryVault.path
+            );
+
           case 'switch_mode': {
             const { mode } = validatedArgs as { mode: VaultMode };
             const result = this.switchMode(mode);
@@ -1812,6 +1818,31 @@ SCOPE: Decisions can be vault-level (affecting the MCP system itself) or project
               description: 'Include frontmatter description in index entries (default: false)',
             },
           },
+        },
+      },
+      {
+        name: 'update_user_reference',
+        description:
+          'Update or append user reference information in a structured format. Stores contextual information about the user (identity, technical context, team members, preferences) that persists across sessions. Use this when the user shares personal information that would be helpful to remember.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            section: {
+              type: 'string',
+              enum: ['user_identity', 'technical_context', 'work_team', 'personal', 'additional'],
+              description:
+                'The section to update (user_identity, technical_context, work_team, personal, additional)',
+            },
+            key: {
+              type: 'string',
+              description: 'Field name or item description (e.g., "Name", "Primary Technologies")',
+            },
+            value: {
+              type: 'string',
+              description: 'The value to store',
+            },
+          },
+          required: ['section', 'key', 'value'],
         },
       },
       {

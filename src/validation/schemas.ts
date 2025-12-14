@@ -410,6 +410,23 @@ export const GenerateVaultIndexArgsSchema = z.object({
     .describe('Include frontmatter description in index entries (default: false)'),
 });
 
+// update_user_reference
+const UserReferenceSectionSchema = z.enum(
+  ['user_identity', 'technical_context', 'work_team', 'personal', 'additional'],
+  {
+    errorMap: () => ({
+      message:
+        'section must be one of: user_identity, technical_context, work_team, personal, additional',
+    }),
+  }
+);
+
+export const UpdateUserReferenceArgsSchema = z.object({
+  section: UserReferenceSectionSchema.describe('The section to update'),
+  key: NonEmptyString.describe('Field name or item description'),
+  value: NonEmptyString.describe('The value to store'),
+});
+
 /**
  * MODE TOOLS (2 tools)
  */
@@ -474,6 +491,7 @@ export const ValidationSchemas = {
   // Memory tools
   get_memory_base: GetMemoryBaseArgsSchema,
   generate_vault_index: GenerateVaultIndexArgsSchema,
+  update_user_reference: UpdateUserReferenceArgsSchema,
 
   // Mode tools
   switch_mode: SwitchModeArgsSchema,

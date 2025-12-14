@@ -26,6 +26,18 @@ export async function getMemoryBase(
   vaultPath: string
 ): Promise<GetMemoryBaseResult> {
   const memoryFilePath = path.join(vaultPath, 'memory-base.md');
+  const userRefPath = path.join(vaultPath, 'user-reference.md');
+
+  // Try to load user reference if it exists
+  let userRefContent = '';
+  try {
+    userRefContent = await fs.readFile(userRefPath, 'utf-8');
+  } catch (error) {
+    // File doesn't exist - that's fine
+    if ((error as { code?: string }).code !== 'ENOENT') {
+      console.warn('Failed to read user-reference.md:', (error as Error).message);
+    }
+  }
 
   try {
     const content = await fs.readFile(memoryFilePath, 'utf-8');
@@ -35,11 +47,16 @@ export async function getMemoryBase(
     const sessionCount = (content.match(/### --- SESSION BOUNDARY/g) || []).length;
     const sizeBytes = Buffer.byteLength(content, 'utf-8');
 
+    const memoryInfo = `Rolling memory base contents:\n\n${content}\n\n---\nMetadata:\n- Size: ${sizeBytes} bytes\n- Last modified: ${stats.mtime.toISOString()}\n- Session count: ${sessionCount}`;
+
+    // Prepend user reference content if available
+    const fullContent = userRefContent ? `${userRefContent}\n\n---\n\n${memoryInfo}` : memoryInfo;
+
     return {
       content: [
         {
           type: 'text',
-          text: `Rolling memory base contents:\n\n${content}\n\n---\nMetadata:\n- Size: ${sizeBytes} bytes\n- Last modified: ${stats.mtime.toISOString()}\n- Session count: ${sessionCount}`,
+          text: fullContent,
         },
       ],
     };
@@ -49,7 +66,9 @@ export async function getMemoryBase(
         content: [
           {
             type: 'text',
-            text: 'Rolling memory base is empty. No previous session context available.',
+            text:
+              userRefContent ||
+              'Rolling memory base is empty. No previous session context available.',
           },
         ],
       };

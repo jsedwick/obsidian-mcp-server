@@ -1,5 +1,5 @@
 /**
- * Tool Registry - Exports all 25 MCP tools
+ * Tool Registry - Exports all 26 MCP tools
  *
  * This module serves as the central registry for all Obsidian MCP Server tools.
  * Tools are organized by category for better maintainability.
@@ -26,7 +26,7 @@ export * from './decisions/index.js';
 // Maintenance tools (2)
 export * from './maintenance/index.js';
 
-// Memory tools (2)
+// Memory tools (3)
 export * from './memory/index.js';
 
 /**
