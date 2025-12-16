@@ -652,6 +652,7 @@ class ObsidianMCPServer {
               vaultCustodian: this.vaultCustodianWrapper.bind(this),
               recordCommit: this.recordCommitWrapper.bind(this),
               analyzeCommitImpact: this.analyzeCommitImpactWrapper.bind(this),
+              updateUserReference: this.updateUserReferenceWrapper.bind(this),
               slugify: this.slugify.bind(this),
               setCurrentSession: this.setCurrentSession.bind(this),
               clearSessionState: this.clearSessionState.bind(this),
@@ -1996,6 +1997,17 @@ Check the sessions/ directory for recent conversations.
       gitService: this.gitService,
       searchVault: this.searchVaultWrapper.bind(this),
     });
+  }
+
+  private async updateUserReferenceWrapper(args: {
+    section: string;
+    key: string;
+    value: string;
+  }): Promise<any> {
+    return tools.updateUserReference(
+      args as unknown as tools.UpdateUserReferenceArgs,
+      this.config.primaryVault.path
+    );
   }
 
   private getSessionStartTime(): Date | null {

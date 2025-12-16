@@ -700,6 +700,7 @@ interface CloseSessionContext {
     commit_hash: string;
     include_diff?: boolean;
   }) => Promise<any>;
+  updateUserReference: (args: { section: string; key: string; value: string }) => Promise<any>;
   slugify: (text: string) => string;
   setCurrentSession: (sessionId: string, sessionFile: string) => void;
   clearSessionState: () => void;
@@ -872,6 +873,32 @@ export async function closeSession(
               remote: topCandidate.remote ?? undefined,
             };
             await context.createProjectPage({ repo_path: topCandidate.path });
+
+            // Auto-update current project in user reference
+            try {
+              await context.updateUserReference({
+                section: 'current_project',
+                key: 'Project Name',
+                value: topCandidate.name,
+              });
+
+              await context.updateUserReference({
+                section: 'current_project',
+                key: 'Last Updated',
+                value: dateStr,
+              });
+
+              // Use session topic as description if available
+              if (args.topic) {
+                await context.updateUserReference({
+                  section: 'current_project',
+                  key: 'Description',
+                  value: args.topic,
+                });
+              }
+            } catch (_error) {
+              // Silent failure - user reference update is non-critical
+            }
           } catch (_error) {
             // If project creation fails, continue anyway
           }
