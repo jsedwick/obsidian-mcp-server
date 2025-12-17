@@ -161,12 +161,19 @@ export async function searchVault(
 
         // Perform indexed search on this vault
         try {
+          // For secondary vaults, search all directories and skip category filtering
+          // (they don't have the same structure or frontmatter as primary vault)
+          // This matches the linear search behavior where secondary vaults are searched recursively
+          const isPrimaryVault = vault.path === context.config.primaryVault.path;
+          const directoriesToSearch = isPrimaryVault ? args.directories : undefined;
+          const categoryToFilter = isPrimaryVault ? args.category : undefined;
+
           const vaultResults = await searcher.search({
             query: args.query,
             queryTerms: queryTermsArray,
             maxResults, // Each vault can return up to maxResults
-            directories: args.directories,
-            category: args.category,
+            directories: directoriesToSearch,
+            category: categoryToFilter,
             dateRange: args.date_range,
           });
 
