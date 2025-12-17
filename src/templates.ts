@@ -19,6 +19,7 @@
  */
 export interface SessionFrontmatter {
   date: string; // ISO 8601 date (YYYY-MM-DD)
+  category: 'session'; // Document type
   session_id: string; // Unique session identifier
   topics: string[]; // List of topic titles covered
   decisions: string[]; // List of decision titles made
@@ -33,6 +34,7 @@ export interface SessionFrontmatter {
  */
 export interface TopicFrontmatter {
   title: string; // Human-readable topic name
+  category: 'topic'; // Document type
   created: string; // ISO 8601 date
   last_reviewed: string; // ISO 8601 date
   review_count: number; // Number of times reviewed
@@ -51,6 +53,7 @@ export interface TopicFrontmatter {
  */
 export interface DecisionFrontmatter {
   number: string; // Zero-padded decision number (e.g., "008")
+  category: 'decision'; // Document type
   title: string; // Decision title
   date: string; // ISO 8601 date
   status: 'accepted' | 'rejected' | 'superseded' | 'deprecated';
@@ -63,6 +66,7 @@ export interface DecisionFrontmatter {
  */
 export interface ProjectFrontmatter {
   project_name: string; // Project name
+  category: 'project'; // Document type
   repo_path: string; // Absolute path to repository
   repo_url: string; // Remote URL (or "N/A")
   created: string; // ISO 8601 date
@@ -79,6 +83,7 @@ export interface ProjectFrontmatter {
  */
 export interface CommitFrontmatter {
   commit_hash: string; // Full SHA hash
+  category: 'commit'; // Document type
   short_hash: string; // Abbreviated hash
   author: string; // "Name <email>"
   date: string; // ISO 8601 date with timezone
@@ -120,6 +125,7 @@ export interface TopicTemplateArgs {
 export function generateTopicTemplate(args: TopicTemplateArgs): string {
   const frontmatter: TopicFrontmatter = {
     title: args.title,
+    category: 'topic',
     created: args.created,
     last_reviewed: args.created,
     review_count: 0,
@@ -138,6 +144,7 @@ export function generateTopicTemplate(args: TopicTemplateArgs): string {
 
   return `---
 title: "${frontmatter.title}"
+category: ${frontmatter.category}
 created: "${frontmatter.created}"
 last_reviewed: "${frontmatter.last_reviewed}"
 review_count: ${frontmatter.review_count}
@@ -173,6 +180,7 @@ export interface DecisionTemplateArgs {
 export function generateDecisionTemplate(args: DecisionTemplateArgs): string {
   const frontmatter: DecisionFrontmatter = {
     number: args.number,
+    category: 'decision',
     title: args.title,
     date: args.date,
     status: 'accepted',
@@ -189,6 +197,7 @@ export function generateDecisionTemplate(args: DecisionTemplateArgs): string {
     // Content already includes structure (Context, Decision, Alternatives, Consequences, etc.)
     return `---
 number: "${frontmatter.number}"
+category: ${frontmatter.category}
 title: "${frontmatter.title}"
 date: "${frontmatter.date}"
 status: "${frontmatter.status}"
@@ -212,6 +221,7 @@ ${args.currentSessionId ? `- [[${args.currentSessionId}]]` : ''}
     // Simple content - wrap with template structure
     return `---
 number: "${frontmatter.number}"
+category: ${frontmatter.category}
 title: "${frontmatter.title}"
 date: "${frontmatter.date}"
 status: "${frontmatter.status}"
@@ -252,6 +262,7 @@ export interface ProjectTemplateArgs {
 export function generateProjectTemplate(args: ProjectTemplateArgs): string {
   const frontmatter: ProjectFrontmatter = {
     project_name: args.projectName,
+    category: 'project',
     repo_path: args.repoPath,
     repo_url: args.repoUrl || 'N/A',
     created: args.created,
@@ -263,6 +274,7 @@ export function generateProjectTemplate(args: ProjectTemplateArgs): string {
 
   return `---
 project_name: "${frontmatter.project_name}"
+category: ${frontmatter.category}
 repo_path: "${frontmatter.repo_path}"
 repo_url: "${frontmatter.repo_url}"
 created: "${frontmatter.created}"
@@ -311,6 +323,7 @@ export interface CommitTemplateArgs {
 export function generateCommitTemplate(args: CommitTemplateArgs): string {
   const frontmatter: CommitFrontmatter = {
     commit_hash: args.commitHash,
+    category: 'commit',
     short_hash: args.shortHash,
     author: `${args.authorName} <${args.authorEmail}>`,
     date: args.date,
@@ -321,6 +334,7 @@ export function generateCommitTemplate(args: CommitTemplateArgs): string {
 
   return `---
 commit_hash: "${frontmatter.commit_hash}"
+category: ${frontmatter.category}
 short_hash: "${frontmatter.short_hash}"
 author: "${frontmatter.author}"
 date: "${frontmatter.date}"
@@ -380,6 +394,7 @@ export interface SessionTemplateArgs {
 export function generateSessionTemplate(args: SessionTemplateArgs): string {
   const frontmatter: SessionFrontmatter = {
     date: args.date,
+    category: 'session',
     session_id: args.sessionId,
     topics: args.topic ? [args.topic, ...args.topicsList] : args.topicsList,
     decisions: args.decisionsList,
@@ -392,6 +407,7 @@ export function generateSessionTemplate(args: SessionTemplateArgs): string {
 
   return `---
 date: "${frontmatter.date}"
+category: ${frontmatter.category}
 session_id: "${frontmatter.session_id}"
 topics: ${JSON.stringify(frontmatter.topics)}
 decisions: ${JSON.stringify(frontmatter.decisions)}
@@ -441,6 +457,7 @@ ${args.relatedProjects.length > 0 ? args.relatedProjects.map(p => `- [[${p.link}
 export function validateSessionFrontmatter(fm: any): fm is SessionFrontmatter {
   return (
     typeof fm.date === 'string' &&
+    fm.category === 'session' &&
     typeof fm.session_id === 'string' &&
     Array.isArray(fm.topics) &&
     Array.isArray(fm.decisions) &&
@@ -451,6 +468,7 @@ export function validateSessionFrontmatter(fm: any): fm is SessionFrontmatter {
 export function validateTopicFrontmatter(fm: any): fm is TopicFrontmatter {
   return (
     typeof fm.title === 'string' &&
+    fm.category === 'topic' &&
     typeof fm.created === 'string' &&
     typeof fm.last_reviewed === 'string' &&
     typeof fm.review_count === 'number' &&
@@ -462,6 +480,7 @@ export function validateTopicFrontmatter(fm: any): fm is TopicFrontmatter {
 export function validateDecisionFrontmatter(fm: any): fm is DecisionFrontmatter {
   return (
     typeof fm.number === 'string' &&
+    fm.category === 'decision' &&
     typeof fm.title === 'string' &&
     typeof fm.date === 'string' &&
     typeof fm.status === 'string'
@@ -471,6 +490,7 @@ export function validateDecisionFrontmatter(fm: any): fm is DecisionFrontmatter 
 export function validateProjectFrontmatter(fm: any): fm is ProjectFrontmatter {
   return (
     typeof fm.project_name === 'string' &&
+    fm.category === 'project' &&
     typeof fm.repo_path === 'string' &&
     typeof fm.repo_url === 'string' &&
     typeof fm.created === 'string' &&
@@ -484,6 +504,7 @@ export function validateProjectFrontmatter(fm: any): fm is ProjectFrontmatter {
 export function validateCommitFrontmatter(fm: any): fm is CommitFrontmatter {
   return (
     typeof fm.commit_hash === 'string' &&
+    fm.category === 'commit' &&
     typeof fm.short_hash === 'string' &&
     typeof fm.author === 'string' &&
     typeof fm.date === 'string' &&

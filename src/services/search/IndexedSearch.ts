@@ -58,6 +58,9 @@ export interface IndexedSearchOptions {
 
   /** Directories to filter (sessions, topics, decisions) */
   directories?: string[];
+
+  /** Optional category filter (topic, task-list, decision, session, project, commit) */
+  category?: 'topic' | 'task-list' | 'decision' | 'session' | 'project' | 'commit';
 }
 
 /**
@@ -274,6 +277,24 @@ export class IndexedSearch {
         before: finalScores.length,
         after: filteredScores.length,
         directories: options.directories,
+      });
+    }
+
+    // Filter by category if specified
+    if (options.category) {
+      const beforeCategoryFilter = filteredScores.length;
+      filteredScores = filteredScores.filter(score => {
+        const metadata = metadataMap.get(score.docId);
+        if (!metadata) return false;
+
+        // Check if document category matches the specified category
+        return metadata.category === options.category;
+      });
+
+      logger.debug('Category filtering applied', {
+        before: beforeCategoryFilter,
+        after: filteredScores.length,
+        category: options.category,
       });
     }
 

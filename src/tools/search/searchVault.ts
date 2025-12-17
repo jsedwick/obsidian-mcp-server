@@ -18,6 +18,7 @@ const logger = createLogger('SearchVault');
 export interface SearchVaultArgs {
   query: string;
   directories?: string[];
+  category?: 'topic' | 'task-list' | 'decision' | 'session' | 'project' | 'commit';
   max_results?: number;
   date_range?: { start?: string; end?: string };
   snippets_only?: boolean;
@@ -165,6 +166,7 @@ export async function searchVault(
             queryTerms: queryTermsArray,
             maxResults, // Each vault can return up to maxResults
             directories: args.directories,
+            category: args.category,
             dateRange: args.date_range,
           });
 

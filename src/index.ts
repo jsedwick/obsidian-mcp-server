@@ -1274,6 +1274,11 @@ class ObsidianMCPServer {
               items: { type: 'string' },
               description: 'Optional: specific directories to search (sessions, topics, decisions)',
             },
+            category: {
+              type: 'string',
+              enum: ['topic', 'task-list', 'decision', 'session', 'project', 'commit'],
+              description: 'Optional: filter by document category (from frontmatter)',
+            },
             max_results: {
               type: 'number',
               description: 'Maximum number of results to return (default: 10)',
