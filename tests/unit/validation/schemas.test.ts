@@ -58,7 +58,9 @@ describe('Validation Schemas', () => {
     describe('get_session_context', () => {
       it('should validate with optional session_id', () => {
         expect(() => validateToolArgs('get_session_context', {})).not.toThrow();
-        expect(() => validateToolArgs('get_session_context', { session_id: 'test-session' })).not.toThrow();
+        expect(() =>
+          validateToolArgs('get_session_context', { session_id: 'test-session' })
+        ).not.toThrow();
       });
     });
 
@@ -75,7 +77,9 @@ describe('Validation Schemas', () => {
       });
 
       it('should reject negative limit', () => {
-        expect(() => validateToolArgs('list_recent_sessions', { limit: -1 })).toThrow(ValidationError);
+        expect(() => validateToolArgs('list_recent_sessions', { limit: -1 })).toThrow(
+          ValidationError
+        );
       });
 
       it('should validate detail levels', () => {
@@ -86,7 +90,9 @@ describe('Validation Schemas', () => {
       });
 
       it('should reject invalid detail level', () => {
-        expect(() => validateToolArgs('list_recent_sessions', { detail: 'invalid' })).toThrow(ValidationError);
+        expect(() => validateToolArgs('list_recent_sessions', { detail: 'invalid' })).toThrow(
+          ValidationError
+        );
       });
     });
 
@@ -161,7 +167,9 @@ describe('Validation Schemas', () => {
       });
 
       it('should reject non-boolean values', () => {
-        expect(() => validateToolArgs('toggle_embeddings', { enabled: 'yes' })).toThrow(ValidationError);
+        expect(() => validateToolArgs('toggle_embeddings', { enabled: 'yes' })).toThrow(
+          ValidationError
+        );
       });
     });
   });
@@ -193,23 +201,29 @@ describe('Validation Schemas', () => {
       });
 
       it('should validate auto_analyze options', () => {
-        expect(() => validateToolArgs('create_topic_page', {
-          topic: 'Test',
-          content: 'Test content here',
-          auto_analyze: true,
-        })).not.toThrow();
+        expect(() =>
+          validateToolArgs('create_topic_page', {
+            topic: 'Test',
+            content: 'Test content here',
+            auto_analyze: true,
+          })
+        ).not.toThrow();
 
-        expect(() => validateToolArgs('create_topic_page', {
-          topic: 'Test',
-          content: 'Test content here',
-          auto_analyze: 'smart',
-        })).not.toThrow();
+        expect(() =>
+          validateToolArgs('create_topic_page', {
+            topic: 'Test',
+            content: 'Test content here',
+            auto_analyze: 'smart',
+          })
+        ).not.toThrow();
 
-        expect(() => validateToolArgs('create_topic_page', {
-          topic: 'Test',
-          content: 'Test content here',
-          auto_analyze: false,
-        })).not.toThrow();
+        expect(() =>
+          validateToolArgs('create_topic_page', {
+            topic: 'Test',
+            content: 'Test content here',
+            auto_analyze: false,
+          })
+        ).not.toThrow();
       });
     });
 
@@ -280,9 +294,11 @@ describe('Validation Schemas', () => {
       });
 
       it('should reject negative threshold', () => {
-        expect(() => validateToolArgs('find_stale_topics', {
-          age_threshold_days: -1,
-        })).toThrow(ValidationError);
+        expect(() =>
+          validateToolArgs('find_stale_topics', {
+            age_threshold_days: -1,
+          })
+        ).toThrow(ValidationError);
       });
     });
   });
@@ -334,20 +350,6 @@ describe('Validation Schemas', () => {
       });
     });
 
-    describe('migrate_commit_branches', () => {
-      it('should validate without arguments', () => {
-        expect(() => validateToolArgs('migrate_commit_branches', {})).not.toThrow();
-      });
-
-      it('should validate with project slug', () => {
-        const args = {
-          project_slug: 'obsidian-mcp-server',
-          dry_run: true,
-        };
-        expect(() => validateToolArgs('migrate_commit_branches', args)).not.toThrow();
-      });
-    });
-
     describe('analyze_commit_impact', () => {
       it('should validate commit analysis', () => {
         const args = {
@@ -373,7 +375,8 @@ describe('Validation Schemas', () => {
       it('should validate decision creation', () => {
         const args = {
           title: 'Use Obsidian vs Notion',
-          content: 'Context: We need to choose... Alternatives: Obsidian, Notion... Decision: Obsidian because...',
+          content:
+            'Context: We need to choose... Alternatives: Obsidian, Notion... Decision: Obsidian because...',
           context: 'Additional context',
           project: 'my-project',
         };
@@ -415,10 +418,7 @@ describe('Validation Schemas', () => {
 
       it('should validate with file list', () => {
         const args = {
-          files_to_check: [
-            '/absolute/path/file1.md',
-            '/absolute/path/file2.md',
-          ],
+          files_to_check: ['/absolute/path/file1.md', '/absolute/path/file2.md'],
         };
         expect(() => validateToolArgs('vault_custodian', args)).not.toThrow();
       });

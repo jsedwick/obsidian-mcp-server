@@ -750,30 +750,6 @@ class ObsidianMCPServer {
               findSessionFile: this.findSessionFile.bind(this),
             });
 
-          case 'migrate_commit_branches':
-            return await tools.migrateCommitBranches(
-              validatedArgs as tools.MigrateCommitBranchesArgs,
-              {
-                vaultPath: this.config.primaryVault.path,
-                gitService: this.gitService,
-              }
-            );
-
-          case 'migrate_project_slugs':
-            return await tools.migrateProjectSlugs(validatedArgs as tools.MigrateProjectSlugsArgs, {
-              vaultPath: this.config.primaryVault.path,
-              gitService: this.gitService,
-            });
-
-          case 'migrate_decision_slugs':
-            return await tools.migrateDecisionSlugs(
-              validatedArgs as tools.MigrateDecisionSlugsArgs,
-              {
-                vaultPath: this.config.primaryVault.path,
-                gitService: this.gitService,
-              }
-            );
-
           case 'analyze_topic_content':
             return await tools.analyzeTopicContent(validatedArgs as tools.AnalyzeTopicContentArgs, {
               searchVault: this.searchVaultWrapper.bind(this),
@@ -1709,56 +1685,6 @@ SCOPE: Decisions can be vault-level (affecting the MCP system itself) or project
               items: { type: 'string' },
               description:
                 'Optional: Array of absolute file paths to check. If not provided, checks all vault files.',
-            },
-          },
-        },
-      },
-      {
-        name: 'migrate_commit_branches',
-        description:
-          'Migrate existing commit files to add branch information. Scans all recorded commits and adds branch field to frontmatter based on Git history. Optional: specify project slug to migrate only that project.',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            project_slug: {
-              type: 'string',
-              description:
-                'Optional: Project slug to migrate (e.g., "obsidian-mcp-server"). If not provided, migrates all projects.',
-            },
-            dry_run: {
-              type: 'boolean',
-              description:
-                'If true, shows what would be changed without making changes. Default: false.',
-            },
-          },
-        },
-      },
-      {
-        name: 'migrate_project_slugs',
-        description:
-          'Migrate existing project directories to use remote-based slug naming. Renames project directories and updates all wiki links across the vault to prevent slug collisions.',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            dry_run: {
-              type: 'boolean',
-              description:
-                'If true, shows what would be changed without making changes. Default: false.',
-            },
-          },
-        },
-      },
-      {
-        name: 'migrate_decision_slugs',
-        description:
-          'Migrate existing decision directories to use remote-based slug naming (aligned with project slug naming). Renames decision directories and updates all wiki links across the vault to prevent slug collisions.',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            dry_run: {
-              type: 'boolean',
-              description:
-                'If true, shows what would be changed without making changes. Default: false.',
             },
           },
         },

@@ -12,9 +12,3 @@ export type {
   CreateDecisionResult,
   CreateDecisionContext,
 } from './createDecision.js';
-
-export { migrateDecisionSlugs } from './migrateDecisionSlugs.js';
-export type {
-  MigrateDecisionSlugsArgs,
-  MigrateDecisionSlugsResult,
-} from './migrateDecisionSlugs.js';

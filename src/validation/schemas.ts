@@ -1,5 +1,5 @@
 /**
- * Zod validation schemas for all 29 MCP tool inputs
+ * Zod validation schemas for all 26 MCP tool inputs
  *
  * This module provides comprehensive runtime validation using Zod v3.
  * Each schema corresponds to a tool's Args interface and includes:
@@ -281,28 +281,6 @@ export const ListRecentProjectsArgsSchema = z.object({
     .describe('Internal flag - set by slash commands only'),
 });
 
-// migrate_commit_branches
-export const MigrateCommitBranchesArgsSchema = z.object({
-  project_slug: z
-    .string()
-    .optional()
-    .describe('Optional: Project slug to migrate (e.g., "obsidian-mcp-server")'),
-  dry_run: z
-    .boolean()
-    .optional()
-    .default(false)
-    .describe('If true, shows what would be changed without making changes'),
-});
-
-// migrate_project_slugs
-export const MigrateProjectSlugsArgsSchema = z.object({
-  dry_run: z
-    .boolean()
-    .optional()
-    .default(false)
-    .describe('If true, shows what would be changed without making changes'),
-});
-
 // analyze_commit_impact
 export const AnalyzeCommitImpactArgsSchema = z.object({
   repo_path: AbsolutePath.describe('Absolute path to the Git repository'),
@@ -315,7 +293,7 @@ export const AnalyzeCommitImpactArgsSchema = z.object({
 });
 
 /**
- * DECISIONS TOOLS (2 tools)
+ * DECISIONS TOOLS (1 tool)
  */
 
 // create_decision
@@ -341,15 +319,6 @@ export const CreateDecisionArgsSchema = z.object({
     .optional()
     .default(false)
     .describe('Set to true to bypass keyword detection warnings'),
-});
-
-// migrate_decision_slugs
-export const MigrateDecisionSlugsArgsSchema = z.object({
-  dry_run: z
-    .boolean()
-    .optional()
-    .default(false)
-    .describe('If true, shows what would be changed without making changes'),
 });
 
 /**
@@ -521,13 +490,10 @@ export const ValidationSchemas = {
   record_commit: RecordCommitArgsSchema,
   link_session_to_repository: LinkSessionToRepositoryArgsSchema,
   list_recent_projects: ListRecentProjectsArgsSchema,
-  migrate_commit_branches: MigrateCommitBranchesArgsSchema,
-  migrate_project_slugs: MigrateProjectSlugsArgsSchema,
   analyze_commit_impact: AnalyzeCommitImpactArgsSchema,
 
   // Decisions tools
   create_decision: CreateDecisionArgsSchema,
-  migrate_decision_slugs: MigrateDecisionSlugsArgsSchema,
 
   // Maintenance tools
   vault_custodian: VaultCustodianArgsSchema,

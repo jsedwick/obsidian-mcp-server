@@ -1,5 +1,5 @@
 /**
- * Tool Registry - Exports all 29 MCP tools
+ * Tool Registry - Exports all 26 MCP tools
  *
  * This module serves as the central registry for all Obsidian MCP Server tools.
  * Tools are organized by category for better maintainability.
@@ -55,18 +55,15 @@ export * from './tasks/index.js';
  * REVIEW (1 tool):
  * - find_stale_topics
  *
- * GIT (7 tools):
+ * GIT (5 tools):
  * - create_project_page
  * - record_commit
  * - analyze_commit_impact
  * - link_session_to_repository
- * - migrate_commit_branches
- * - migrate_project_slugs
  * - list_recent_projects
  *
- * DECISIONS (2 tools):
+ * DECISIONS (1 tool):
  * - create_decision
- * - migrate_decision_slugs
  *
  * MAINTENANCE (2 tools):
  * - vault_custodian
@@ -82,5 +79,5 @@ export * from './tasks/index.js';
  * - add_task
  * - complete_task
  *
- * Total: 29 tools
+ * Total: 26 tools
  */
