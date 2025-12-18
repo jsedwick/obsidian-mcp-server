@@ -61,6 +61,9 @@ export interface IndexedSearchOptions {
 
   /** Optional category filter (topic, task-list, decision, session, project, commit) */
   category?: 'topic' | 'task-list' | 'decision' | 'session' | 'project' | 'commit';
+
+  /** Whether to include archived files (default: false) */
+  includeArchived?: boolean;
 }
 
 /**
@@ -316,6 +319,23 @@ export class IndexedSearch {
 
       logger.debug('Date range filtering applied', {
         resultsAfterFilter: filteredScores.length,
+      });
+    }
+
+    // Filter out archived files unless explicitly included
+    if (!options.includeArchived) {
+      const beforeArchiveFilter = filteredScores.length;
+      filteredScores = filteredScores.filter(score => {
+        const metadata = metadataMap.get(score.docId);
+        if (!metadata) return false;
+
+        // Exclude files in /archive/ directories
+        return !metadata.path.includes('/archive/');
+      });
+
+      logger.debug('Archive filtering applied', {
+        before: beforeArchiveFilter,
+        after: filteredScores.length,
       });
     }
 

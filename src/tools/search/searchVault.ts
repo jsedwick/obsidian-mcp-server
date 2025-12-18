@@ -23,6 +23,7 @@ export interface SearchVaultArgs {
   date_range?: { start?: string; end?: string };
   snippets_only?: boolean;
   detail?: string;
+  include_archived?: boolean;
 }
 
 export interface SearchVaultResult {
@@ -60,7 +61,8 @@ export async function searchVault(
       queryLower: string,
       queryTerms: string[],
       dateRange?: { start?: string; end?: string },
-      absolutePath?: string
+      absolutePath?: string,
+      includeArchived?: boolean
     ) => {
       file: string;
       matches: string[];
@@ -175,6 +177,7 @@ export async function searchVault(
             directories: directoriesToSearch,
             category: categoryToFilter,
             dateRange: args.date_range,
+            includeArchived: args.include_archived,
           });
 
           // Add vault information to results
@@ -301,7 +304,8 @@ export async function searchVault(
                 queryLower,
                 queryTerms,
                 args.date_range,
-                filePath // Pass absolute path for embedding cache key
+                filePath, // Pass absolute path for embedding cache key
+                args.include_archived
               );
               if (searchResult) {
                 results.push({ ...searchResult, vault: vaultName });
@@ -331,7 +335,8 @@ export async function searchVault(
             queryLower,
             queryTerms,
             args.date_range,
-            fullPath // Pass absolute path for embedding cache key
+            fullPath, // Pass absolute path for embedding cache key
+            args.include_archived
           );
           if (searchResult) {
             results.push({ ...searchResult, vault: vaultName });

@@ -29,6 +29,7 @@ export class KeywordSearch {
    * @param queryTerms - Individual query terms
    * @param dateRange - Optional date range filter
    * @param absolutePath - Absolute file path (for cache key)
+   * @param includeArchived - Whether to include archived files (default: false)
    * @returns Search match or null if no match
    */
   scoreSearchResult(
@@ -40,7 +41,8 @@ export class KeywordSearch {
     queryLower: string,
     queryTerms: string[],
     dateRange?: DateRange,
-    absolutePath?: string
+    absolutePath?: string,
+    includeArchived: boolean = false
   ): InternalSearchMatch | null {
     const contentLower = content.toLowerCase();
     let keywordScore = 0;
@@ -168,10 +170,10 @@ export class KeywordSearch {
       }
     }
 
-    // Archive penalty - demote archived content but don't exclude
+    // Archive exclusion - exclude archived content unless explicitly requested
     const filePath = absolutePath || `${dir}/${relPath}`;
-    if (filePath.includes('/archive/') && hasMatch) {
-      keywordScore -= 15; // Significant penalty to rank below current content
+    if (filePath.includes('/archive/') && !includeArchived) {
+      return null; // Exclude archived files by default
     }
 
     // Topic review scoring (recently reviewed topics score higher)

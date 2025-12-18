@@ -168,6 +168,10 @@ export const SearchVaultArgsSchema = z.object({
     .array(z.string())
     .optional()
     .describe('Directories to search (e.g., ["sessions", "topics"])'),
+  category: z
+    .enum(['topic', 'task-list', 'decision', 'session', 'project', 'commit'])
+    .optional()
+    .describe('Filter by document category'),
   max_results: PositiveNumber.optional()
     .default(10)
     .describe('Maximum number of results to return'),
@@ -178,6 +182,11 @@ export const SearchVaultArgsSchema = z.object({
     .default(true)
     .describe('Return condensed snippets instead of full matches'),
   detail: DetailLevelSchema.optional().default('summary').describe('Response detail level'),
+  include_archived: z
+    .boolean()
+    .optional()
+    .default(false)
+    .describe('Include archived files in search results (default: false)'),
 });
 
 // toggle_embeddings
