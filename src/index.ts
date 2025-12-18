@@ -810,6 +810,24 @@ class ObsidianMCPServer {
               this.config.primaryVault.path
             );
 
+          case 'get_tasks_by_date':
+            return await tools.getTasksByDate(
+              validatedArgs as tools.GetTasksByDateArgs,
+              this.config.primaryVault.path
+            );
+
+          case 'add_task':
+            return await tools.addTask(
+              validatedArgs as tools.AddTaskArgs,
+              this.config.primaryVault.path
+            );
+
+          case 'complete_task':
+            return await tools.completeTask(
+              validatedArgs as tools.CompleteTaskArgs,
+              this.config.primaryVault.path
+            );
+
           case 'switch_mode': {
             const { mode } = validatedArgs as { mode: VaultMode };
             const result = this.switchMode(mode);
@@ -1849,6 +1867,88 @@ SCOPE: Decisions can be vault-level (affecting the MCP system itself) or project
             },
           },
           required: ['section', 'key', 'value'],
+        },
+      },
+      {
+        name: 'get_tasks_by_date',
+        description:
+          'Query and aggregate tasks across all task lists by date. Automatically reads all active task list files (category: task-list, tags: active) and returns tasks due on specified date.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            date: {
+              type: 'string',
+              description:
+                'Date to query tasks for. Accepts: "today", "tomorrow", "this-week", or YYYY-MM-DD format',
+            },
+            status: {
+              type: 'string',
+              enum: ['incomplete', 'complete', 'all'],
+              description: 'Filter by task status (default: incomplete)',
+            },
+            project: {
+              type: 'string',
+              description: 'Optional: filter tasks by project slug',
+            },
+          },
+          required: ['date'],
+        },
+      },
+      {
+        name: 'add_task',
+        description:
+          "Add a task to appropriate task list with automatic list selection. Creates task list if it doesn't exist (like update_user_reference creates user-reference.md). Auto-selects list based on project/context/date.",
+        inputSchema: {
+          type: 'object',
+          properties: {
+            task: {
+              type: 'string',
+              description: 'Task description',
+            },
+            due: {
+              type: 'string',
+              description:
+                'When task is due. Accepts: "today", "tomorrow", "this-week", or YYYY-MM-DD format',
+            },
+            priority: {
+              type: 'string',
+              enum: ['high', 'medium', 'low'],
+              description: 'Task priority',
+            },
+            project: {
+              type: 'string',
+              description: 'Project slug - will add task to {project}-tasks.md',
+            },
+            context: {
+              type: 'string',
+              enum: ['work', 'personal'],
+              description: 'Task context - will add task to {context}-tasks.md',
+            },
+            list: {
+              type: 'string',
+              description: 'Override auto-selection with specific list name',
+            },
+          },
+          required: ['task'],
+        },
+      },
+      {
+        name: 'complete_task',
+        description:
+          'Mark a task as complete across any task list. Automatically searches all active task lists, marks task complete ([ ] → [x]), moves to Completed section, and adds completion date.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            task: {
+              type: 'string',
+              description: 'Full or partial task description for fuzzy matching',
+            },
+            date: {
+              type: 'string',
+              description: 'Completion date in YYYY-MM-DD format (defaults to today)',
+            },
+          },
+          required: ['task'],
         },
       },
       {

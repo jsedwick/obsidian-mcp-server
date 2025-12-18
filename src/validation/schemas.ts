@@ -428,6 +428,53 @@ export const UpdateUserReferenceArgsSchema = z.object({
 });
 
 /**
+ * TASK TOOLS (3 tools)
+ */
+
+// Task status enum
+const TaskStatusSchema = z.enum(['incomplete', 'complete', 'all'], {
+  errorMap: () => ({ message: 'status must be one of: incomplete, complete, all' }),
+});
+
+// Task priority enum
+const TaskPrioritySchema = z.enum(['high', 'medium', 'low'], {
+  errorMap: () => ({ message: 'priority must be one of: high, medium, low' }),
+});
+
+// Task context enum
+const TaskContextSchema = z.enum(['work', 'personal'], {
+  errorMap: () => ({ message: 'context must be one of: work, personal' }),
+});
+
+// get_tasks_by_date
+export const GetTasksByDateArgsSchema = z.object({
+  date: NonEmptyString.describe(
+    'Date to query tasks for (today, tomorrow, this-week, or YYYY-MM-DD)'
+  ),
+  status: TaskStatusSchema.optional().describe('Filter by task status (default: incomplete)'),
+  project: z.string().optional().describe('Filter tasks by project slug'),
+});
+
+// add_task
+export const AddTaskArgsSchema = z.object({
+  task: NonEmptyString.describe('Task description'),
+  due: z
+    .string()
+    .optional()
+    .describe('When task is due (today, tomorrow, this-week, or YYYY-MM-DD)'),
+  priority: TaskPrioritySchema.optional().describe('Task priority'),
+  project: z.string().optional().describe('Project slug'),
+  context: TaskContextSchema.optional().describe('Task context (work or personal)'),
+  list: z.string().optional().describe('Override auto-selection with specific list name'),
+});
+
+// complete_task
+export const CompleteTaskArgsSchema = z.object({
+  task: NonEmptyString.describe('Full or partial task description for fuzzy matching'),
+  date: z.string().optional().describe('Completion date (YYYY-MM-DD format, defaults to today)'),
+});
+
+/**
  * MODE TOOLS (2 tools)
  */
 
@@ -492,6 +539,11 @@ export const ValidationSchemas = {
   get_memory_base: GetMemoryBaseArgsSchema,
   generate_vault_index: GenerateVaultIndexArgsSchema,
   update_user_reference: UpdateUserReferenceArgsSchema,
+
+  // Task tools
+  get_tasks_by_date: GetTasksByDateArgsSchema,
+  add_task: AddTaskArgsSchema,
+  complete_task: CompleteTaskArgsSchema,
 
   // Mode tools
   switch_mode: SwitchModeArgsSchema,
