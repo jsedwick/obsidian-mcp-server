@@ -2,18 +2,17 @@
  * Tool: get_memory_base
  *
  * Description: Load session context including system directives, user reference,
- * accumulator awareness, and vault index. Provides layered context at session start:
+ * recent handoffs, recent corrections, and vault index.
+ * Provides layered context at session start:
  * 1. MCP directives (system philosophy and values)
  * 2. User reference (user identity and preferences)
- * 3. Accumulator awareness (available accumulator files with entry counts)
- * 4. Vault index (recently modified files for orientation)
+ * 3. Recent handoffs (from last 2-3 sessions for continuity)
+ * 4. Recent corrections (last 2 mistake/correction pairs from accumulator-corrections.md)
+ * 5. Task status (overdue and today's tasks - loaded via CLAUDE.md workflow)
+ * 6. Vault index (recently modified files for orientation)
  *
  * Used for session initialization and establishing timing for commit detection
  * in the two-phase close workflow.
- *
- * Note: The vault index provides file existence awareness, not semantic content.
- * Claude still needs search_vault for substantive questions about content.
- * Accumulators show metadata only - search them when relevant to current work.
  */
 
 import * as fs from 'fs/promises';
@@ -116,6 +115,89 @@ Intelligent integration beats mechanical appending.
 This file reinforces the principles that guide all procedural decisions in CLAUDE.md.
 `;
 
+/**
+ * Extract handoff notes from recent session files
+ * Returns formatted handoff text from last N sessions, skipping empty handoffs
+ */
+async function extractRecentHandoffs(
+  vaultPath: string,
+  memoryContent: string,
+  maxSessions = 3
+): Promise<string> {
+  try {
+    // Extract session file paths from memory-base.md
+    const sessionMatches = memoryContent.match(/sessions\/\d{4}-\d{2}\/[^\s)]+\.md/g);
+
+    if (!sessionMatches || sessionMatches.length === 0) {
+      return '';
+    }
+
+    const recentSessionPaths = sessionMatches.slice(0, maxSessions);
+    const handoffs: string[] = [];
+
+    for (const sessionPath of recentSessionPaths) {
+      try {
+        const fullPath = path.join(vaultPath, sessionPath);
+        const sessionContent = await fs.readFile(fullPath, 'utf-8');
+
+        // Extract handoff section
+        const handoffMatch = sessionContent.match(/## Handoff\n\n(.+?)(?=\n##|$)/s);
+
+        if (handoffMatch) {
+          const handoffText = handoffMatch[1].trim();
+
+          // Skip empty or placeholder handoffs
+          if (handoffText && handoffText !== '_No handoff notes_') {
+            const sessionName = path.basename(sessionPath, '.md');
+            handoffs.push(`**${sessionName}**\n${handoffText}`);
+          }
+        }
+      } catch {
+        // Skip sessions that can't be read
+        continue;
+      }
+    }
+
+    if (handoffs.length === 0) {
+      return '';
+    }
+
+    return `## Recent Handoffs\n\n${handoffs.join('\n\n---\n\n')}`;
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * Load recent entries from an accumulator file
+ * Returns last N entries (most recent first) with timestamps
+ */
+async function loadRecentAccumulatorEntries(
+  vaultPath: string,
+  filename: string,
+  maxEntries = 3
+): Promise<string> {
+  try {
+    const filePath = path.join(vaultPath, filename);
+    const content = await fs.readFile(filePath, 'utf-8');
+
+    // Split by H2 headers (## YYYY-MM-DD entries)
+    const entries = content.split(/(?=^## )/m).filter(e => e.trim().startsWith('##'));
+
+    if (entries.length === 0) {
+      return '';
+    }
+
+    // Take the most recent N entries
+    const recentEntries = entries.slice(0, maxEntries);
+
+    return recentEntries.join('\n');
+  } catch {
+    // File doesn't exist or can't be read
+    return '';
+  }
+}
+
 export interface GetMemoryBaseResult {
   content: Array<{ type: string; text: string }>;
 }
@@ -127,37 +209,6 @@ export async function getMemoryBase(
   const memoryFilePath = path.join(vaultPath, 'memory-base.md');
   const userRefPath = path.join(vaultPath, 'user-reference.md');
   const mcpDirectivesPath = path.join(vaultPath, 'mcp-directives.md');
-
-  // Scan for accumulator files
-  let accumulatorInfo = '';
-  try {
-    const files = await fs.readdir(vaultPath);
-    const accumulatorFiles = files.filter(f => /^accumulator-.+\.md$/.test(f)).sort();
-
-    if (accumulatorFiles.length > 0) {
-      const accumulatorDetails = await Promise.all(
-        accumulatorFiles.map(async filename => {
-          try {
-            const filePath = path.join(vaultPath, filename);
-            const stats = await fs.stat(filePath);
-            const content = await fs.readFile(filePath, 'utf-8');
-            const entryCount = (content.match(/^##\s/gm) || []).length;
-            const lastModified = stats.mtime.toISOString().split('T')[0];
-            return `- ${filename} (${entryCount} entries, last: ${lastModified})`;
-          } catch {
-            return null;
-          }
-        })
-      );
-
-      const validDetails = accumulatorDetails.filter(d => d !== null);
-      if (validDetails.length > 0) {
-        accumulatorInfo = `\n\n## Accumulators Available\n${validDetails.join('\n')}\n\n💡 Search accumulators when starting related work`;
-      }
-    }
-  } catch (_error) {
-    // Fail silently - accumulator scanning is optional
-  }
 
   // Try to load MCP directives, creating from template if they don't exist
   let mcpDirectivesContent = '';
@@ -202,7 +253,23 @@ export async function getMemoryBase(
 
     const memoryInfo = `Rolling memory base contents:\n\n${content}\n\n---\nMetadata:\n- Size: ${sizeBytes} bytes\n- Last modified: ${stats.mtime.toISOString()}\n- Session count: ${sessionCount}`;
 
-    // Build layered context: System directives -> User context -> Vault index
+    // Extract recent handoffs from session files
+    const recentHandoffs = await extractRecentHandoffs(vaultPath, content, 3);
+
+    // Load recent corrections (most recent 2 entries)
+    // Note: accumulator-learnings is skipped - long-form content should be topics
+    const corrections = await loadRecentAccumulatorEntries(
+      vaultPath,
+      'accumulator-corrections.md',
+      2
+    );
+
+    let crossSessionKnowledge = '';
+    if (corrections) {
+      crossSessionKnowledge = `## Recent Corrections\n\n${corrections}`;
+    }
+
+    // Build layered context: System directives -> User reference -> Handoffs -> Knowledge -> Vault index
     const sections = [];
 
     // Add creation notice if mcp-directives was just created
@@ -216,9 +283,13 @@ export async function getMemoryBase(
       sections.push(mcpDirectivesContent);
     }
     if (userRefContent) {
-      sections.push(userRefContent + accumulatorInfo);
-    } else if (accumulatorInfo) {
-      sections.push(accumulatorInfo.trim());
+      sections.push(userRefContent);
+    }
+    if (recentHandoffs) {
+      sections.push(recentHandoffs);
+    }
+    if (crossSessionKnowledge) {
+      sections.push(crossSessionKnowledge);
     }
     sections.push(memoryInfo);
 
@@ -248,9 +319,7 @@ export async function getMemoryBase(
         sections.push(mcpDirectivesContent);
       }
       if (userRefContent) {
-        sections.push(userRefContent + accumulatorInfo);
-      } else if (accumulatorInfo) {
-        sections.push(accumulatorInfo.trim());
+        sections.push(userRefContent);
       }
 
       return {

@@ -4,10 +4,14 @@
  * Append content to accumulator files - running logs that preserve context across sessions.
  * Accumulators are append-only to prevent accidental overwrites.
  *
- * Common use cases:
- * - accumulator-corrections.md: Record mistakes and corrections for learning
- * - accumulator-learnings.md: Quick insights that don't warrant full topics yet
- * - accumulator-questions.md: Persistent curiosities spanning sessions
+ * Primary use case:
+ * - accumulator-corrections.md: Record mistakes and corrections to prevent repeating errors
+ *
+ * Pattern: MISTAKE → CONSEQUENCE → ROOT CAUSE → CORRECTION → PATTERN → REFERENCE
+ * This structured format helps identify patterns in errors and build institutional knowledge.
+ *
+ * Note: Other accumulator files can be created, but corrections is the only one with proven value.
+ * If content needs to persist, consider creating a topic instead of an accumulator.
  *
  * Inspired by duckdb-kb's append_accumulator pattern for incremental knowledge capture.
  */
@@ -57,10 +61,9 @@ function validateAccumulatorFilename(filename: string): void {
     throw new Error(
       `❌ Invalid accumulator filename: ${filename}\n\n` +
         'Accumulator files must follow the pattern: accumulator-{name}.md\n\n' +
-        'Examples:\n' +
-        '  - accumulator-corrections.md\n' +
-        '  - accumulator-learnings.md\n' +
-        '  - accumulator-questions.md'
+        'Primary example:\n' +
+        '  - accumulator-corrections.md (mistakes and corrections to prevent repeat errors)\n\n' +
+        'Note: If content needs to persist across sessions, consider creating a topic instead.'
     );
   }
 

@@ -1749,7 +1749,7 @@ SCOPE: Decisions can be vault-level (affecting the MCP system itself) or project
       {
         name: 'get_memory_base',
         description:
-          'Retrieve the vault index file showing recently modified files. Used at session start for user orientation (see recent work) and to establish session timing for commit detection. Provides file existence awareness, not semantic context.',
+          'Load session context at startup including: system directives, user reference, recent session handoffs (last 2-3 sessions), recent corrections (last 2 mistake/correction pairs), and vault index. Used for session initialization and establishing timing for commit detection. Provides orientation context with recent continuity information.',
         inputSchema: {
           type: 'object',
           properties: {},
@@ -1809,7 +1809,7 @@ SCOPE: Decisions can be vault-level (affecting the MCP system itself) or project
       {
         name: 'append_to_accumulator',
         description:
-          "Append content to accumulator files - running logs that preserve incremental insights across sessions. Accumulators are append-only to prevent accidental overwrites. Use for: corrections (mistakes & learnings), questions (persistent curiosities), or any incremental knowledge that doesn't warrant formal topic structure. Creates the accumulator file if it doesn't exist.",
+          "Append content to accumulator files - running logs that preserve context across sessions. Accumulators are append-only to prevent accidental overwrites. Primary use: accumulator-corrections.md for recording mistakes and corrections to prevent repeating errors. Pattern: MISTAKE → CONSEQUENCE → ROOT CAUSE → CORRECTION → PATTERN → REFERENCE. Creates the accumulator file if it doesn't exist.",
         inputSchema: {
           type: 'object',
           properties: {
@@ -1817,7 +1817,7 @@ SCOPE: Decisions can be vault-level (affecting the MCP system itself) or project
               type: 'string',
               pattern: '^accumulator-.+\\.md$',
               description:
-                'Accumulator filename (must match pattern: accumulator-{name}.md). Examples: accumulator-corrections.md, accumulator-learnings.md, accumulator-questions.md',
+                'Accumulator filename (must match pattern: accumulator-{name}.md). Primary use: accumulator-corrections.md for recording mistakes and corrections.',
             },
             content: {
               type: 'string',
