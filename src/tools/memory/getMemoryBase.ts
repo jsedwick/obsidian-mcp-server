@@ -2,16 +2,18 @@
  * Tool: get_memory_base
  *
  * Description: Load session context including system directives, user reference,
- * and vault index. Provides layered context at session start:
+ * accumulator awareness, and vault index. Provides layered context at session start:
  * 1. MCP directives (system philosophy and values)
  * 2. User reference (user identity and preferences)
- * 3. Vault index (recently modified files for orientation)
+ * 3. Accumulator awareness (available accumulator files with entry counts)
+ * 4. Vault index (recently modified files for orientation)
  *
  * Used for session initialization and establishing timing for commit detection
  * in the two-phase close workflow.
  *
  * Note: The vault index provides file existence awareness, not semantic content.
  * Claude still needs search_vault for substantive questions about content.
+ * Accumulators show metadata only - search them when relevant to current work.
  */
 
 import * as fs from 'fs/promises';
@@ -126,6 +128,37 @@ export async function getMemoryBase(
   const userRefPath = path.join(vaultPath, 'user-reference.md');
   const mcpDirectivesPath = path.join(vaultPath, 'mcp-directives.md');
 
+  // Scan for accumulator files
+  let accumulatorInfo = '';
+  try {
+    const files = await fs.readdir(vaultPath);
+    const accumulatorFiles = files.filter(f => /^accumulator-.+\.md$/.test(f)).sort();
+
+    if (accumulatorFiles.length > 0) {
+      const accumulatorDetails = await Promise.all(
+        accumulatorFiles.map(async filename => {
+          try {
+            const filePath = path.join(vaultPath, filename);
+            const stats = await fs.stat(filePath);
+            const content = await fs.readFile(filePath, 'utf-8');
+            const entryCount = (content.match(/^##\s/gm) || []).length;
+            const lastModified = stats.mtime.toISOString().split('T')[0];
+            return `- ${filename} (${entryCount} entries, last: ${lastModified})`;
+          } catch {
+            return null;
+          }
+        })
+      );
+
+      const validDetails = accumulatorDetails.filter(d => d !== null);
+      if (validDetails.length > 0) {
+        accumulatorInfo = `\n\n## Accumulators Available\n${validDetails.join('\n')}\n\n💡 Search accumulators when starting related work`;
+      }
+    }
+  } catch (_error) {
+    // Fail silently - accumulator scanning is optional
+  }
+
   // Try to load MCP directives, creating from template if they don't exist
   let mcpDirectivesContent = '';
   let mcpDirectivesCreated = false;
@@ -183,7 +216,9 @@ export async function getMemoryBase(
       sections.push(mcpDirectivesContent);
     }
     if (userRefContent) {
-      sections.push(userRefContent);
+      sections.push(userRefContent + accumulatorInfo);
+    } else if (accumulatorInfo) {
+      sections.push(accumulatorInfo.trim());
     }
     sections.push(memoryInfo);
 
@@ -213,7 +248,9 @@ export async function getMemoryBase(
         sections.push(mcpDirectivesContent);
       }
       if (userRefContent) {
-        sections.push(userRefContent);
+        sections.push(userRefContent + accumulatorInfo);
+      } else if (accumulatorInfo) {
+        sections.push(accumulatorInfo.trim());
       }
 
       return {

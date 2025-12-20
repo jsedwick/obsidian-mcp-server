@@ -537,6 +537,7 @@ export const ValidationSchemas = {
   get_memory_base: GetMemoryBaseArgsSchema,
   generate_vault_index: GenerateVaultIndexArgsSchema,
   update_user_reference: UpdateUserReferenceArgsSchema,
+  append_to_accumulator: AppendToAccumulatorArgsSchema,
 
   // Task tools
   get_tasks_by_date: GetTasksByDateArgsSchema,
