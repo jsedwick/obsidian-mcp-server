@@ -786,6 +786,12 @@ class ObsidianMCPServer {
               this.config.primaryVault.path
             );
 
+          case 'append_to_accumulator':
+            return await tools.appendToAccumulator(validatedArgs as tools.AppendToAccumulatorArgs, {
+              vaultPath: this.config.primaryVault.path,
+              trackFileAccess: this.trackFileAccess.bind(this),
+            });
+
           case 'get_tasks_by_date':
             return await tools.getTasksByDate(
               validatedArgs as tools.GetTasksByDateArgs,
@@ -1460,6 +1466,11 @@ SCOPE: Decisions can be vault-level (affecting the MCP system itself) or project
               description:
                 'Optional topic or title for this session (will be slugified for the filename)',
             },
+            handoff: {
+              type: 'string',
+              description:
+                'Optional handoff notes for the next session - unfinished business, queued questions, context needed for continuity. Be verbose - these notes improve cross-session continuity.',
+            },
             _invoked_by_slash_command: {
               type: 'boolean',
               description:
@@ -1793,6 +1804,32 @@ SCOPE: Decisions can be vault-level (affecting the MCP system itself) or project
             },
           },
           required: ['section', 'key', 'value'],
+        },
+      },
+      {
+        name: 'append_to_accumulator',
+        description:
+          "Append content to accumulator files - running logs that preserve incremental insights across sessions. Accumulators are append-only to prevent accidental overwrites. Use for: corrections (mistakes & learnings), questions (persistent curiosities), or any incremental knowledge that doesn't warrant formal topic structure. Creates the accumulator file if it doesn't exist.",
+        inputSchema: {
+          type: 'object',
+          properties: {
+            filename: {
+              type: 'string',
+              pattern: '^accumulator-.+\\.md$',
+              description:
+                'Accumulator filename (must match pattern: accumulator-{name}.md). Examples: accumulator-corrections.md, accumulator-learnings.md, accumulator-questions.md',
+            },
+            content: {
+              type: 'string',
+              description: 'Content to append to the accumulator',
+            },
+            add_timestamp: {
+              type: 'boolean',
+              description: 'Add timestamp to entry (default: true)',
+              default: true,
+            },
+          },
+          required: ['filename', 'content'],
         },
       },
       {

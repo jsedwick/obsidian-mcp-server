@@ -129,11 +129,18 @@ const SessionDataSchema = z.object({
   filesToCheck: z.array(z.string()),
   repoDetectionMessage: z.string(),
   autoCommitMessage: z.string().optional(),
+  handoff: z.string().optional(),
 });
 
 export const CloseSessionArgsSchema = z.object({
   summary: NonEmptyString.describe('Summary of what was accomplished in this conversation'),
   topic: z.string().optional().describe('Optional topic or title for this session'),
+  handoff: z
+    .string()
+    .optional()
+    .describe(
+      'Handoff notes for next session - unfinished business, queued questions, context needed. Verbose encouraged.'
+    ),
   _invoked_by_slash_command: z
     .boolean()
     .optional()
@@ -354,7 +361,7 @@ export const GetTopicContextArgsSchema = z.object({
 });
 
 /**
- * MEMORY TOOLS (2 tools)
+ * MEMORY TOOLS (4 tools)
  */
 
 // get_memory_base
@@ -403,6 +410,22 @@ export const UpdateUserReferenceArgsSchema = z.object({
   section: UserReferenceSectionSchema.describe('The section to update'),
   key: NonEmptyString.describe('Field name or item description'),
   value: NonEmptyString.describe('The value to store'),
+});
+
+// append_to_accumulator
+export const AppendToAccumulatorArgsSchema = z.object({
+  filename: z
+    .string()
+    .regex(/^accumulator-.+\.md$/, {
+      message: 'Filename must match pattern: accumulator-{name}.md',
+    })
+    .describe('Accumulator filename (e.g., accumulator-corrections.md)'),
+  content: NonEmptyString.describe('Content to append to the accumulator'),
+  add_timestamp: z
+    .boolean()
+    .optional()
+    .default(true)
+    .describe('Add timestamp to entry (default: true)'),
 });
 
 /**

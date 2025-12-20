@@ -381,6 +381,7 @@ export interface SessionTemplateArgs {
   topicsList: string[];
   decisionsList: string[];
   summary: string;
+  handoff?: string; // Handoff notes for next session
   filesAccessed: Array<{ action: string; path: string }>;
   topicsCreated: Array<{ slug: string; title: string }>;
   decisionsCreated: Array<{ slug: string; title: string }>;
@@ -420,6 +421,10 @@ tags: ${JSON.stringify(frontmatter.tags)}
 ## Summary
 
 ${cleanedSummary}
+
+## Handoff
+
+${args.handoff || '_No handoff notes_'}
 
 ## Files Accessed
 

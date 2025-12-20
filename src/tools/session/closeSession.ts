@@ -232,6 +232,7 @@ export async function runPhase1Analysis(
     filesToCheck: uniqueFilesToCheck,
     repoDetectionMessage,
     autoCommitMessage,
+    handoff: args.handoff,
   };
 
   const summary = args.summary.replace(/"/g, '\\"');
@@ -635,6 +636,7 @@ export async function runSinglePhaseClose(
 export interface CloseSessionArgs {
   summary: string;
   topic?: string;
+  handoff?: string; // Handoff notes for next session
   _invoked_by_slash_command?: boolean;
   // Phase control for two-phase workflow (Decision 022)
   analyze_only?: boolean; // Phase 1: analyze commits, return suggestions
@@ -666,6 +668,7 @@ export interface SessionData {
   filesToCheck: string[];
   repoDetectionMessage: string;
   autoCommitMessage?: string;
+  handoff?: string; // Handoff notes for next session
 }
 
 export interface CloseSessionResult {
@@ -962,6 +965,7 @@ export async function closeSession(
     topicsList,
     decisionsList,
     summary: args.summary,
+    handoff: args.handoff,
     filesAccessed: context.filesAccessed,
     topicsCreated: context.topicsCreated,
     decisionsCreated: context.decisionsCreated,
