@@ -476,6 +476,32 @@ export const CompleteTaskArgsSchema = z.object({
 });
 
 /**
+ * DOCUMENT TOOLS (1 tool)
+ */
+
+// Document update strategy enum
+const UpdateStrategySchema = z.enum(['append', 'replace', 'section-edit'], {
+  errorMap: () => ({
+    message: 'strategy must be one of: append, replace, section-edit',
+  }),
+});
+
+// update_document
+export const UpdateDocumentArgsSchema = z.object({
+  file_path: AbsolutePath.describe('Absolute path to the document to update'),
+  content: NonEmptyString.describe('New content to write or append'),
+  strategy: UpdateStrategySchema.optional().describe(
+    'Update strategy: append (add to end), replace (full replacement), section-edit (user-reference sections). Default: replace'
+  ),
+  reason: z
+    .string()
+    .optional()
+    .describe(
+      'Why updating (required for topics per Decision 011, optional for others). Used for audit trail in review_history.'
+    ),
+});
+
+/**
  * MODE TOOLS (2 tools)
  */
 
@@ -543,6 +569,9 @@ export const ValidationSchemas = {
   get_tasks_by_date: GetTasksByDateArgsSchema,
   add_task: AddTaskArgsSchema,
   complete_task: CompleteTaskArgsSchema,
+
+  // Document tools
+  update_document: UpdateDocumentArgsSchema,
 
   // Mode tools
   switch_mode: SwitchModeArgsSchema,

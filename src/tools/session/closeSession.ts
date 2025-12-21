@@ -257,10 +257,11 @@ export async function runPhase1Analysis(
           '   - If a commit changes an API, consider topics about usage, integration, examples\n\n' +
           '2. **IMMEDIATELY UPDATE** all affected documentation:\n' +
           '   - **Do NOT ask for user permission** - preventing documentation drift is your core responsibility\n' +
-          '   - Read existing topics to understand their current state\n' +
-          '   - Update ANY topic that might be outdated due to these commits\n' +
-          '   - Use `search_vault` to find related topics, then `Read` + `Edit`/`Write` to update them\n' +
+          '   - Use `search_vault` to find related files that need updates\n' +
+          '   - Use `update_document` to update ANY file type (topics, decisions, user reference, etc.)\n' +
+          "   - **NEVER use Edit/Write directly** - they don't track file access for vault_custodian\n" +
           '   - Create new topics with `create_topic_page` if concepts warrant documentation\n' +
+          '   - Always provide `reason` parameter explaining why updating (for audit trail)\n' +
           '   - **Err on the side of updating** rather than leaving documentation outdated\n\n' +
           '3. **Only when ALL documentation is current**, call close_session again:\n\n' +
           '```typescript\n' +

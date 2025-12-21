@@ -1,0 +1,273 @@
+/**
+ * Tool: update_document
+ *
+ * Unified type-aware document update tool that handles all vault file modifications
+ * with automatic tracking, type validation, and frontmatter maintenance.
+ *
+ * This tool replaces fragmented update tools (update_topic_page, update_user_reference,
+ * append_to_accumulator) with a single interface that:
+ * - Always tracks file access (no way to bypass)
+ * - Enforces type-specific rules (read-only, append-only, etc.)
+ * - Updates frontmatter automatically (Decision 011 compliance)
+ * - Works for all document types
+ *
+ * Related: Decision 028 - Unified update_document Tool for Type-Aware Vault File Updates
+ */
+
+import fs from 'fs/promises';
+import path from 'path';
+import yaml from 'yaml';
+
+export interface UpdateDocumentArgs {
+  file_path: string;
+  content: string;
+  strategy?: 'append' | 'replace' | 'section-edit';
+  reason?: string;
+}
+
+export interface UpdateDocumentResult {
+  content: Array<{
+    type: string;
+    text: string;
+  }>;
+}
+
+export interface UpdateDocumentContext {
+  vaultPath: string;
+  slugify: (text: string) => string;
+  trackFileAccess: (path: string, action: 'read' | 'edit' | 'create') => void;
+}
+
+type DocumentType =
+  | 'topic'
+  | 'decision'
+  | 'session'
+  | 'project'
+  | 'commit'
+  | 'user-reference'
+  | 'accumulator'
+  | 'task-list';
+
+interface TypeRules {
+  readonly: boolean;
+  appendOnly: boolean;
+  frontmatterUpdates: (frontmatter: any, reason?: string) => any;
+  validate: (args: UpdateDocumentArgs) => void;
+}
+
+/**
+ * Detect document type from file path and frontmatter
+ */
+function detectDocumentType(filePath: string, frontmatter: any): DocumentType {
+  // Check frontmatter category first (authoritative)
+  if (frontmatter?.category) {
+    return frontmatter.category as DocumentType;
+  }
+
+  // Fallback to path-based detection
+  if (filePath.includes('/topics/')) return 'topic';
+  if (filePath.includes('/decisions/')) return 'decision';
+  if (filePath.includes('/sessions/')) return 'session';
+  if (filePath.includes('/projects/') && filePath.includes('/commits/')) return 'commit';
+  if (filePath.includes('/projects/') && filePath.endsWith('/project.md')) return 'project';
+  if (filePath.includes('/tasks/')) return 'task-list';
+  if (filePath.endsWith('user-reference.md')) return 'user-reference';
+  if (path.basename(filePath).startsWith('accumulator-')) return 'accumulator';
+
+  throw new Error(`Unknown document type for: ${filePath}`);
+}
+
+/**
+ * Type-specific behavior rules
+ */
+const TYPE_RULES: Record<DocumentType, TypeRules> = {
+  topic: {
+    readonly: false,
+    appendOnly: false,
+    frontmatterUpdates: (fm, reason) => {
+      const today = new Date().toISOString().split('T')[0];
+      return {
+        ...fm,
+        last_reviewed: today,
+        review_count: (fm.review_count || 0) + 1,
+        review_history: [
+          ...(fm.review_history || []),
+          {
+            date: today,
+            action: 'updated',
+            notes: reason || 'Content updated',
+          },
+        ],
+      };
+    },
+    validate: args => {
+      // Enforce Decision 011: must analyze before updating
+      if (!args.reason) {
+        throw new Error('Topic updates require a reason parameter (Decision 011 compliance)');
+      }
+    },
+  },
+
+  decision: {
+    readonly: false,
+    appendOnly: true, // Decisions can be amended but not replaced
+    frontmatterUpdates: fm => ({
+      ...fm,
+      // Preserve immutable fields: number, status, date
+    }),
+    validate: args => {
+      if (args.strategy === 'replace') {
+        throw new Error(
+          'Decisions cannot be fully replaced (append-only). Use strategy: "append"'
+        );
+      }
+    },
+  },
+
+  session: {
+    readonly: true,
+    appendOnly: false,
+    frontmatterUpdates: fm => fm, // No updates
+    validate: () => {
+      throw new Error('Session files are read-only. They cannot be edited after creation.');
+    },
+  },
+
+  commit: {
+    readonly: true,
+    appendOnly: false,
+    frontmatterUpdates: fm => fm,
+    validate: () => {
+      throw new Error('Commit files are read-only. They cannot be edited after creation.');
+    },
+  },
+
+  project: {
+    readonly: false,
+    appendOnly: false,
+    frontmatterUpdates: fm => ({
+      ...fm,
+      last_updated: new Date().toISOString().split('T')[0],
+    }),
+    validate: () => {}, // No special validation
+  },
+
+  'user-reference': {
+    readonly: false,
+    appendOnly: false,
+    frontmatterUpdates: fm => fm, // Uses inline timestamp instead
+    validate: () => {}, // Section-aware editing handled by content logic
+  },
+
+  accumulator: {
+    readonly: false,
+    appendOnly: true,
+    frontmatterUpdates: fm => fm,
+    validate: args => {
+      if (args.strategy === 'replace') {
+        throw new Error('Accumulators are append-only. Use strategy: "append"');
+      }
+    },
+  },
+
+  'task-list': {
+    readonly: false,
+    appendOnly: false,
+    frontmatterUpdates: fm => ({
+      ...fm,
+      category: 'task-list', // Ensure category is always present
+    }),
+    validate: () => {},
+  },
+};
+
+/**
+ * Main update_document tool implementation
+ */
+export async function updateDocument(
+  args: UpdateDocumentArgs,
+  context: UpdateDocumentContext
+): Promise<UpdateDocumentResult> {
+  const { file_path, content, strategy = 'replace', reason } = args;
+
+  // 1. Validate file is in vault
+  if (!file_path.startsWith(context.vaultPath)) {
+    throw new Error(`File must be in vault: ${file_path}`);
+  }
+
+  // 2. Read existing file (if exists) and parse frontmatter
+  let existingContent = '';
+  let frontmatter: any = {};
+  let fileExists = false;
+
+  try {
+    existingContent = await fs.readFile(file_path, 'utf-8');
+    fileExists = true;
+
+    const fmMatch = existingContent.match(/^---\n([\s\S]*?)\n---/);
+    if (fmMatch) {
+      frontmatter = yaml.parse(fmMatch[1]);
+    }
+  } catch {
+    // File doesn't exist - will create
+  }
+
+  // 3. Detect document type
+  const docType = detectDocumentType(file_path, frontmatter);
+  const rules = TYPE_RULES[docType];
+
+  // 4. Validate operation
+  rules.validate(args);
+
+  if (rules.readonly) {
+    throw new Error(`${docType} files are read-only and cannot be modified`);
+  }
+
+  if (rules.appendOnly && strategy === 'replace') {
+    throw new Error(`${docType} files are append-only. Use strategy: "append"`);
+  }
+
+  // 5. Build new content based on strategy
+  let newContent: string;
+
+  if (strategy === 'append') {
+    // Append new content to existing (strip frontmatter from both)
+    const existingWithoutFm = existingContent.replace(/^---\n[\s\S]*?\n---\n/, '');
+    const contentWithoutFm = content.replace(/^---\n[\s\S]*?\n---\n/, '');
+    newContent = existingWithoutFm.trim() + '\n\n' + contentWithoutFm.trim();
+  } else if (strategy === 'replace') {
+    // Full replacement (strip frontmatter from new content)
+    newContent = content.replace(/^---\n[\s\S]*?\n---\n/, '');
+  } else {
+    // section-edit: content is already processed
+    newContent = content.replace(/^---\n[\s\S]*?\n---\n/, '');
+  }
+
+  // 6. Update frontmatter
+  const updatedFrontmatter = rules.frontmatterUpdates(frontmatter, reason);
+  const frontmatterYaml = yaml.stringify(updatedFrontmatter);
+
+  // 7. Rebuild with updated frontmatter
+  const finalContent = `---\n${frontmatterYaml}---\n${newContent.trim()}\n`;
+
+  // 8. Write file
+  await fs.writeFile(file_path, finalContent, 'utf-8');
+
+  // 9. Track file access (CRITICAL - always happens)
+  const action = fileExists ? 'edit' : 'create';
+  context.trackFileAccess(file_path, action);
+
+  // 10. Return success
+  return {
+    content: [
+      {
+        type: 'text',
+        text:
+          `✅ ${docType} updated: ${path.basename(file_path)}\n` +
+          `Strategy: ${strategy}\n` +
+          `Action: ${action}\n` +
+          (reason ? `Reason: ${reason}` : ''),
+      },
+    ],
+  };
+}

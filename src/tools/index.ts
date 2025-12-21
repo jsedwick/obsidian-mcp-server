@@ -32,6 +32,9 @@ export * from './memory/index.js';
 // Task tools (3)
 export * from './tasks/index.js';
 
+// Document tools (1)
+export * from './document/index.js';
+
 /**
  * Tool Summary:
  *
@@ -79,5 +82,8 @@ export * from './tasks/index.js';
  * - add_task
  * - complete_task
  *
- * Total: 26 tools
+ * DOCUMENT (1 tool):
+ * - update_document
+ *
+ * Total: 27 tools
  */

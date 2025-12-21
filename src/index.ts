@@ -810,6 +810,13 @@ class ObsidianMCPServer {
               this.config.primaryVault.path
             );
 
+          case 'update_document':
+            return await tools.updateDocument(validatedArgs as tools.UpdateDocumentArgs, {
+              vaultPath: this.config.primaryVault.path,
+              slugify: this.slugify.bind(this),
+              trackFileAccess: this.trackFileAccess.bind(this),
+            });
+
           case 'switch_mode': {
             const { mode } = validatedArgs as { mode: VaultMode };
             const result = this.switchMode(mode);
@@ -1912,6 +1919,36 @@ SCOPE: Decisions can be vault-level (affecting the MCP system itself) or project
             },
           },
           required: ['task'],
+        },
+      },
+      {
+        name: 'update_document',
+        description:
+          'Unified type-aware document update tool for all vault file modifications. Automatically tracks file access (ensuring vault_custodian processes changes), enforces type-specific rules (read-only, append-only), and updates frontmatter metadata. Works for topics, decisions, projects, user-reference, accumulators, and task lists. ALWAYS use this instead of Edit/Write for vault files during Phase 1 documentation updates.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            file_path: {
+              type: 'string',
+              description: 'Absolute path to the document to update',
+            },
+            content: {
+              type: 'string',
+              description: 'New content to write or append',
+            },
+            strategy: {
+              type: 'string',
+              enum: ['append', 'replace', 'section-edit'],
+              description:
+                'Update strategy: append (add to end), replace (full replacement), section-edit (user-reference sections). Default: replace',
+            },
+            reason: {
+              type: 'string',
+              description:
+                'Why updating (required for topics per Decision 011, optional for others). Used for audit trail in review_history.',
+            },
+          },
+          required: ['file_path', 'content'],
         },
       },
       {
