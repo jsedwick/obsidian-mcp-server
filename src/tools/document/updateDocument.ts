@@ -51,14 +51,17 @@ type DocumentType =
 interface TypeRules {
   readonly: boolean;
   appendOnly: boolean;
-  frontmatterUpdates: (frontmatter: any, reason?: string) => any;
+  frontmatterUpdates: (
+    frontmatter: Record<string, unknown>,
+    reason?: string
+  ) => Record<string, unknown>;
   validate: (args: UpdateDocumentArgs) => void;
 }
 
 /**
  * Detect document type from file path and frontmatter
  */
-function detectDocumentType(filePath: string, frontmatter: any): DocumentType {
+function detectDocumentType(filePath: string, frontmatter: Record<string, unknown>): DocumentType {
   // Check frontmatter category first (authoritative)
   if (frontmatter?.category) {
     return frontmatter.category as DocumentType;
@@ -84,14 +87,17 @@ const TYPE_RULES: Record<DocumentType, TypeRules> = {
   topic: {
     readonly: false,
     appendOnly: false,
-    frontmatterUpdates: (fm, reason) => {
+    frontmatterUpdates: (fm, reason): Record<string, unknown> => {
       const today = new Date().toISOString().split('T')[0];
+      const reviewCount = typeof fm.review_count === 'number' ? fm.review_count : 0;
+      const reviewHistory = Array.isArray(fm.review_history) ? fm.review_history : [];
+
       return {
         ...fm,
         last_reviewed: today,
-        review_count: (fm.review_count || 0) + 1,
+        review_count: reviewCount + 1,
         review_history: [
-          ...(fm.review_history || []),
+          ...reviewHistory,
           {
             date: today,
             action: 'updated',
@@ -111,15 +117,13 @@ const TYPE_RULES: Record<DocumentType, TypeRules> = {
   decision: {
     readonly: false,
     appendOnly: true, // Decisions can be amended but not replaced
-    frontmatterUpdates: fm => ({
+    frontmatterUpdates: (fm): Record<string, unknown> => ({
       ...fm,
       // Preserve immutable fields: number, status, date
     }),
     validate: args => {
       if (args.strategy === 'replace') {
-        throw new Error(
-          'Decisions cannot be fully replaced (append-only). Use strategy: "append"'
-        );
+        throw new Error('Decisions cannot be fully replaced (append-only). Use strategy: "append"');
       }
     },
   },
@@ -127,7 +131,7 @@ const TYPE_RULES: Record<DocumentType, TypeRules> = {
   session: {
     readonly: true,
     appendOnly: false,
-    frontmatterUpdates: fm => fm, // No updates
+    frontmatterUpdates: (fm): Record<string, unknown> => fm, // No updates
     validate: () => {
       throw new Error('Session files are read-only. They cannot be edited after creation.');
     },
@@ -136,7 +140,7 @@ const TYPE_RULES: Record<DocumentType, TypeRules> = {
   commit: {
     readonly: true,
     appendOnly: false,
-    frontmatterUpdates: fm => fm,
+    frontmatterUpdates: (fm): Record<string, unknown> => fm,
     validate: () => {
       throw new Error('Commit files are read-only. They cannot be edited after creation.');
     },
@@ -145,7 +149,7 @@ const TYPE_RULES: Record<DocumentType, TypeRules> = {
   project: {
     readonly: false,
     appendOnly: false,
-    frontmatterUpdates: fm => ({
+    frontmatterUpdates: (fm): Record<string, unknown> => ({
       ...fm,
       last_updated: new Date().toISOString().split('T')[0],
     }),
@@ -155,14 +159,14 @@ const TYPE_RULES: Record<DocumentType, TypeRules> = {
   'user-reference': {
     readonly: false,
     appendOnly: false,
-    frontmatterUpdates: fm => fm, // Uses inline timestamp instead
+    frontmatterUpdates: (fm): Record<string, unknown> => fm, // Uses inline timestamp instead
     validate: () => {}, // Section-aware editing handled by content logic
   },
 
   accumulator: {
     readonly: false,
     appendOnly: true,
-    frontmatterUpdates: fm => fm,
+    frontmatterUpdates: (fm): Record<string, unknown> => fm,
     validate: args => {
       if (args.strategy === 'replace') {
         throw new Error('Accumulators are append-only. Use strategy: "append"');
@@ -173,7 +177,7 @@ const TYPE_RULES: Record<DocumentType, TypeRules> = {
   'task-list': {
     readonly: false,
     appendOnly: false,
-    frontmatterUpdates: fm => ({
+    frontmatterUpdates: (fm): Record<string, unknown> => ({
       ...fm,
       category: 'task-list', // Ensure category is always present
     }),
@@ -188,32 +192,32 @@ export async function updateDocument(
   args: UpdateDocumentArgs,
   context: UpdateDocumentContext
 ): Promise<UpdateDocumentResult> {
-  const { file_path, content, strategy = 'replace', reason } = args;
+  const { file_path: filePath, content, strategy = 'replace', reason } = args;
 
   // 1. Validate file is in vault
-  if (!file_path.startsWith(context.vaultPath)) {
-    throw new Error(`File must be in vault: ${file_path}`);
+  if (!filePath.startsWith(context.vaultPath)) {
+    throw new Error(`File must be in vault: ${filePath}`);
   }
 
   // 2. Read existing file (if exists) and parse frontmatter
   let existingContent = '';
-  let frontmatter: any = {};
+  let frontmatter: Record<string, unknown> = {};
   let fileExists = false;
 
   try {
-    existingContent = await fs.readFile(file_path, 'utf-8');
+    existingContent = await fs.readFile(filePath, 'utf-8');
     fileExists = true;
 
     const fmMatch = existingContent.match(/^---\n([\s\S]*?)\n---/);
     if (fmMatch) {
-      frontmatter = yaml.parse(fmMatch[1]);
+      frontmatter = yaml.parse(fmMatch[1]) as Record<string, unknown>;
     }
   } catch {
     // File doesn't exist - will create
   }
 
   // 3. Detect document type
-  const docType = detectDocumentType(file_path, frontmatter);
+  const docType = detectDocumentType(filePath, frontmatter);
   const rules = TYPE_RULES[docType];
 
   // 4. Validate operation
@@ -251,11 +255,11 @@ export async function updateDocument(
   const finalContent = `---\n${frontmatterYaml}---\n${newContent.trim()}\n`;
 
   // 8. Write file
-  await fs.writeFile(file_path, finalContent, 'utf-8');
+  await fs.writeFile(filePath, finalContent, 'utf-8');
 
   // 9. Track file access (CRITICAL - always happens)
   const action = fileExists ? 'edit' : 'create';
-  context.trackFileAccess(file_path, action);
+  context.trackFileAccess(filePath, action);
 
   // 10. Return success
   return {
@@ -263,7 +267,7 @@ export async function updateDocument(
       {
         type: 'text',
         text:
-          `✅ ${docType} updated: ${path.basename(file_path)}\n` +
+          `✅ ${docType} updated: ${path.basename(filePath)}\n` +
           `Strategy: ${strategy}\n` +
           `Action: ${action}\n` +
           (reason ? `Reason: ${reason}` : ''),
