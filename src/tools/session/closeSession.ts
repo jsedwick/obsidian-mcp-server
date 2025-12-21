@@ -442,6 +442,127 @@ function addRelatedTopicsToSession(
   }
 }
 
+/**
+ * Convert filesAccessed entries to Related section links in session file
+ * This ensures files modified via update_document are linked in the session
+ */
+function addAccessedFilesLinksToSession(
+  sessionContent: string,
+  filesAccessed: Array<{ path: string; action: string; timestamp: string }>,
+  vaultPath: string
+): string {
+  if (filesAccessed.length === 0) {
+    return sessionContent;
+  }
+
+  // Filter to vault files only and categorize by type
+  const topicFiles: Array<{ path: string; slug: string; title: string }> = [];
+  const decisionFiles: Array<{ path: string; slug: string; title: string; projectSlug: string }> =
+    [];
+  const projectFiles: Array<{ path: string; slug: string; title: string }> = [];
+
+  for (const file of filesAccessed) {
+    // Skip if not in vault
+    if (!file.path.startsWith(vaultPath)) continue;
+
+    const relativePath = file.path.substring(vaultPath.length + 1);
+
+    // Categorize by path
+    if (relativePath.startsWith('topics/') && !relativePath.includes('/archive/')) {
+      const slug = path.basename(file.path, '.md');
+      const title = slug
+        .split('-')
+        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(' ');
+      topicFiles.push({ path: file.path, slug, title });
+    } else if (relativePath.startsWith('decisions/')) {
+      // decisions/project-slug/123-decision-name.md
+      const parts = relativePath.split('/');
+      if (parts.length >= 3) {
+        const projectSlug = parts[1];
+        const slug = path.basename(file.path, '.md');
+        const title = slug
+          .split('-')
+          .slice(1)
+          .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+          .join(' ');
+        decisionFiles.push({ path: file.path, slug, title, projectSlug });
+      }
+    } else if (relativePath.startsWith('projects/') && relativePath.endsWith('/project.md')) {
+      // projects/project-slug/project.md
+      const projectSlug = relativePath.split('/')[1];
+      const title = projectSlug
+        .split('-')
+        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(' ');
+      projectFiles.push({ path: file.path, slug: projectSlug, title });
+    }
+  }
+
+  let updatedContent = sessionContent;
+
+  // Add topic links to "## Related Topics" section
+  if (topicFiles.length > 0) {
+    const topicLinks = topicFiles.map(t => `- [[${t.slug}|${t.title}]]`).join('\n');
+
+    const relatedTopicsRegex = /## Related Topics\n([^\n].*?)(?=\n##|$)/s;
+    const match = updatedContent.match(relatedTopicsRegex);
+
+    if (match) {
+      const existingContent = match[1].trim();
+      if (existingContent === '_None found_' || existingContent === '') {
+        updatedContent = updatedContent.replace(
+          relatedTopicsRegex,
+          `## Related Topics\n${topicLinks}\n`
+        );
+      } else {
+        // Filter out duplicates before adding
+        const existingLinks = new Set(
+          existingContent.match(/\[\[([^\]|]+)/g)?.map(l => l.substring(2)) || []
+        );
+        const newLinks = topicFiles.filter(t => !existingLinks.has(t.slug));
+        if (newLinks.length > 0) {
+          const newTopicLinks = newLinks.map(t => `- [[${t.slug}|${t.title}]]`).join('\n');
+          updatedContent = updatedContent.replace(
+            relatedTopicsRegex,
+            `## Related Topics\n${existingContent}\n${newTopicLinks}\n`
+          );
+        }
+      }
+    }
+  }
+
+  // Add decision links to "## Related Decisions" section
+  if (decisionFiles.length > 0) {
+    const decisionLinks = decisionFiles
+      .map(d => `- [[decisions/${d.projectSlug}/${d.slug}|${d.title}]]`)
+      .join('\n');
+
+    const relatedDecisionsRegex = /## Related Decisions\n([^\n].*?)(?=\n##|$)/s;
+    const match = updatedContent.match(relatedDecisionsRegex);
+
+    if (match) {
+      const existingContent = match[1].trim();
+      if (existingContent === '_None found_' || existingContent === '') {
+        updatedContent = updatedContent.replace(
+          relatedDecisionsRegex,
+          `## Related Decisions\n${decisionLinks}\n`
+        );
+      } else {
+        updatedContent = updatedContent.replace(
+          relatedDecisionsRegex,
+          `## Related Decisions\n${existingContent}\n${decisionLinks}\n`
+        );
+      }
+    }
+  }
+
+  // Project links are handled separately by the repo detection logic
+  // So we don't need to add them here
+
+  return updatedContent;
+}
+
 export async function runPhase2Finalization(
   _args: CloseSessionArgs,
   context: CloseSessionContext,
@@ -460,6 +581,17 @@ export async function runPhase2Finalization(
     const updatedContent = addRelatedTopicsToSession(data.sessionContent, discoveredTopics);
     await fs.writeFile(data.sessionFile, updatedContent);
     data.sessionContent = updatedContent; // Update session data
+  }
+
+  // Add links for accessed files (topics/decisions modified via update_document)
+  const updatedContentWithAccessed = addAccessedFilesLinksToSession(
+    data.sessionContent,
+    context.filesAccessed,
+    context.vaultPath
+  );
+  if (updatedContentWithAccessed !== data.sessionContent) {
+    await fs.writeFile(data.sessionFile, updatedContentWithAccessed);
+    data.sessionContent = updatedContentWithAccessed;
   }
 
   // Dynamic filesToCheck: merge Phase 1 files with any files modified between Phase 1 and Phase 2
@@ -552,6 +684,17 @@ export async function runSinglePhaseClose(
     const updatedContent = addRelatedTopicsToSession(sessionContent, discoveredTopics);
     await fs.writeFile(sessionFile, updatedContent);
     sessionContent = updatedContent; // Update for potential Phase 2 use
+  }
+
+  // Add links for accessed files (topics/decisions modified via update_document)
+  const updatedContentWithAccessed = addAccessedFilesLinksToSession(
+    sessionContent,
+    context.filesAccessed,
+    context.vaultPath
+  );
+  if (updatedContentWithAccessed !== sessionContent) {
+    await fs.writeFile(sessionFile, updatedContentWithAccessed);
+    sessionContent = updatedContentWithAccessed;
   }
 
   let repoDetectionMessage = '';
