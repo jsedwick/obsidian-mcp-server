@@ -243,8 +243,63 @@ export async function updateDocument(
     // Full replacement (strip frontmatter from new content)
     newContent = content.replace(/^---\n[\s\S]*?\n---\n/, '');
   } else {
-    // section-edit: content is already processed
-    newContent = content.replace(/^---\n[\s\S]*?\n---\n/, '');
+    // section-edit: replace only the specified section
+    const contentWithoutFm = content.replace(/^---\n[\s\S]*?\n---\n/, '').trim();
+
+    if (!fileExists) {
+      throw new Error(
+        'section-edit strategy requires an existing file. Use strategy: "replace" for new files.'
+      );
+    }
+
+    // Extract the header from the new content (must be at start)
+    const headerMatch = contentWithoutFm.match(/^(#{1,6})\s+(.+)$/m);
+    if (!headerMatch) {
+      throw new Error(
+        'section-edit strategy requires content to start with a markdown header (e.g., "## Section Name")'
+      );
+    }
+
+    const headerLevel = headerMatch[1];
+    const headerText = headerMatch[2];
+
+    // Escape special regex characters in header text for safe regex matching
+    const escapedHeaderText = headerText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const headerRegex = new RegExp(`^${headerLevel}\\s+${escapedHeaderText}$`, 'm');
+
+    // Find the section in existing content
+    const existingWithoutFm = existingContent.replace(/^---\n[\s\S]*?\n---\n/, '');
+    const sectionStartMatch = existingWithoutFm.match(headerRegex);
+
+    if (!sectionStartMatch || sectionStartMatch.index === undefined) {
+      throw new Error(
+        `Section "${headerText}" not found in existing document. Use strategy: "append" to add new sections.`
+      );
+    }
+
+    const sectionStart = sectionStartMatch.index;
+
+    // Find where this section ends (next header of same or higher level, or end of file)
+    const afterSectionHeader = existingWithoutFm.slice(sectionStart + sectionStartMatch[0].length);
+    const levelNum = headerLevel.length;
+    const nextHeaderRegex = new RegExp(`\n(#{1,${levelNum}})\\s+`, '');
+    const nextHeaderMatch = afterSectionHeader.match(nextHeaderRegex);
+
+    let sectionEnd: number;
+    if (nextHeaderMatch && nextHeaderMatch.index !== undefined) {
+      // Found next header - section ends just before it (preserve the newline before next header)
+      sectionEnd = sectionStart + sectionStartMatch[0].length + nextHeaderMatch.index + 1;
+    } else {
+      // No next header - section goes to end of file
+      sectionEnd = existingWithoutFm.length;
+    }
+
+    // Replace the section content
+    const before = existingWithoutFm.slice(0, sectionStart);
+    const after = existingWithoutFm.slice(sectionEnd);
+
+    // Combine parts with proper spacing
+    newContent = before.trimEnd() + '\n\n' + contentWithoutFm.trim() + '\n\n' + after.trimStart();
   }
 
   // 6. Update frontmatter
