@@ -601,6 +601,7 @@ class ObsidianMCPServer {
               findRelatedProjects: this.findRelatedProjects.bind(this),
               trackTopicCreation: topic => this.topicsCreated.push(topic),
               trackFileAccess: this.trackFileAccess.bind(this),
+              searchVault: this.searchVaultWrapper.bind(this),
             });
 
           case 'create_decision':
@@ -2037,6 +2038,7 @@ Check the sessions/ directory for recent conversations.
       analyzeTopicContentInternal: this.analyzeTopicContentInternal.bind(this),
       findRelatedProjects: this.findRelatedProjects.bind(this),
       trackTopicCreation: topic => this.topicsCreated.push(topic),
+      searchVault: this.searchVaultWrapper.bind(this),
     });
   }
 

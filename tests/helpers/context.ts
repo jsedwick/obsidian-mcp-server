@@ -230,7 +230,12 @@ export interface TopicsToolsContext extends BaseContext {
   }>;
   findRelatedProjects: (topicContent: string) => Promise<Array<{ link: string; name: string }>>;
   trackTopicCreation: (topic: { slug: string; title: string; file: string }) => void;
-  searchVault?: (args: any) => Promise<any>;
+  searchVault: (args: {
+    query: string;
+    category?: string;
+    max_results?: number;
+    detail?: string;
+  }) => Promise<{ content: Array<{ type: string; text: string }> }>;
 }
 
 /**
@@ -256,6 +261,9 @@ export function createTopicsToolsContext(
     }),
     findRelatedProjects: vi.fn().mockResolvedValue([]),
     trackTopicCreation: vi.fn(),
+    searchVault: vi.fn().mockResolvedValue({
+      content: [{ type: 'text', text: 'Found 0 matches' }],
+    }),
     ...overrides,
   };
 }

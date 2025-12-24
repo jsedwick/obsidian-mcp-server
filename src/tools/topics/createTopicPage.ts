@@ -23,6 +23,7 @@ export interface CreateTopicPageArgs {
   topic: string;
   content: string;
   auto_analyze?: boolean | 'true' | 'smart';
+  skip_duplicate_check?: boolean;
 }
 
 export interface CreateTopicPageResult {
@@ -59,6 +60,86 @@ export interface CreateTopicPageContext {
   findRelatedProjects: (topicContent: string) => Promise<Array<{ link: string; name: string }>>;
   trackTopicCreation: (topic: { slug: string; title: string; file: string }) => void;
   trackFileAccess?: (path: string, action: 'read' | 'edit' | 'create') => void;
+  searchVault: (args: {
+    query: string;
+    category?: string;
+    max_results?: number;
+    detail?: string;
+  }) => Promise<{ content: Array<{ type: string; text: string }> }>;
+}
+
+/**
+ * Helper: Check for duplicate topics using semantic search
+ */
+interface DuplicateCheckResult {
+  hasDuplicates: boolean;
+  similar: Array<{ path: string; title: string }>;
+}
+
+async function checkForDuplicates(
+  args: CreateTopicPageArgs,
+  context: CreateTopicPageContext
+): Promise<DuplicateCheckResult> {
+  try {
+    // Build search query from title + content preview (first 300 chars)
+    const contentPreview = args.content.substring(0, 300).replace(/\n/g, ' ');
+    const searchQuery = `${args.topic} ${contentPreview}`;
+
+    // Search for similar topics (category filter, exclude archives)
+    const searchResults = await context.searchVault({
+      query: searchQuery,
+      category: 'topic',
+      max_results: 5,
+      detail: 'minimal',
+    });
+
+    // Parse search results to extract topic paths and titles
+    const similar: Array<{ path: string; title: string }> = [];
+
+    if (searchResults.content && searchResults.content.length > 0) {
+      const resultText = searchResults.content[0].text;
+
+      // Check if we got zero results
+      if (resultText.includes('Found 0 matches')) {
+        return { hasDuplicates: false, similar: [] };
+      }
+
+      // Extract file paths from search results
+      // Format: "**/path/to/file.md**"
+      const pathMatches = resultText.matchAll(/\*\*([^*]+\.md)\*\*/g);
+
+      for (const match of pathMatches) {
+        const filePath = match[1];
+
+        // Skip archived topics
+        if (filePath.includes('/archive/')) {
+          continue;
+        }
+
+        // Extract topic title from path (filename without .md)
+        const filename = filePath.split('/').pop() || '';
+        const title = filename.replace('.md', '').replace(/-/g, ' ');
+
+        similar.push({ path: filePath, title });
+
+        // Limit to top 3 matches
+        if (similar.length >= 3) {
+          break;
+        }
+      }
+    }
+
+    return {
+      hasDuplicates: similar.length > 0,
+      similar,
+    };
+  } catch (error) {
+    // Silent failure - duplicate detection is non-critical
+    console.error(
+      `Duplicate check failed: ${error instanceof Error ? error.message : String(error)}`
+    );
+    return { hasDuplicates: false, similar: [] };
+  }
 }
 
 export async function createTopicPage(
@@ -96,6 +177,28 @@ export async function createTopicPage(
         `If this is genuinely reusable knowledge, rephrase the title to focus on the solution/pattern, not the investigation.\n` +
         `Example: Instead of "Fixing search bug", use "Search Algorithm Implementation" or "Common Search Issues"`
     );
+  }
+
+  // Check for duplicate topics (unless explicitly skipped)
+  if (!args.skip_duplicate_check) {
+    const duplicateCheck = await checkForDuplicates(args, context);
+
+    if (duplicateCheck.hasDuplicates) {
+      const similarList = duplicateCheck.similar
+        .map((topic, i) => `  ${i + 1}. [[${topic.path}|${topic.title}]]`)
+        .join('\n');
+
+      throw new Error(
+        `⚠️  Found ${duplicateCheck.similar.length} similar topic(s) that may already cover this content:\n\n` +
+          similarList +
+          `\n\n` +
+          `Consider:\n` +
+          `  • Reading these topics to see if they already cover this content\n` +
+          `  • Updating an existing topic instead of creating a new one\n` +
+          `  • Proceeding if this topic is genuinely different\n\n` +
+          `To proceed anyway, call create_topic_page with skip_duplicate_check: true`
+      );
+    }
   }
 
   await context.ensureVaultStructure();

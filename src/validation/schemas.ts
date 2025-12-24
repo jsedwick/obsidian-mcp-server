@@ -221,6 +221,13 @@ export const CreateTopicPageArgsSchema = z.object({
     .optional()
     .default(false)
     .describe('Auto-analyze content for tags and metadata'),
+  skip_duplicate_check: z
+    .boolean()
+    .optional()
+    .default(false)
+    .describe(
+      'Skip automatic duplicate topic detection (use when creating intentionally similar topics)'
+    ),
 });
 
 // update_topic_page
