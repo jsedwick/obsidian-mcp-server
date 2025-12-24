@@ -9,9 +9,9 @@ import {
   createTestVault,
   cleanupTestVault,
   createTopicFile,
-  createSessionFile,
   type SearchToolsContext,
 } from '../../../helpers/index.js';
+import { clearSearchCaches, cleanupContext } from '../../../setup.js';
 
 describe('searchVault', () => {
   let vaultPath: string;
@@ -33,6 +33,9 @@ describe('searchVault', () => {
   });
 
   afterEach(async () => {
+    // Clear search caches to prevent memory leaks
+    clearSearchCaches(context.indexedSearches);
+    cleanupContext(context);
     await cleanupTestVault(vaultPath);
   });
 
@@ -57,19 +60,13 @@ describe('searchVault', () => {
 
   describe('search parameters', () => {
     it('should respect max_results limit', async () => {
-      const result = await searchVault(
-        { query: 'test', max_results: 5 },
-        context
-      );
+      const result = await searchVault({ query: 'test', max_results: 5 }, context);
 
       expect(result.content).toBeDefined();
     });
 
     it('should filter by directories', async () => {
-      const result = await searchVault(
-        { query: 'test', directories: ['topics'] },
-        context
-      );
+      const result = await searchVault({ query: 'test', directories: ['topics'] }, context);
 
       expect(result.content).toBeDefined();
     });

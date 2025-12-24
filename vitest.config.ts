@@ -4,12 +4,23 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
-    // Limit concurrent test files to prevent memory exhaustion
+    setupFiles: ['./tests/setup.ts'],
+    // Memory limits to prevent OOM
+    pool: 'threads',
     poolOptions: {
       threads: {
-        maxThreads: 4, // Limit parallel workers to reduce memory pressure
+        maxThreads: 2, // Reduced from 4 to 2 to prevent memory leaks
         minThreads: 1,
+        // Isolate each test file in its own worker
+        isolate: true,
       },
+    },
+    // Increase timeout for slower tests due to reduced parallelism
+    testTimeout: 15000,
+    hookTimeout: 10000,
+    // Force garbage collection between test files
+    sequence: {
+      hooks: 'list',
     },
     coverage: {
       provider: 'v8',
