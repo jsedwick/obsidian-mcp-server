@@ -415,7 +415,13 @@ function addRelatedTopicsToSession(
   }
 
   // Create wiki links for discovered topics
-  const topicLinks = topics.map(t => `- [[${t.path}|${t.title}]]`).join('\n');
+  // Extract slug from path (basename without .md extension) for proper wiki link format
+  const topicLinks = topics
+    .map(t => {
+      const slug = path.basename(t.path, '.md');
+      return `- [[${slug}|${t.title}]]`;
+    })
+    .join('\n');
 
   // Check if "## Related Topics" section exists
   const relatedTopicsRegex = /## Related Topics\n([^\n].*?)(?=\n##|$)/s;
