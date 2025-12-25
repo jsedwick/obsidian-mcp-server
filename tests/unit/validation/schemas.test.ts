@@ -227,25 +227,6 @@ describe('Validation Schemas', () => {
       });
     });
 
-    describe('update_topic_page', () => {
-      it('should validate topic update', () => {
-        const args = {
-          topic: 'existing-topic',
-          content: 'New content to add',
-          append: true,
-        };
-        expect(() => validateToolArgs('update_topic_page', args)).not.toThrow();
-      });
-
-      it('should default append to true', () => {
-        const result = validateToolArgs('update_topic_page', {
-          topic: 'test',
-          content: 'content',
-        });
-        expect(result.append).toBe(true);
-      });
-    });
-
     describe('archive_topic', () => {
       it('should validate topic archival', () => {
         const args = {

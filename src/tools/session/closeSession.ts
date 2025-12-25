@@ -873,7 +873,12 @@ interface CloseSessionContext {
     commit_hash: string;
     include_diff?: boolean;
   }) => Promise<any>;
-  updateUserReference: (args: { section: string; key: string; value: string }) => Promise<any>;
+  updateDocument: (args: {
+    file_path: string;
+    content: string;
+    strategy?: 'append' | 'replace' | 'section-edit';
+    reason?: string;
+  }) => Promise<any>;
   slugify: (text: string) => string;
   setCurrentSession: (sessionId: string, sessionFile: string) => void;
   clearSessionState: () => void;
@@ -1060,26 +1065,18 @@ export async function closeSession(
 
             // Auto-update current project in user reference
             try {
-              await context.updateUserReference({
-                section: 'current_project',
-                key: 'Project Name',
-                value: topCandidate.name,
-              });
+              const userRefPath = path.join(context.vaultPath, 'user-reference.md');
+              const description = args.topic ? `\n- **Description:** ${args.topic}` : '';
+              const currentProjectContent = `## Current Project
 
-              await context.updateUserReference({
-                section: 'current_project',
-                key: 'Last Updated',
-                value: dateStr,
-              });
+- **Project Name:** ${topCandidate.name}
+- **Last Updated:** ${dateStr}${description}`;
 
-              // Use session topic as description if available
-              if (args.topic) {
-                await context.updateUserReference({
-                  section: 'current_project',
-                  key: 'Description',
-                  value: args.topic,
-                });
-              }
+              await context.updateDocument({
+                file_path: userRefPath,
+                content: currentProjectContent,
+                strategy: 'section-edit',
+              });
             } catch (_error) {
               // Silent failure - user reference update is non-critical
             }

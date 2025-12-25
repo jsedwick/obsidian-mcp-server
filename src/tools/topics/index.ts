@@ -13,13 +13,6 @@ export {
 } from './createTopicPage.js';
 
 export {
-  updateTopicPage,
-  type UpdateTopicPageArgs,
-  type UpdateTopicPageResult,
-  type UpdateTopicPageContext,
-} from './updateTopicPage.js';
-
-export {
   archiveTopic,
   type ArchiveTopicArgs,
   type ArchiveTopicResult,

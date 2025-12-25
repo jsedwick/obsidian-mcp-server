@@ -230,17 +230,6 @@ export const CreateTopicPageArgsSchema = z.object({
     ),
 });
 
-// update_topic_page
-export const UpdateTopicPageArgsSchema = z.object({
-  topic: NonEmptyString.describe('Topic name or slug'),
-  content: NonEmptyString.describe('Content to add or replace'),
-  append: z
-    .boolean()
-    .optional()
-    .default(true)
-    .describe('If true, append to existing content; if false, replace'),
-});
-
 // archive_topic
 export const ArchiveTopicArgsSchema = z.object({
   topic: NonEmptyString.describe('Topic name or slug to archive'),
@@ -402,23 +391,6 @@ export const GenerateVaultIndexArgsSchema = z.object({
     .describe('Include frontmatter description in index entries (default: false)'),
 });
 
-// update_user_reference
-const UserReferenceSectionSchema = z.enum(
-  ['user_identity', 'technical_context', 'work_team', 'personal', 'additional'],
-  {
-    errorMap: () => ({
-      message:
-        'section must be one of: user_identity, technical_context, work_team, personal, additional',
-    }),
-  }
-);
-
-export const UpdateUserReferenceArgsSchema = z.object({
-  section: UserReferenceSectionSchema.describe('The section to update'),
-  key: NonEmptyString.describe('Field name or item description'),
-  value: NonEmptyString.describe('The value to store'),
-});
-
 // append_to_accumulator
 export const AppendToAccumulatorArgsSchema = z.object({
   filename: z
@@ -543,7 +515,6 @@ export const ValidationSchemas = {
 
   // Topics tools
   create_topic_page: CreateTopicPageArgsSchema,
-  update_topic_page: UpdateTopicPageArgsSchema,
   archive_topic: ArchiveTopicArgsSchema,
   analyze_topic_content: AnalyzeTopicContentArgsSchema,
 
@@ -569,7 +540,6 @@ export const ValidationSchemas = {
   // Memory tools
   get_memory_base: GetMemoryBaseArgsSchema,
   generate_vault_index: GenerateVaultIndexArgsSchema,
-  update_user_reference: UpdateUserReferenceArgsSchema,
   append_to_accumulator: AppendToAccumulatorArgsSchema,
 
   // Task tools

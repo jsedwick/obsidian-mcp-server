@@ -342,10 +342,10 @@ mcp__obsidian-context-manager__create_topic_page
    - **Consolidate:** Merge repetitive sections
    - **Replace:** Complete rewrite (preserve all valuable content)
 
-4. **Execute update** using appropriate tool:
-   - `update_topic_page` with `append: true` - simple additions
-   - `Write` - major restructuring (after preserving content)
-   - `Edit` - targeted section updates
+4. **Execute update** using `update_document`:
+   - `strategy: 'append'` - simple additions
+   - `strategy: 'replace'` - major restructuring (after analyzing content)
+   - Always provide `reason` parameter (Decision 011 requirement)
 
 5. **Update frontmatter metadata:**
    - `last_reviewed`: current date
@@ -656,7 +656,7 @@ All vault content uses standardized section headers for reciprocal linking. When
 
    - Follow suggestions from impact analysis
 
-   - Use `update_topic_page` to add new information
+   - Use `update_document` to add new information with `reason` parameter
 
 
 
@@ -815,13 +815,15 @@ mcp__obsidian-context-manager__create_decision
 
 # Update existing topic
 
-mcp__obsidian-context-manager__update_topic_page
+mcp__obsidian-context-manager__update_document
 
-  topic: "topic-name"
+  file_path: "/vault/topics/topic-name.md"
 
   content: "new content to add"
 
-  append: true (default) | false
+  strategy: "append"
+
+  reason: "Updating for X changes"
 
 ```
 
@@ -1035,7 +1037,7 @@ Results are ranked by combining multiple signals:
 
 2. ✅ Check if topic already exists
 
-3. ✅ If exists: Update with `update_topic_page`
+3. ✅ If exists: Update with `update_document` (with `reason` parameter)
 
 4. ✅ If new: Create with `create_topic_page`
 

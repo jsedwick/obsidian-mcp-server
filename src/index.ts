@@ -616,14 +616,6 @@ class ObsidianMCPServer {
               trackFileAccess: this.trackFileAccess.bind(this),
             });
 
-          case 'update_topic_page':
-            return await tools.updateTopicPage(validatedArgs as tools.UpdateTopicPageArgs, {
-              vaultPath: this.config.primaryVault.path,
-              slugify: this.slugify.bind(this),
-              createTopicPage: this.createTopicPageWrapper.bind(this),
-              trackFileAccess: this.trackFileAccess.bind(this),
-            });
-
           case 'get_session_context':
             return await tools.getSessionContext(validatedArgs as tools.GetSessionContextArgs, {
               vaultPath: this.config.primaryVault.path,
@@ -666,7 +658,7 @@ class ObsidianMCPServer {
               vaultCustodian: this.vaultCustodianWrapper.bind(this),
               recordCommit: this.recordCommitWrapper.bind(this),
               analyzeCommitImpact: this.analyzeCommitImpactWrapper.bind(this),
-              updateUserReference: this.updateUserReferenceWrapper.bind(this),
+              updateDocument: this.updateDocumentWrapper.bind(this),
               slugify: this.slugify.bind(this),
               setCurrentSession: this.setCurrentSession.bind(this),
               clearSessionState: this.clearSessionState.bind(this),
@@ -796,12 +788,6 @@ class ObsidianMCPServer {
               validatedArgs as tools.GenerateVaultIndexArgs,
               this.config.primaryVault.path,
               this.config.secondaryVaults.map(v => ({ path: v.path, name: v.name }))
-            );
-
-          case 'update_user_reference':
-            return await tools.updateUserReference(
-              validatedArgs as tools.UpdateUserReferenceArgs,
-              this.config.primaryVault.path
             );
 
           case 'append_to_accumulator':
@@ -1428,29 +1414,6 @@ SCOPE: Decisions can be vault-level (affecting the MCP system itself) or project
         },
       },
       {
-        name: 'update_topic_page',
-        description: 'Update an existing topic page with new information.',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            topic: {
-              type: 'string',
-              description: 'Topic name',
-            },
-            content: {
-              type: 'string',
-              description: 'Content to add or replace',
-            },
-            append: {
-              type: 'boolean',
-              description: 'If true, append to existing content; if false, replace',
-              default: true,
-            },
-          },
-          required: ['topic', 'content'],
-        },
-      },
-      {
         name: 'get_session_context',
         description: 'Retrieve the full context from a session file.',
         inputSchema: {
@@ -1820,31 +1783,6 @@ SCOPE: Decisions can be vault-level (affecting the MCP system itself) or project
         },
       },
       {
-        name: 'update_user_reference',
-        description:
-          'Update or append user reference information in a structured format. Stores contextual information about the user (identity, technical context, team members, preferences) that persists across sessions. Use this when the user shares personal information that would be helpful to remember.',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            section: {
-              type: 'string',
-              enum: ['user_identity', 'technical_context', 'work_team', 'personal', 'additional'],
-              description:
-                'The section to update (user_identity, technical_context, work_team, personal, additional)',
-            },
-            key: {
-              type: 'string',
-              description: 'Field name or item description (e.g., "Name", "Primary Technologies")',
-            },
-            value: {
-              type: 'string',
-              description: 'The value to store',
-            },
-          },
-          required: ['section', 'key', 'value'],
-        },
-      },
-      {
         name: 'append_to_accumulator',
         description:
           "Append content to accumulator files - running logs that preserve context across sessions. Accumulators are append-only to prevent accidental overwrites. Primary use: accumulator-corrections.md for recording mistakes and corrections to prevent repeating errors. Pattern: MISTAKE → CONSEQUENCE → ROOT CAUSE → CORRECTION → PATTERN → REFERENCE. Creates the accumulator file if it doesn't exist.",
@@ -2055,23 +1993,6 @@ Check the sessions/ directory for recent conversations.
   // ==================== Tool Wrapper Methods ====================
   // These wrappers allow modular tools to call other tools without circular dependencies
 
-  private async createTopicPageWrapper(args: {
-    topic: string;
-    content: string;
-    auto_analyze?: boolean | 'true' | 'smart';
-  }): Promise<any> {
-    return tools.createTopicPage(args as unknown as tools.CreateTopicPageArgs, {
-      vaultPath: this.config.primaryVault.path,
-      currentSessionId: this.currentSessionId,
-      slugify: this.slugify.bind(this),
-      ensureVaultStructure: this.ensureVaultStructure.bind(this),
-      analyzeTopicContentInternal: this.analyzeTopicContentInternal.bind(this),
-      findRelatedProjects: this.findRelatedProjects.bind(this),
-      trackTopicCreation: topic => this.topicsCreated.push(topic),
-      searchVault: this.searchVaultWrapper.bind(this),
-    });
-  }
-
   private async createProjectPageWrapper(args: { repo_path: string }): Promise<any> {
     return tools.createProjectPage(args as unknown as tools.CreateProjectPageArgs, {
       vaultPath: this.config.primaryVault.path,
@@ -2136,15 +2057,18 @@ Check the sessions/ directory for recent conversations.
     });
   }
 
-  private async updateUserReferenceWrapper(args: {
-    section: string;
-    key: string;
-    value: string;
+  private async updateDocumentWrapper(args: {
+    file_path: string;
+    content: string;
+    strategy?: 'append' | 'replace' | 'section-edit';
+    reason?: string;
   }): Promise<any> {
-    return tools.updateUserReference(
-      args as unknown as tools.UpdateUserReferenceArgs,
-      this.config.primaryVault.path
-    );
+    return tools.updateDocument(args as unknown as tools.UpdateDocumentArgs, {
+      vaultPath: this.config.primaryVault.path,
+      slugify: this.slugify.bind(this),
+      trackFileAccess: this.trackFileAccess.bind(this),
+      secondaryVaults: this.config.secondaryVaults.map(v => ({ path: v.path, name: v.name })),
+    });
   }
 
   private getSessionStartTime(): Date | null {
