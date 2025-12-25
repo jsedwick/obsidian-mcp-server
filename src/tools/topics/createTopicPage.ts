@@ -62,7 +62,7 @@ export interface CreateTopicPageContext {
   trackFileAccess?: (path: string, action: 'read' | 'edit' | 'create') => void;
   searchVault: (args: {
     query: string;
-    category?: string;
+    category?: 'topic' | 'task-list' | 'decision' | 'session' | 'project' | 'commit';
     max_results?: number;
     detail?: string;
   }) => Promise<{ content: Array<{ type: string; text: string }> }>;

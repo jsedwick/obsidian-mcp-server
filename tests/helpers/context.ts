@@ -108,6 +108,10 @@ export function createSessionToolsContext(
       .mockResolvedValue({ topics: [], decisions: [], projects: [] }),
     vaultCustodian: vi.fn().mockResolvedValue({ content: [{ text: 'Vault check complete' }] }),
     recordCommit: vi.fn().mockResolvedValue({ content: [] }),
+    updateDocument: vi.fn().mockResolvedValue({ content: [] }),
+    searchVault: vi
+      .fn()
+      .mockResolvedValue({ content: [{ type: 'text', text: 'Found 0 matches' }] }),
     setCurrentSession: vi.fn(),
     clearSessionState: vi.fn().mockImplementation(() => {
       phase1Completed = false;

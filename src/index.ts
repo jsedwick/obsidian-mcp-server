@@ -2014,6 +2014,7 @@ Check the sessions/ directory for recent conversations.
     directories?: string[];
     max_results?: number;
     snippets_only?: boolean;
+    category?: 'topic' | 'task-list' | 'decision' | 'session' | 'project' | 'commit';
   }): Promise<any> {
     return tools.searchVault(args as unknown as tools.SearchVaultArgs, {
       vaultPath: this.config.primaryVault.path,

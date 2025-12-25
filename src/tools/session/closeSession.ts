@@ -353,11 +353,12 @@ async function discoverRelatedTopics(
       return [];
     }
 
-    // Search vault with keywords
+    // Search vault with keywords, filtering to topics only
     const searchResult = await context.searchVault({
       query: keywords.join(' '),
       max_results: 15, // Get more results to filter down
       detail: 'summary',
+      category: 'topic', // Only search topics for semantic discovery
     });
 
     if (!searchResult.content || searchResult.content.length === 0) {
@@ -890,6 +891,7 @@ interface CloseSessionContext {
     query: string;
     max_results?: number;
     detail?: string;
+    category?: 'topic' | 'task-list' | 'decision' | 'session' | 'project' | 'commit';
   }) => Promise<{ content: Array<{ text: string }> }>;
 }
 
