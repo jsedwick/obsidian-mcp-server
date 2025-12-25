@@ -405,6 +405,82 @@ async function discoverRelatedTopics(
 }
 
 /**
+ * Discover related decisions using semantic search on session summary
+ * Filters to primary vault decisions only to avoid cross-vault pollution
+ */
+async function discoverRelatedDecisions(
+  summary: string,
+  context: CloseSessionContext
+): Promise<Array<{ path: string; title: string; projectSlug: string }>> {
+  try {
+    // Extract keywords for search
+    const keywords = extractKeywords(summary);
+    if (keywords.length === 0) {
+      return [];
+    }
+
+    // Search vault with keywords, filtering to decisions only
+    const searchResult = await context.searchVault({
+      query: keywords.join(' '),
+      max_results: 15, // Get more results to filter down
+      detail: 'summary',
+      category: 'decision', // Only search decisions for semantic discovery
+    });
+
+    if (!searchResult.content || searchResult.content.length === 0) {
+      return [];
+    }
+
+    // Parse search results (format: "Search results for...")
+    const resultText = (searchResult.content[0] as { text: string }).text;
+    const fileMatches = resultText.matchAll(/\*\*(.+?)\*\*/g);
+
+    const decisions: Array<{ path: string; title: string; projectSlug: string }> = [];
+
+    for (const match of fileMatches) {
+      const filePath = match[1];
+
+      // Filter: Only include decisions from primary vault
+      // decisions/project-slug/###-decision-name.md
+      if (
+        filePath.startsWith(context.vaultPath) && // In primary vault
+        filePath.includes('/decisions/') && // Is a decision file
+        !filePath.includes('/archive/') // Not archived
+      ) {
+        // Extract decision info from path
+        const relativePath = filePath.substring(context.vaultPath.length + 1);
+        const parts = relativePath.split('/');
+
+        if (parts.length >= 3 && parts[0] === 'decisions') {
+          const projectSlug = parts[1];
+          const fileName = path.basename(filePath, '.md');
+
+          // Extract title from filename (remove number prefix if present)
+          const title = fileName
+            .replace(/^\d+-/, '') // Remove leading number
+            .split('-')
+            .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+            .join(' ');
+
+          decisions.push({ path: filePath, title, projectSlug });
+
+          // Limit to top 5 decisions
+          if (decisions.length >= 5) {
+            break;
+          }
+        }
+      }
+    }
+
+    return decisions;
+  } catch (error) {
+    // Silent failure - discovery is non-critical
+    console.error('Decision discovery failed:', error);
+    return [];
+  }
+}
+
+/**
  * Add discovered related topics to session file content
  * Finds or creates "## Related Topics" section and adds wiki links
  */
@@ -446,6 +522,58 @@ function addRelatedTopicsToSession(
     return sessionContent.replace(
       /## Related Projects/,
       `## Related Topics\n${topicLinks}\n\n## Related Projects`
+    );
+  }
+}
+
+/**
+ * Add discovered related decisions to session file content
+ * Finds or creates "## Related Decisions" section and adds wiki links
+ */
+function addRelatedDecisionsToSession(
+  sessionContent: string,
+  decisions: Array<{ path: string; title: string; projectSlug: string }>
+): string {
+  if (decisions.length === 0) {
+    return sessionContent;
+  }
+
+  // Create wiki links for discovered decisions
+  // Format: [[decisions/project-slug/###-decision-name|Title]]
+  const decisionLinks = decisions
+    .map(d => {
+      const fileName = path.basename(d.path, '.md');
+      return `- [[decisions/${d.projectSlug}/${fileName}|${d.title}]]`;
+    })
+    .join('\n');
+
+  // Check if "## Related Decisions" section exists
+  const relatedDecisionsRegex = /## Related Decisions\n([^\n].*?)(?=\n##|$)/s;
+  const match = sessionContent.match(relatedDecisionsRegex);
+
+  if (match) {
+    // Section exists - check if it has content
+    const existingContent = match[1].trim();
+
+    if (existingContent === '_None found_' || existingContent === '') {
+      // Replace empty section with discovered decisions
+      return sessionContent.replace(
+        relatedDecisionsRegex,
+        `## Related Decisions\n${decisionLinks}\n`
+      );
+    } else {
+      // Append to existing content (avoid duplicates)
+      const updatedContent = `${existingContent}\n${decisionLinks}`;
+      return sessionContent.replace(
+        relatedDecisionsRegex,
+        `## Related Decisions\n${updatedContent}\n`
+      );
+    }
+  } else {
+    // Section doesn't exist - should not happen with template, but handle gracefully
+    return sessionContent.replace(
+      /## Related Git Commits/,
+      `## Related Decisions\n${decisionLinks}\n\n## Related Git Commits`
     );
   }
 }
@@ -582,13 +710,24 @@ export async function runPhase2Finalization(
 
   context.setCurrentSession(data.sessionId, data.sessionFile);
 
-  // Discover related topics using semantic search
-  const discoveredTopics = await discoverRelatedTopics(_args.summary, context);
+  // Discover related content using semantic search (run in parallel)
+  const [discoveredTopics, discoveredDecisions] = await Promise.all([
+    discoverRelatedTopics(_args.summary, context),
+    discoverRelatedDecisions(_args.summary, context),
+  ]);
+
+  // Add discovered topics to session file
   if (discoveredTopics.length > 0) {
-    // Add discovered topics to session file
     const updatedContent = addRelatedTopicsToSession(data.sessionContent, discoveredTopics);
     await fs.writeFile(data.sessionFile, updatedContent);
-    data.sessionContent = updatedContent; // Update session data
+    data.sessionContent = updatedContent;
+  }
+
+  // Add discovered decisions to session file
+  if (discoveredDecisions.length > 0) {
+    const updatedContent = addRelatedDecisionsToSession(data.sessionContent, discoveredDecisions);
+    await fs.writeFile(data.sessionFile, updatedContent);
+    data.sessionContent = updatedContent;
   }
 
   // Add links for accessed files (topics/decisions modified via update_document)
@@ -628,7 +767,12 @@ export async function runPhase2Finalization(
     .map(f => f.path);
 
   const allFilesToCheck = Array.from(
-    new Set([...data.filesToCheck, ...phase2EditedFiles, ...discoveredTopics.map(t => t.path)])
+    new Set([
+      ...data.filesToCheck,
+      ...phase2EditedFiles,
+      ...discoveredTopics.map(t => t.path),
+      ...discoveredDecisions.map(d => d.path),
+    ])
   );
 
   let vaultCustodianReport = '';
@@ -703,13 +847,24 @@ export async function runSinglePhaseClose(
 
   context.setCurrentSession(sessionId, sessionFile);
 
-  // Discover related topics using semantic search
-  const discoveredTopics = await discoverRelatedTopics(_args.summary, context);
+  // Discover related content using semantic search (run in parallel)
+  const [discoveredTopics, discoveredDecisions] = await Promise.all([
+    discoverRelatedTopics(_args.summary, context),
+    discoverRelatedDecisions(_args.summary, context),
+  ]);
+
+  // Add discovered topics to session file
   if (discoveredTopics.length > 0) {
-    // Add discovered topics to session file
     const updatedContent = addRelatedTopicsToSession(sessionContent, discoveredTopics);
     await fs.writeFile(sessionFile, updatedContent);
-    sessionContent = updatedContent; // Update for potential Phase 2 use
+    sessionContent = updatedContent;
+  }
+
+  // Add discovered decisions to session file
+  if (discoveredDecisions.length > 0) {
+    const updatedContent = addRelatedDecisionsToSession(sessionContent, discoveredDecisions);
+    await fs.writeFile(sessionFile, updatedContent);
+    sessionContent = updatedContent;
   }
 
   // Add links for accessed files (topics/decisions modified via update_document)
@@ -773,6 +928,7 @@ export async function runSinglePhaseClose(
     ...context.projectsCreated.map(p => p.file),
     ...editedOrCreatedFiles,
     ...discoveredTopics.map(t => t.path), // Add discovered topics for reciprocal linking
+    ...discoveredDecisions.map(d => d.path), // Add discovered decisions for reciprocal linking
   ];
 
   const uniqueFilesToCheck = Array.from(new Set(filesToCheck));
