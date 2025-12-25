@@ -36,6 +36,7 @@ export interface UpdateDocumentContext {
   vaultPath: string;
   slugify: (text: string) => string;
   trackFileAccess: (path: string, action: 'read' | 'edit' | 'create') => void;
+  secondaryVaults?: Array<{ path: string; name: string }>;
 }
 
 type DocumentType =
@@ -194,9 +195,25 @@ export async function updateDocument(
 ): Promise<UpdateDocumentResult> {
   const { file_path: filePath, content, strategy = 'replace', reason } = args;
 
-  // 1. Validate file is in vault
+  // 1. Validate file is in a vault (primary or secondary)
+  let isSecondaryVault = false;
+  let secondaryVault: { path: string; name: string } | null = null;
+
   if (!filePath.startsWith(context.vaultPath)) {
-    throw new Error(`File must be in vault: ${filePath}`);
+    // Check if it's in a secondary vault
+    if (context.secondaryVaults) {
+      for (const vault of context.secondaryVaults) {
+        if (filePath.startsWith(vault.path)) {
+          isSecondaryVault = true;
+          secondaryVault = vault;
+          break;
+        }
+      }
+    }
+
+    if (!isSecondaryVault) {
+      throw new Error(`File must be in vault: ${filePath}`);
+    }
   }
 
   // 2. Read existing file (if exists) and parse frontmatter
@@ -216,19 +233,24 @@ export async function updateDocument(
     // File doesn't exist - will create
   }
 
-  // 3. Detect document type
-  const docType = detectDocumentType(filePath, frontmatter);
-  const rules = TYPE_RULES[docType];
+  // 3. Detect document type (only validate for primary vault files)
+  let docType: DocumentType | 'secondary-vault' = 'secondary-vault';
+  let rules: TypeRules | null = null;
 
-  // 4. Validate operation
-  rules.validate(args);
+  if (!isSecondaryVault) {
+    docType = detectDocumentType(filePath, frontmatter);
+    rules = TYPE_RULES[docType];
 
-  if (rules.readonly) {
-    throw new Error(`${docType} files are read-only and cannot be modified`);
-  }
+    // 4. Validate operation (primary vault only)
+    rules.validate(args);
 
-  if (rules.appendOnly && strategy === 'replace') {
-    throw new Error(`${docType} files are append-only. Use strategy: "append"`);
+    if (rules.readonly) {
+      throw new Error(`${docType} files are read-only and cannot be modified`);
+    }
+
+    if (rules.appendOnly && strategy === 'replace') {
+      throw new Error(`${docType} files are append-only. Use strategy: "append"`);
+    }
   }
 
   // 5. Build new content based on strategy
@@ -302,8 +324,11 @@ export async function updateDocument(
     newContent = before.trimEnd() + '\n\n' + contentWithoutFm.trim() + '\n\n' + after.trimStart();
   }
 
-  // 6. Update frontmatter
-  const updatedFrontmatter = rules.frontmatterUpdates(frontmatter, reason);
+  // 6. Update frontmatter (secondary vault files keep existing frontmatter)
+  let updatedFrontmatter = frontmatter;
+  if (!isSecondaryVault && rules) {
+    updatedFrontmatter = rules.frontmatterUpdates(frontmatter, reason);
+  }
   const frontmatterYaml = yaml.stringify(updatedFrontmatter);
 
   // 7. Rebuild with updated frontmatter
@@ -312,19 +337,21 @@ export async function updateDocument(
   // 8. Write file
   await fs.writeFile(filePath, finalContent, 'utf-8');
 
-  // 9. Track file access (CRITICAL - always happens)
+  // 9. Track file access (CRITICAL - always happens, for both primary and secondary vaults)
   const action = fileExists ? 'edit' : 'create';
   context.trackFileAccess(filePath, action);
 
   // 10. Return success
+  const vaultType = isSecondaryVault ? `secondary vault file` : `${docType}`;
   return {
     content: [
       {
         type: 'text',
         text:
-          `✅ ${docType} updated: ${path.basename(filePath)}\n` +
+          `✅ ${vaultType} updated: ${path.basename(filePath)}\n` +
           `Strategy: ${strategy}\n` +
           `Action: ${action}\n` +
+          (isSecondaryVault ? `Vault: ${secondaryVault?.name}\n` : '') +
           (reason ? `Reason: ${reason}` : ''),
       },
     ],

@@ -820,6 +820,10 @@ class ObsidianMCPServer {
               vaultPath: this.config.primaryVault.path,
               slugify: this.slugify.bind(this),
               trackFileAccess: this.trackFileAccess.bind(this),
+              secondaryVaults: this.config.secondaryVaults.map(v => ({
+                path: v.path,
+                name: v.name,
+              })),
             });
 
           case 'switch_mode': {
