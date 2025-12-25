@@ -637,6 +637,19 @@ class ObsidianMCPServer {
               slugify: this.slugify.bind(this),
             });
 
+          case 'analyze_session_commits':
+            return await tools.analyzeSessionCommits(
+              validatedArgs as tools.AnalyzeSessionCommitsArgs,
+              {
+                vaultPath: this.config.primaryVault.path,
+                filesAccessed: this.filesAccessed,
+                findGitRepos: this.findGitRepos.bind(this),
+                getRepoInfo: this.getRepoInfo.bind(this),
+                analyzeCommitImpact: this.analyzeCommitImpactWrapper.bind(this),
+                getSessionStartTime: this.getSessionStartTime.bind(this),
+              }
+            );
+
           case 'close_session':
             return await tools.closeSession(validatedArgs as tools.CloseSessionArgs, {
               vaultPath: this.config.primaryVault.path,
@@ -1463,6 +1476,15 @@ SCOPE: Decisions can be vault-level (affecting the MCP system itself) or project
             },
           },
           required: ['topic'],
+        },
+      },
+      {
+        name: 'analyze_session_commits',
+        description:
+          'Analyze commits made during the current session to identify documentation that may need updating. This is a read-only analysis tool that helps prevent documentation drift by proactively identifying topics, decisions, and other documentation that should be updated based on code changes.\n\n**When to use:**\n- Before running /close to see what commits were made\n- To get suggestions for which documentation needs updating\n- To understand the impact of code changes on existing documentation\n\n**Workflow:**\n1. Make commits during your session\n2. Call analyze_session_commits to see commit analysis\n3. Update affected topics/decisions using update_document\n4. Call /close to finalize the session\n\n**Note:** This tool does not modify any files. It only analyzes and provides suggestions.',
+        inputSchema: {
+          type: 'object',
+          properties: {},
         },
       },
       {
