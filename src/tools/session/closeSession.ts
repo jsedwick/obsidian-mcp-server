@@ -893,7 +893,9 @@ export async function closeSession(
 ): Promise<CloseSessionResult> {
   // Enforce that Phase 1 (workflow initiation) can only be called via the /close slash command
   // Phase 2 (finalization) can be called by Claude directly after Phase 1 completes
-  if (!args.finalize && args._invoked_by_slash_command !== true) {
+  const isPhase1 = !args.finalize;
+
+  if (isPhase1 && args._invoked_by_slash_command !== true) {
     throw new Error(
       '❌ The close_session tool can ONLY be called via the /close slash command to start the workflow. Please ask the user to run the /close command to close this session.'
     );
