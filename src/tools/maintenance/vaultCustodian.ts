@@ -368,21 +368,49 @@ function extractTitleFromFile(relativePath: string): string {
 
 /**
  * Determine reciprocal link format and section based on file types
+ * Automatically generates obsidian:// URIs for secondary vault files
  */
 function getReciprocalLinkInfo(
   _sourceFile: string,
   targetFile: string,
-  vaultPath: string
+  vaultPath: string,
+  secondaryVaults?: Array<{ path: string; name: string }>
 ): {
   section: string;
   link: string;
 } | null {
-  const targetPath = path.relative(vaultPath, targetFile);
+  // Detect if target is in a secondary vault
+  let secondaryVault: { path: string; name: string } | null = null;
+  let targetPath = path.relative(vaultPath, targetFile);
+
+  if (secondaryVaults) {
+    for (const vault of secondaryVaults) {
+      if (targetFile.startsWith(vault.path)) {
+        secondaryVault = vault;
+        targetPath = path.relative(vault.path, targetFile);
+        break;
+      }
+    }
+  }
 
   // Determine target type
-  const targetType = getFileType(targetFile, vaultPath);
+  const targetType = secondaryVault
+    ? 'unknown' // Secondary vaults don't follow primary vault structure
+    : getFileType(targetFile, vaultPath);
 
-  // Determine appropriate section and link format
+  // Handle secondary vault files with obsidian:// URIs
+  if (secondaryVault) {
+    const title = extractTitleFromFile(targetPath);
+    const relativeFile = targetPath.replace(/\.md$/, '');
+    const encodedFile = encodeURIComponent(relativeFile);
+
+    return {
+      section: '## Related Topics', // Default to Related Topics for secondary vault files
+      link: `- [${title}](obsidian://open?vault=${encodeURIComponent(secondaryVault.name)}&file=${encodedFile})`,
+    };
+  }
+
+  // Determine appropriate section and link format for primary vault files
   if (targetType === 'session') {
     // Source file should link to session in "Related Sessions"
     const sessionId = path.basename(targetFile, '.md');
@@ -428,9 +456,10 @@ function getReciprocalLinkInfo(
 async function addReciprocalLink(
   targetFile: string,
   sourceFile: string,
-  vaultPath: string
+  vaultPath: string,
+  secondaryVaults?: Array<{ path: string; name: string }>
 ): Promise<boolean> {
-  const linkInfo = getReciprocalLinkInfo(targetFile, sourceFile, vaultPath);
+  const linkInfo = getReciprocalLinkInfo(targetFile, sourceFile, vaultPath, secondaryVaults);
   if (!linkInfo) return false;
 
   let content = await fs.readFile(targetFile, 'utf-8');
@@ -465,7 +494,8 @@ async function addReciprocalLink(
 async function validateReciprocalLinks(
   files: string[],
   vaultPath: string,
-  findSessionFile: (filename: string) => Promise<string | null>
+  findSessionFile: (filename: string) => Promise<string | null>,
+  secondaryVaults?: Array<{ path: string; name: string }>
 ): Promise<string[]> {
   const fixes: string[] = [];
 
@@ -487,7 +517,12 @@ async function validateReciprocalLinks(
         if (!linkedFile.startsWith(vaultPath)) continue;
 
         // Check if linked file has reciprocal link back to source
-        const reciprocalLinkInfo = getReciprocalLinkInfo(linkedFile, file, vaultPath);
+        const reciprocalLinkInfo = getReciprocalLinkInfo(
+          linkedFile,
+          file,
+          vaultPath,
+          secondaryVaults
+        );
         if (!reciprocalLinkInfo) continue; // No reciprocal relationship expected
 
         const linkedContent = await fs.readFile(linkedFile, 'utf-8');
@@ -500,7 +535,7 @@ async function validateReciprocalLinks(
 
         if (!hasReciprocalLink) {
           // Add reciprocal link
-          const added = await addReciprocalLink(linkedFile, file, vaultPath);
+          const added = await addReciprocalLink(linkedFile, file, vaultPath, secondaryVaults);
           if (added) {
             const relativeSource = path.relative(vaultPath, file);
             const relativeTarget = path.relative(vaultPath, linkedFile);
@@ -1081,6 +1116,7 @@ export async function vaultCustodian(
     vaultPath: string;
     ensureVaultStructure: () => Promise<void>;
     findSessionFile: (filename: string) => Promise<string | null>;
+    secondaryVaults?: Array<{ path: string; name: string }>;
   }
 ): Promise<VaultCustodianResult> {
   await context.ensureVaultStructure();
@@ -1324,7 +1360,8 @@ ${content}`;
     const reciprocalFixes = await validateReciprocalLinks(
       allFiles,
       context.vaultPath,
-      context.findSessionFile
+      context.findSessionFile,
+      context.secondaryVaults
     );
     fixes.push(...reciprocalFixes);
 

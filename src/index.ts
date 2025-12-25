@@ -749,6 +749,10 @@ class ObsidianMCPServer {
               vaultPath: this.config.primaryVault.path,
               ensureVaultStructure: this.ensureVaultStructure.bind(this),
               findSessionFile: this.findSessionFile.bind(this),
+              secondaryVaults: this.config.secondaryVaults.map(v => ({
+                path: v.path,
+                name: v.name,
+              })),
             });
 
           case 'analyze_topic_content':
