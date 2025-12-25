@@ -646,7 +646,8 @@ export async function runPhase2Finalization(
     }
   }
 
-  context.clearSessionState();
+  // NOTE: Session state is NOT cleared here - it will be cleared by closeSession() after Phase 2
+  // This allows record_commit() and other operations to run while session context is still active
 
   const lines: string[] = [
     `Session finalized: ${data.sessionId}`,
@@ -951,7 +952,14 @@ export async function closeSession(
       // File doesn't exist - proceed with finalization
     }
 
-    return runPhase2Finalization(args, context, args.session_data!);
+    // Run Phase 2 finalization (this does NOT clear session state anymore)
+    const phase2Result = await runPhase2Finalization(args, context, args.session_data!);
+
+    // Clear session state now that Phase 2 is complete
+    // This allows record_commit() and other post-finalization operations to work if needed
+    context.clearSessionState();
+
+    return phase2Result;
   }
 
   // Generate session ID from current timestamp and optional topic (using local timezone)

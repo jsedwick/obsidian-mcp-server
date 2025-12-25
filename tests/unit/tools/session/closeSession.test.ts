@@ -389,7 +389,8 @@ describe('closeSession - Two-Phase Workflow', () => {
       expect(context.vaultCustodian).toHaveBeenCalledWith({
         files_to_check: sessionData.filesToCheck,
       });
-      expect(context.clearSessionState).toHaveBeenCalled();
+      // Note: clearSessionState is called in closeSession() after runPhase2Finalization() returns,
+      // not inside runPhase2Finalization() itself
     });
 
     it('should handle vault custodian failures gracefully', async () => {
@@ -744,7 +745,8 @@ describe('closeSession - Two-Phase Workflow', () => {
 
       expect(phase2Result.content[0].text).toContain('Session finalized:');
       expect(context.vaultCustodian).toHaveBeenCalled();
-      expect(context.clearSessionState).toHaveBeenCalled();
+      // clearSessionState is now called in closeSession() after Phase 2 completes,
+      // not within runPhase2Finalization()
     });
 
     it('should fall back to single-phase when no commits detected', async () => {
