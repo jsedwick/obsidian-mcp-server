@@ -233,6 +233,7 @@ export async function runPhase1Analysis(
     repoDetectionMessage,
     autoCommitMessage,
     handoff: args.handoff,
+    sessionCommits, // Pass commit hashes to Phase 2 for recording
   };
 
   const summary = args.summary.replace(/"/g, '\\"');
@@ -269,11 +270,11 @@ export async function runPhase1Analysis(
           `  summary: "${summary}",\n` +
           (topic ? `  ${topic}\n` : '') +
           '  finalize: true,\n' +
-          '  _invoked_by_slash_command: true,\n' +
           `  session_data: ${JSON.stringify(sessionData, null, 2)}
 ` +
           '})\n' +
           '```\n\n' +
+          '**Note:** Phase 2 does not need `_invoked_by_slash_command: true` (only Phase 1 does).\n\n' +
           '**Skip updates ONLY if** you have verified that no topics are affected by analyzing the commit impact.',
       },
     ],
@@ -600,6 +601,23 @@ export async function runPhase2Finalization(
     data.sessionContent = updatedContentWithAccessed;
   }
 
+  // Record session commits (Phase 2 step 3)
+  if (data.sessionCommits && data.sessionCommits.length > 0 && data.detectedRepoInfo) {
+    for (const commitHash of data.sessionCommits) {
+      try {
+        await context.recordCommit({
+          repo_path: data.detectedRepoInfo.path,
+          commit_hash: commitHash,
+        });
+        // Commit files are automatically tracked via filesAccessed
+      } catch (_error) {
+        // Silent failure - commit recording is non-critical
+        // If a commit file wasn't created, it won't be in vault_custodian filesToCheck
+        // but that's acceptable since the commit still exists in git
+      }
+    }
+  }
+
   // Dynamic filesToCheck: merge Phase 1 files with any files modified between Phase 1 and Phase 2
   // This catches documentation updates made during commit analysis review
   const phase2EditedFiles = context.filesAccessed
@@ -819,6 +837,7 @@ export interface SessionData {
   repoDetectionMessage: string;
   autoCommitMessage?: string;
   handoff?: string; // Handoff notes for next session
+  sessionCommits?: string[]; // Commit hashes made during this session
 }
 
 export interface CloseSessionResult {
@@ -872,10 +891,11 @@ export async function closeSession(
   args: CloseSessionArgs,
   context: CloseSessionContext
 ): Promise<CloseSessionResult> {
-  // Enforce that this tool can only be called via the /close slash command
-  if (args._invoked_by_slash_command !== true) {
+  // Enforce that Phase 1 (workflow initiation) can only be called via the /close slash command
+  // Phase 2 (finalization) can be called by Claude directly after Phase 1 completes
+  if (!args.finalize && args._invoked_by_slash_command !== true) {
     throw new Error(
-      '❌ The close_session tool can ONLY be called via the /close slash command. Please ask the user to run the /close command to close this session.'
+      '❌ The close_session tool can ONLY be called via the /close slash command to start the workflow. Please ask the user to run the /close command to close this session.'
     );
   }
 
@@ -886,14 +906,15 @@ export async function closeSession(
     throw new Error(
       '❌ Phase 2 Error: finalize=true requires session_data from Phase 1.\n\n' +
         'The two-phase workflow requires calling close_session twice:\n' +
-        '1. First call: Receives commit analysis and session_data\n' +
-        '2. Second call: Pass finalize=true AND session_data from step 1\n\n' +
-        'Example:\n' +
+        '1. First call (Phase 1): Run via /close command with _invoked_by_slash_command: true\n' +
+        '   Returns: commit analysis + session_data\n' +
+        '2. Second call (Phase 2): Claude calls directly with finalize: true\n' +
+        '   Does NOT need _invoked_by_slash_command (only Phase 1 does)\n\n' +
+        'Example Phase 2 call:\n' +
         'close_session({\n' +
         '  summary: "...",\n' +
         '  finalize: true,\n' +
-        '  session_data: { ...data from Phase 1... },\n' +
-        '  _invoked_by_slash_command: true\n' +
+        '  session_data: { ...data from Phase 1... }\n' +
         '})'
     );
   }
