@@ -724,10 +724,13 @@ describe('closeSession - Two-Phase Workflow', () => {
       expect(phase1Result.content[0].text).toMatch(
         /[12] commits? (was|were) made during this session/
       );
-      expect(phase1Result.content[0].text).toContain('finalize: true');
+      // Phase 1 output should indicate automatic finalization
+      expect(phase1Result.content[0].text).toContain('the session finalizes automatically');
 
-      // Extract session_data from Phase 1 result
-      const sessionDataMatch = phase1Result.content[0].text.match(/session_data: ({[\s\S]*?})\n/);
+      // Extract session_data from Phase 1 result (now in HTML comment format)
+      const sessionDataMatch = phase1Result.content[0].text.match(
+        /<!-- SESSION_DATA: ({[\s\S]*?}) -->/
+      );
       expect(sessionDataMatch).toBeTruthy();
       const sessionData = JSON.parse(sessionDataMatch![1]);
 

@@ -235,9 +235,6 @@ export async function runPhase1Analysis(
     handoff: args.handoff,
   };
 
-  const summary = args.summary.replace(/"/g, '\\"');
-  const topic = args.topic ? `topic: "${args.topic.replace(/"/g, '\\"')}",` : '';
-
   return {
     content: [
       {
@@ -263,18 +260,16 @@ export async function runPhase1Analysis(
           '   - Create new topics with `create_topic_page` if concepts warrant documentation\n' +
           '   - Always provide `reason` parameter explaining why updating (for audit trail)\n' +
           '   - **Err on the side of updating** rather than leaving documentation outdated\n\n' +
-          '3. **Only when ALL documentation is current**, call close_session again:\n\n' +
-          '```typescript\n' +
-          'close_session({\n' +
-          `  summary: "${summary}",\n` +
-          (topic ? `  ${topic}\n` : '') +
-          '  finalize: true,\n' +
-          '  _invoked_by_slash_command: true,\n' +
-          `  session_data: ${JSON.stringify(sessionData, null, 2)}
-` +
-          '})\n' +
-          '```\n\n' +
-          '**Skip updates ONLY if** you have verified that no topics are affected by analyzing the commit impact.',
+          '3. **After documentation is current**, the session finalizes automatically:\n\n' +
+          "   - Once you've completed all documentation updates, the system will automatically\n" +
+          '   - Run vault_custodian to validate and link all modified files\n' +
+          '   - Create the session file with all related content links\n' +
+          '   - No additional action needed - the finalization happens seamlessly\n\n' +
+          '**Skip updates ONLY if** you have verified that no topics are affected by analyzing the commit impact.\n\n' +
+          'This two-phase workflow ensures documentation stays current with code changes automatically.' +
+          '\n\n---\n\n<!-- SYSTEM: Phase 1 session data for internal /close handler finalization -->\n' +
+          '<!-- This section is machine-readable and not intended for user viewing -->\n' +
+          `<!-- SESSION_DATA: ${JSON.stringify(sessionData)} -->`,
       },
     ],
   };
