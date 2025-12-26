@@ -334,8 +334,8 @@ function extractKeywords(summary: string): string[] {
     .split(/\s+/)
     .filter(word => word.length > 3 && !stopWords.has(word));
 
-  // Return unique keywords, limit to 10
-  return Array.from(new Set(words)).slice(0, 10);
+  // Return unique keywords (no artificial limit - semantic search handles query complexity)
+  return Array.from(new Set(words));
 }
 
 /**
