@@ -579,6 +579,88 @@ function addRelatedDecisionsToSession(
 }
 
 /**
+ * Validate that session summary claims match actual session file content
+ * Detects when summary mentions topics/decisions/files that aren't actually linked
+ */
+function validateSummaryAccuracy(
+  summary: string,
+  sessionContent: string,
+  vaultPath: string
+): string[] {
+  const warnings: string[] = [];
+
+  // Extract potential topic/decision/file references from summary
+  // Look for patterns like "updated X", "created Y", "modified Z"
+  const updatePatterns = [
+    /updated?\s+(?:the\s+)?([a-z0-9-]+(?:\s+[a-z0-9-]+)*)\s+(?:topic|decision|file)/gi,
+    /modified?\s+(?:the\s+)?([a-z0-9-]+(?:\s+[a-z0-9-]+)*)\s+(?:topic|decision|file)/gi,
+    /created?\s+(?:the\s+)?([a-z0-9-]+(?:\s+[a-z0-9-]+)*)\s+(?:topic|decision)/gi,
+  ];
+
+  const claimedItems = new Set<string>();
+  for (const pattern of updatePatterns) {
+    const matches = summary.matchAll(pattern);
+    for (const match of matches) {
+      if (match[1]) {
+        // Convert to slug format (lowercase, hyphens)
+        const slug = match[1].toLowerCase().trim().replace(/\s+/g, '-');
+        claimedItems.add(slug);
+      }
+    }
+  }
+
+  // Extract what's actually in the session file
+  const relatedTopicsSection = sessionContent.match(/## Related Topics\n+(.+?)(?=\n##|$)/s);
+  const relatedDecisionsSection = sessionContent.match(/## Related Decisions\n+(.+?)(?=\n##|$)/s);
+  const filesAccessedSection = sessionContent.match(/## Files Accessed\n+(.+?)(?=\n##|$)/s);
+
+  const linkedSlugs = new Set<string>();
+
+  // Extract slugs from Related Topics
+  if (relatedTopicsSection && relatedTopicsSection[1] !== '_None found_') {
+    const topicLinks = relatedTopicsSection[1].matchAll(/\[\[([^\]|]+)/g);
+    for (const match of topicLinks) {
+      // Extract slug from link (handles both [[slug]] and [[topics/slug]])
+      const slug = match[1].split('/').pop();
+      if (slug) linkedSlugs.add(slug);
+    }
+  }
+
+  // Extract slugs from Related Decisions
+  if (relatedDecisionsSection && relatedDecisionsSection[1] !== '_None found_') {
+    const decisionLinks = relatedDecisionsSection[1].matchAll(/\[\[decisions\/[^/]+\/([^\]|]+)/g);
+    for (const match of decisionLinks) {
+      if (match[1]) linkedSlugs.add(match[1]);
+    }
+  }
+
+  // Extract file paths from Files Accessed
+  if (filesAccessedSection && filesAccessedSection[1] !== '_No files tracked_') {
+    const filePaths = filesAccessedSection[1].matchAll(/\] (.+?)$/gm);
+    for (const match of filePaths) {
+      if (match[1] && match[1].startsWith(vaultPath)) {
+        const relativePath = match[1].substring(vaultPath.length + 1);
+        if (relativePath.startsWith('topics/') || relativePath.startsWith('decisions/')) {
+          const fileName = path.basename(match[1], '.md');
+          linkedSlugs.add(fileName);
+        }
+      }
+    }
+  }
+
+  // Check for claimed items that aren't in the session file
+  for (const claimed of claimedItems) {
+    if (!linkedSlugs.has(claimed)) {
+      warnings.push(
+        `⚠️  Summary claims work on "${claimed}" but it doesn't appear in Related Topics/Decisions or Files Accessed`
+      );
+    }
+  }
+
+  return warnings;
+}
+
+/**
  * Convert filesAccessed entries to Related section links in session file
  * This ensures files modified via update_document are linked in the session
  */
@@ -775,6 +857,18 @@ export async function runPhase2Finalization(
     ])
   );
 
+  // Validate that summary claims match actual session file content
+  const validationWarnings = validateSummaryAccuracy(
+    _args.summary,
+    data.sessionContent,
+    context.vaultPath
+  );
+  let validationReport = '';
+  if (validationWarnings.length > 0) {
+    validationReport =
+      '\n\n⚠️  **Summary Validation Warnings:**\n\n' + validationWarnings.join('\n');
+  }
+
   let vaultCustodianReport = '';
   if (allFilesToCheck.length > 0) {
     try {
@@ -826,6 +920,7 @@ export async function runPhase2Finalization(
           lines.join('\n') +
           data.repoDetectionMessage +
           (data.autoCommitMessage || '') +
+          validationReport +
           vaultCustodianReport,
       },
     ],
@@ -933,6 +1028,18 @@ export async function runSinglePhaseClose(
 
   const uniqueFilesToCheck = Array.from(new Set(filesToCheck));
 
+  // Validate that summary claims match actual session file content
+  const validationWarnings = validateSummaryAccuracy(
+    _args.summary,
+    sessionContent,
+    context.vaultPath
+  );
+  let validationReport = '';
+  if (validationWarnings.length > 0) {
+    validationReport =
+      '\n\n⚠️  **Summary Validation Warnings:**\n\n' + validationWarnings.join('\n');
+  }
+
   let vaultCustodianReport = '';
   if (uniqueFilesToCheck.length > 0) {
     try {
@@ -953,7 +1060,12 @@ export async function runSinglePhaseClose(
     content: [
       {
         type: 'text',
-        text: lines.join('\n') + repoDetectionMessage + autoCommitMessage + vaultCustodianReport,
+        text:
+          lines.join('\n') +
+          repoDetectionMessage +
+          autoCommitMessage +
+          validationReport +
+          vaultCustodianReport,
       },
     ],
   };
