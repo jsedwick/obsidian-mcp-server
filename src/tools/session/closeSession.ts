@@ -502,7 +502,7 @@ function addRelatedTopicsToSession(
     .join('\n');
 
   // Check if "## Related Topics" section exists
-  const relatedTopicsRegex = /## Related Topics\n([^\n].*?)(?=\n##|$)/s;
+  const relatedTopicsRegex = /## Related Topics\n+(.+?)(?=\n##|$)/s;
   const match = sessionContent.match(relatedTopicsRegex);
 
   if (match) {
@@ -548,7 +548,7 @@ function addRelatedDecisionsToSession(
     .join('\n');
 
   // Check if "## Related Decisions" section exists
-  const relatedDecisionsRegex = /## Related Decisions\n([^\n].*?)(?=\n##|$)/s;
+  const relatedDecisionsRegex = /## Related Decisions\n+(.+?)(?=\n##|$)/s;
   const match = sessionContent.match(relatedDecisionsRegex);
 
   if (match) {
@@ -641,7 +641,7 @@ function addAccessedFilesLinksToSession(
   if (topicFiles.length > 0) {
     const topicLinks = topicFiles.map(t => `- [[${t.slug}|${t.title}]]`).join('\n');
 
-    const relatedTopicsRegex = /## Related Topics\n([^\n].*?)(?=\n##|$)/s;
+    const relatedTopicsRegex = /## Related Topics\n+(.+?)(?=\n##|$)/s;
     const match = updatedContent.match(relatedTopicsRegex);
 
     if (match) {
@@ -674,7 +674,7 @@ function addAccessedFilesLinksToSession(
       .map(d => `- [[decisions/${d.projectSlug}/${d.slug}|${d.title}]]`)
       .join('\n');
 
-    const relatedDecisionsRegex = /## Related Decisions\n([^\n].*?)(?=\n##|$)/s;
+    const relatedDecisionsRegex = /## Related Decisions\n+(.+?)(?=\n##|$)/s;
     const match = updatedContent.match(relatedDecisionsRegex);
 
     if (match) {
