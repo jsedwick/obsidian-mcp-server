@@ -3088,7 +3088,7 @@ Check the sessions/ directory for recent conversations.
       });
 
       // SSE endpoint for MCP
-      app.post('/sse', async (req, res) => {
+      app.get('/sse', async (req, res) => {
         logger.info('New SSE connection established');
 
         const transport = new SSEServerTransport('/message', res);
