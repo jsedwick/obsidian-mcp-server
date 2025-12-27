@@ -11,7 +11,10 @@
     "build": "tsc",
     "watch": "tsc --watch",
     "start": "node dist/index.js",
+    "start:http": "node dist/index.js --http",
+    "start:http:port": "node dist/index.js --http --port=3001",
     "dev": "tsc && node dist/index.js",
+    "dev:http": "tsc && node dist/index.js --http",
     "test": "vitest run",
     "test:watch": "vitest watch",
     "test:ui": "vitest --ui",
@@ -44,7 +47,14 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.70.1",
     "@modelcontextprotocol/sdk": "^1.0.4",
+    "@types/body-parser": "^1.19.6",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
     "@xenova/transformers": "^2.17.2",
+    "body-parser": "^2.2.1",
+    "cors": "^2.8.5",
+    "express": "^5.2.1",
+    "gray-matter": "^4.0.3",
     "zod": "^3.25.76"
   },
   "devDependencies": {

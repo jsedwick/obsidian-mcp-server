@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
@@ -13,6 +14,9 @@ import { fileURLToPath } from 'url';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import { pipeline } from '@xenova/transformers';
+import express from 'express';
+import cors from 'cors';
+import bodyParser from 'body-parser';
 import * as tools from './tools/index.js';
 import { GitService } from './services/git/GitService.js';
 import { validateToolArgs, ValidationError } from './validation/index.js';
@@ -3049,7 +3053,11 @@ Check the sessions/ directory for recent conversations.
   }
 
   async run(): Promise<void> {
-    const transport = new StdioServerTransport();
+    // Parse command-line arguments
+    const args = process.argv.slice(2);
+    const useHttp = args.includes('--http');
+    const portArg = args.find(arg => arg.startsWith('--port='));
+    const port = portArg ? parseInt(portArg.split('=')[1], 10) : 3000;
 
     // Pre-compute embeddings if enabled
     if (this.embeddingConfig.enabled && this.embeddingConfig.precomputeEmbeddings) {
@@ -3066,8 +3074,50 @@ Check the sessions/ directory for recent conversations.
       }
     }
 
-    await this.server.connect(transport);
-    logger.info('Obsidian MCP Server running on stdio');
+    if (useHttp) {
+      // HTTP mode with SSE transport
+      const app = express();
+
+      // Middleware
+      app.use(cors());
+      app.use(bodyParser.json());
+
+      // Health check endpoint
+      app.get('/health', (_req, res) => {
+        res.json({ status: 'ok', timestamp: new Date().toISOString() });
+      });
+
+      // SSE endpoint for MCP
+      app.post('/sse', async (req, res) => {
+        logger.info('New SSE connection established');
+
+        const transport = new SSEServerTransport('/message', res);
+        await this.server.connect(transport);
+
+        // Handle client disconnect
+        req.on('close', () => {
+          logger.info('SSE connection closed');
+        });
+      });
+
+      // Message endpoint (used by SSE transport)
+      app.post('/message', (_req, res) => {
+        // The SSE transport handles this internally
+        res.status(200).end();
+      });
+
+      // Start HTTP server
+      app.listen(port, () => {
+        logger.info(`Obsidian MCP Server running on HTTP at http://localhost:${port}`);
+        logger.info(`SSE endpoint: http://localhost:${port}/sse`);
+        logger.info(`Health check: http://localhost:${port}/health`);
+      });
+    } else {
+      // Stdio mode (default)
+      const transport = new StdioServerTransport();
+      await this.server.connect(transport);
+      logger.info('Obsidian MCP Server running on stdio');
+    }
   }
 }
 
