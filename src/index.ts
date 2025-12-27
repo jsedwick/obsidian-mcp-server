@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
+import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
@@ -3075,8 +3075,11 @@ Check the sessions/ directory for recent conversations.
     }
 
     if (useHttp) {
-      // HTTP mode with SSE transport
+      // HTTP mode with Streamable HTTP transport
       const app = express();
+
+      // Store transports by session ID
+      const transports: Record<string, StreamableHTTPServerTransport> = {};
 
       // Middleware
       app.use(cors());
@@ -3087,30 +3090,99 @@ Check the sessions/ directory for recent conversations.
         res.json({ status: 'ok', timestamp: new Date().toISOString() });
       });
 
-      // SSE endpoint for MCP
-      app.get('/sse', async (req, res) => {
-        logger.info('New SSE connection established');
+      // MCP POST endpoint - handles initialization and method calls
+      app.post('/mcp', async (req, res) => {
+        const sessionId = req.headers['mcp-session-id'] as string | undefined;
+        let transport: StreamableHTTPServerTransport;
 
-        const transport = new SSEServerTransport('/message', res);
-        await this.server.connect(transport);
+        if (sessionId && transports[sessionId]) {
+          // Reuse existing transport for this session
+          transport = transports[sessionId];
+        } else {
+          // Create new transport for new session
+          transport = new StreamableHTTPServerTransport({
+            sessionIdGenerator: () => {
+              const newId = `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+              logger.info(`New session initialized: ${newId}`);
+              return newId;
+            },
+            onsessioninitialized: sid => {
+              logger.info(`Storing transport for session: ${sid}`);
+              transports[sid] = transport;
+            },
+          });
 
-        // Handle client disconnect
-        req.on('close', () => {
-          logger.info('SSE connection closed');
-        });
+          // Set up cleanup on transport close
+          transport.onclose = () => {
+            const sid = transport.sessionId;
+            if (sid && transports[sid]) {
+              logger.info(`Transport closed for session ${sid}`);
+              delete transports[sid];
+            }
+          };
+
+          // Connect transport to MCP server
+          await this.server.connect(transport);
+        }
+
+        // Handle the request
+        await transport.handleRequest(req, res, req.body);
       });
 
-      // Message endpoint (used by SSE transport)
-      app.post('/message', (_req, res) => {
-        // The SSE transport handles this internally
-        res.status(200).end();
+      // MCP GET endpoint - handles SSE streams for established sessions
+      app.get('/mcp', async (req, res) => {
+        const sessionId = req.headers['mcp-session-id'] as string | undefined;
+
+        if (!sessionId || !transports[sessionId]) {
+          res.status(400).send('Invalid or missing session ID');
+          return;
+        }
+
+        logger.info(`SSE stream requested for session: ${sessionId}`);
+        const transport = transports[sessionId];
+        await transport.handleRequest(req, res);
+      });
+
+      // MCP DELETE endpoint - handles session termination
+      app.delete('/mcp', async (req, res) => {
+        const sessionId = req.headers['mcp-session-id'] as string | undefined;
+
+        if (!sessionId || !transports[sessionId]) {
+          res.status(400).send('Invalid or missing session ID');
+          return;
+        }
+
+        logger.info(`Session termination requested for: ${sessionId}`);
+        const transport = transports[sessionId];
+        await transport.handleRequest(req, res);
       });
 
       // Start HTTP server
       app.listen(port, '0.0.0.0', () => {
         logger.info(`Obsidian MCP Server running on HTTP at http://0.0.0.0:${port}`);
-        logger.info(`SSE endpoint: http://0.0.0.0:${port}/sse`);
+        logger.info(`MCP endpoint: http://0.0.0.0:${port}/mcp`);
         logger.info(`Health check: http://0.0.0.0:${port}/health`);
+      });
+
+      // Handle graceful shutdown
+      process.on('SIGINT', () => {
+        void (async () => {
+          logger.info('Shutting down server...');
+          for (const sessionId in transports) {
+            try {
+              logger.info(`Closing transport for session ${sessionId}`);
+              await transports[sessionId].close();
+              delete transports[sessionId];
+            } catch (error) {
+              logger.error(
+                `Error closing transport for session ${sessionId}`,
+                error instanceof Error ? error : new Error(String(error))
+              );
+            }
+          }
+          logger.info('Server shutdown complete');
+          process.exit(0);
+        })();
       });
     } else {
       // Stdio mode (default)
