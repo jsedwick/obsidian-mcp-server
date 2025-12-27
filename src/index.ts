@@ -9,6 +9,7 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import fs from 'fs/promises';
 import fssync from 'fs';
+import https from 'https';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { exec } from 'child_process';
@@ -3056,8 +3057,9 @@ Check the sessions/ directory for recent conversations.
     // Parse command-line arguments
     const args = process.argv.slice(2);
     const useHttp = args.includes('--http');
+    const useHttps = args.includes('--https');
     const portArg = args.find(arg => arg.startsWith('--port='));
-    const port = portArg ? parseInt(portArg.split('=')[1], 10) : 3000;
+    const port = portArg ? parseInt(portArg.split('=')[1], 10) : useHttps ? 3443 : 3000;
 
     // Pre-compute embeddings if enabled
     if (this.embeddingConfig.enabled && this.embeddingConfig.precomputeEmbeddings) {
@@ -3074,8 +3076,8 @@ Check the sessions/ directory for recent conversations.
       }
     }
 
-    if (useHttp) {
-      // HTTP mode with Streamable HTTP transport
+    if (useHttp || useHttps) {
+      // HTTP/HTTPS mode with Streamable HTTP transport
       const app = express();
 
       // Store transports by session ID
@@ -3157,12 +3159,29 @@ Check the sessions/ directory for recent conversations.
         await transport.handleRequest(req, res);
       });
 
-      // Start HTTP server
-      app.listen(port, '0.0.0.0', () => {
-        logger.info(`Obsidian MCP Server running on HTTP at http://0.0.0.0:${port}`);
-        logger.info(`MCP endpoint: http://0.0.0.0:${port}/mcp`);
-        logger.info(`Health check: http://0.0.0.0:${port}/health`);
-      });
+      // Start HTTP or HTTPS server
+      if (useHttps) {
+        // HTTPS mode - load certificates
+        const currentDir = path.dirname(fileURLToPath(import.meta.url));
+        const certsPath = path.join(currentDir, '..', 'certs');
+        const httpsOptions = {
+          key: fssync.readFileSync(path.join(certsPath, 'key.pem')),
+          cert: fssync.readFileSync(path.join(certsPath, 'cert.pem')),
+        };
+
+        https.createServer(httpsOptions, app).listen(port, '0.0.0.0', () => {
+          logger.info(`Obsidian MCP Server running on HTTPS at https://0.0.0.0:${port}`);
+          logger.info(`MCP endpoint: https://0.0.0.0:${port}/mcp`);
+          logger.info(`Health check: https://0.0.0.0:${port}/health`);
+        });
+      } else {
+        // HTTP mode
+        app.listen(port, '0.0.0.0', () => {
+          logger.info(`Obsidian MCP Server running on HTTP at http://0.0.0.0:${port}`);
+          logger.info(`MCP endpoint: http://0.0.0.0:${port}/mcp`);
+          logger.info(`Health check: http://0.0.0.0:${port}/health`);
+        });
+      }
 
       // Handle graceful shutdown
       process.on('SIGINT', () => {
