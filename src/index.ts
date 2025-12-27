@@ -3107,10 +3107,10 @@ Check the sessions/ directory for recent conversations.
       });
 
       // Start HTTP server
-      app.listen(port, () => {
-        logger.info(`Obsidian MCP Server running on HTTP at http://localhost:${port}`);
-        logger.info(`SSE endpoint: http://localhost:${port}/sse`);
-        logger.info(`Health check: http://localhost:${port}/health`);
+      app.listen(port, '0.0.0.0', () => {
+        logger.info(`Obsidian MCP Server running on HTTP at http://0.0.0.0:${port}`);
+        logger.info(`SSE endpoint: http://0.0.0.0:${port}/sse`);
+        logger.info(`Health check: http://0.0.0.0:${port}/health`);
       });
     } else {
       // Stdio mode (default)
