@@ -359,6 +359,7 @@ async function discoverRelatedTopics(
       max_results: 15, // Get more results to filter down
       detail: 'summary',
       category: 'topic', // Only search topics for semantic discovery
+      directories: ['topics'], // Pre-filter to topics directory for better results
     });
 
     if (!searchResult.content || searchResult.content.length === 0) {
@@ -425,6 +426,7 @@ async function discoverRelatedDecisions(
       max_results: 15, // Get more results to filter down
       detail: 'summary',
       category: 'decision', // Only search decisions for semantic discovery
+      directories: ['decisions'], // Pre-filter to decisions directory for better results
     });
 
     if (!searchResult.content || searchResult.content.length === 0) {
@@ -788,40 +790,37 @@ export async function runPhase2Finalization(
 ): Promise<CloseSessionResult> {
   const data = sessionData;
 
-  await fs.writeFile(data.sessionFile, data.sessionContent);
-
-  context.setCurrentSession(data.sessionId, data.sessionFile);
-
   // Discover related content using semantic search (run in parallel)
   const [discoveredTopics, discoveredDecisions] = await Promise.all([
     discoverRelatedTopics(_args.summary, context),
     discoverRelatedDecisions(_args.summary, context),
   ]);
 
-  // Add discovered topics to session file
+  // Batch all content updates in memory before writing to disk
+  let updatedContent = data.sessionContent;
+
+  // Add discovered topics
   if (discoveredTopics.length > 0) {
-    const updatedContent = addRelatedTopicsToSession(data.sessionContent, discoveredTopics);
-    await fs.writeFile(data.sessionFile, updatedContent);
-    data.sessionContent = updatedContent;
+    updatedContent = addRelatedTopicsToSession(updatedContent, discoveredTopics);
   }
 
-  // Add discovered decisions to session file
+  // Add discovered decisions
   if (discoveredDecisions.length > 0) {
-    const updatedContent = addRelatedDecisionsToSession(data.sessionContent, discoveredDecisions);
-    await fs.writeFile(data.sessionFile, updatedContent);
-    data.sessionContent = updatedContent;
+    updatedContent = addRelatedDecisionsToSession(updatedContent, discoveredDecisions);
   }
 
   // Add links for accessed files (topics/decisions modified via update_document)
-  const updatedContentWithAccessed = addAccessedFilesLinksToSession(
-    data.sessionContent,
+  updatedContent = addAccessedFilesLinksToSession(
+    updatedContent,
     context.filesAccessed,
     context.vaultPath
   );
-  if (updatedContentWithAccessed !== data.sessionContent) {
-    await fs.writeFile(data.sessionFile, updatedContentWithAccessed);
-    data.sessionContent = updatedContentWithAccessed;
-  }
+
+  // Single write to disk after all in-memory updates
+  await fs.writeFile(data.sessionFile, updatedContent);
+  data.sessionContent = updatedContent;
+
+  context.setCurrentSession(data.sessionId, data.sessionFile);
 
   // Record session commits (Phase 2 step 3)
   if (data.sessionCommits && data.sessionCommits.length > 0 && data.detectedRepoInfo) {
@@ -938,40 +937,37 @@ export async function runSinglePhaseClose(
   detectedRepoInfo: { path: string; name: string; branch?: string; remote?: string } | null,
   autoCommitMessage: string
 ): Promise<CloseSessionResult> {
-  await fs.writeFile(sessionFile, sessionContent);
-
-  context.setCurrentSession(sessionId, sessionFile);
-
   // Discover related content using semantic search (run in parallel)
   const [discoveredTopics, discoveredDecisions] = await Promise.all([
     discoverRelatedTopics(_args.summary, context),
     discoverRelatedDecisions(_args.summary, context),
   ]);
 
-  // Add discovered topics to session file
+  // Batch all content updates in memory before writing to disk
+  let updatedContent = sessionContent;
+
+  // Add discovered topics
   if (discoveredTopics.length > 0) {
-    const updatedContent = addRelatedTopicsToSession(sessionContent, discoveredTopics);
-    await fs.writeFile(sessionFile, updatedContent);
-    sessionContent = updatedContent;
+    updatedContent = addRelatedTopicsToSession(updatedContent, discoveredTopics);
   }
 
-  // Add discovered decisions to session file
+  // Add discovered decisions
   if (discoveredDecisions.length > 0) {
-    const updatedContent = addRelatedDecisionsToSession(sessionContent, discoveredDecisions);
-    await fs.writeFile(sessionFile, updatedContent);
-    sessionContent = updatedContent;
+    updatedContent = addRelatedDecisionsToSession(updatedContent, discoveredDecisions);
   }
 
   // Add links for accessed files (topics/decisions modified via update_document)
-  const updatedContentWithAccessed = addAccessedFilesLinksToSession(
-    sessionContent,
+  updatedContent = addAccessedFilesLinksToSession(
+    updatedContent,
     context.filesAccessed,
     context.vaultPath
   );
-  if (updatedContentWithAccessed !== sessionContent) {
-    await fs.writeFile(sessionFile, updatedContentWithAccessed);
-    sessionContent = updatedContentWithAccessed;
-  }
+
+  // Single write to disk after all in-memory updates
+  await fs.writeFile(sessionFile, updatedContent);
+  sessionContent = updatedContent;
+
+  context.setCurrentSession(sessionId, sessionFile);
 
   let repoDetectionMessage = '';
   if (detectedRepoInfo) {
@@ -1160,6 +1156,7 @@ interface CloseSessionContext {
     max_results?: number;
     detail?: string;
     category?: 'topic' | 'task-list' | 'decision' | 'session' | 'project' | 'commit';
+    directories?: string[];
   }) => Promise<{ content: Array<{ text: string }> }>;
 }
 
