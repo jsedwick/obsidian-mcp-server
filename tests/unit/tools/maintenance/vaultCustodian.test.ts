@@ -312,7 +312,9 @@ The above is just an example - the link should not create a reciprocal link.
 
     // Verify the result doesn't mention adding reciprocal links for code block content
     const reportText = result.content[0].text;
-    expect(reportText).not.toContain('documentation-examples');
+    // The file may be mentioned for other validation fixes (moving sections, removing empty sections),
+    // but it should NOT mention adding reciprocal links for the code block content
+    expect(reportText).not.toContain('Added reciprocal link');
 
     // Cleanup
     await fs.rm(tmpDir, { recursive: true });

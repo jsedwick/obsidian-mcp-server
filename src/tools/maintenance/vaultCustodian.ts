@@ -1104,7 +1104,194 @@ async function deduplicateSectionLinks(file: string): Promise<string[]> {
 
   if (modified) {
     await fs.writeFile(file, newLines.join('\n'));
-    fixes.push(`Removed ${duplicatesRemoved} duplicate link(s) from Related sections`);
+    if (duplicatesRemoved > 0) {
+      fixes.push(`Removed ${duplicatesRemoved} duplicate link(s) from Related sections`);
+    }
+  }
+
+  return fixes;
+}
+
+/**
+ * Validate Related section content structure
+ * Ensures Related sections only contain proper list items with valid link formats:
+ * - Wiki links: `- [[target]]` or `- [[target|Display]]`
+ * - Inter-vault links: `- [Display](obsidian://open?vault=Name&file=path)`
+ * Removes malformed content like headers appearing as list items, plain text, etc.
+ */
+async function validateRelatedSectionContent(file: string): Promise<string[]> {
+  const fixes: string[] = [];
+  const content = await fs.readFile(file, 'utf-8');
+  const lines = content.split('\n');
+
+  const relatedHeaders = [
+    '## Related Sessions',
+    '## Related Topics',
+    '## Related Projects',
+    '## Related Decisions',
+    '## Related Git Commits',
+  ];
+
+  const newLines: string[] = [];
+  let currentSection: string | null = null;
+  let modified = false;
+  let inCodeBlock = false;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const trimmed = line.trim();
+
+    // Track code block boundaries (don't validate inside code blocks)
+    if (trimmed.startsWith('```')) {
+      inCodeBlock = !inCodeBlock;
+      newLines.push(line);
+      continue;
+    }
+
+    // Skip validation inside code blocks
+    if (inCodeBlock) {
+      newLines.push(line);
+      continue;
+    }
+
+    // Check if this is a Related section header (must not be indented)
+    if (relatedHeaders.includes(trimmed) && !line.startsWith(' ') && !line.startsWith('\t')) {
+      currentSection = trimmed;
+      newLines.push(line);
+      continue;
+    }
+
+    // Check if we've left the Related section (hit another non-indented header)
+    if (
+      trimmed.startsWith('#') &&
+      !line.startsWith(' ') &&
+      !line.startsWith('\t') &&
+      currentSection
+    ) {
+      currentSection = null;
+    }
+
+    // If we're inside a Related section, validate content
+    if (currentSection) {
+      // Empty lines are OK
+      if (trimmed === '') {
+        newLines.push(line);
+        continue;
+      }
+
+      // Check for valid link formats
+      const isWikiLink = /^- \[\[.+\]\]/.test(trimmed);
+      const isInterVaultLink = /^- \[.+\]\(obsidian:\/\/open\?vault=.+&file=.+\)/.test(trimmed);
+
+      if (isWikiLink || isInterVaultLink) {
+        // Valid list item with link
+        newLines.push(line);
+      } else {
+        // Invalid content in Related section
+        // Check for common malformations
+        if (trimmed.startsWith('##')) {
+          fixes.push(`Removed malformed header inside ${currentSection}: ${trimmed}`);
+          modified = true;
+          continue;
+        } else if (
+          trimmed.startsWith('-') &&
+          !trimmed.startsWith('- [[') &&
+          !trimmed.startsWith('- [')
+        ) {
+          fixes.push(`Removed malformed list item in ${currentSection}: ${trimmed}`);
+          modified = true;
+          continue;
+        } else if (!trimmed.startsWith('-')) {
+          // Plain text or other content
+          fixes.push(`Removed non-list content from ${currentSection}: ${trimmed}`);
+          modified = true;
+          continue;
+        } else {
+          // Other malformed list items
+          fixes.push(`Removed invalid content from ${currentSection}: ${trimmed}`);
+          modified = true;
+          continue;
+        }
+      }
+    } else {
+      // Not in a Related section, keep line as-is
+      newLines.push(line);
+    }
+  }
+
+  if (modified) {
+    await fs.writeFile(file, newLines.join('\n'));
+  }
+
+  return fixes;
+}
+
+/**
+ * Remove empty Related sections
+ * Removes Related section headers that have no links underneath them
+ */
+async function removeEmptyRelatedSections(file: string): Promise<string[]> {
+  const fixes: string[] = [];
+  const content = await fs.readFile(file, 'utf-8');
+  const lines = content.split('\n');
+
+  const relatedHeaders = [
+    '## Related Sessions',
+    '## Related Topics',
+    '## Related Projects',
+    '## Related Decisions',
+    '## Related Git Commits',
+  ];
+
+  const newLines: string[] = [];
+  let i = 0;
+  let modified = false;
+
+  while (i < lines.length) {
+    const line = lines[i];
+    const trimmed = line.trim();
+
+    // Check if this is a Related section header (must not be indented)
+    if (relatedHeaders.includes(trimmed) && !line.startsWith(' ') && !line.startsWith('\t')) {
+      // Look ahead to see if there are any actual links
+      let j = i + 1;
+      let hasLinks = false;
+
+      // Scan until we hit another header or end of file
+      while (j < lines.length && !lines[j].trim().startsWith('#')) {
+        const contentLine = lines[j].trim();
+        if (contentLine.startsWith('- [[') || contentLine.startsWith('- [')) {
+          hasLinks = true;
+          break;
+        }
+        j++;
+      }
+
+      if (hasLinks) {
+        // Keep the section
+        newLines.push(line);
+        i++;
+      } else {
+        // Empty section - remove it and any blank lines after it
+        fixes.push(`Removed empty section: ${trimmed}`);
+        modified = true;
+
+        // Skip this header line
+        i++;
+
+        // Skip any blank lines immediately following
+        while (i < lines.length && lines[i].trim() === '') {
+          i++;
+        }
+      }
+    } else {
+      newLines.push(line);
+      i++;
+    }
+  }
+
+  if (modified) {
+    await fs.writeFile(file, newLines.join('\n'));
   }
 
   return fixes;
@@ -1454,10 +1641,44 @@ ${content}`;
       }
     }
 
+    // Check 11: Validate Related section content structure
+    for (const file of allFiles) {
+      try {
+        const contentFixes = await validateRelatedSectionContent(file);
+        if (contentFixes.length > 0) {
+          const relativeFile = path.relative(context.vaultPath, file);
+          for (const fix of contentFixes) {
+            fixes.push(`${relativeFile}: ${fix}`);
+          }
+        }
+      } catch (error) {
+        console.error(
+          `Error validating Related section content in ${file}: ${error instanceof Error ? error.message : String(error)}`
+        );
+      }
+    }
+
+    // Check 12: Remove empty Related sections
+    for (const file of allFiles) {
+      try {
+        const emptyFixes = await removeEmptyRelatedSections(file);
+        if (emptyFixes.length > 0) {
+          const relativeFile = path.relative(context.vaultPath, file);
+          for (const fix of emptyFixes) {
+            fixes.push(`${relativeFile}: ${fix}`);
+          }
+        }
+      } catch (error) {
+        console.error(
+          `Error removing empty Related sections in ${file}: ${error instanceof Error ? error.message : String(error)}`
+        );
+      }
+    }
+
     // Generate report
     let report = '# Vault Custodian Report\n\n';
 
-    if (issues.length === 0 && warnings.length === 0) {
+    if (issues.length === 0 && warnings.length === 0 && fixes.length === 0) {
       report += '✅ Vault integrity check passed! No issues found.\n';
     } else {
       if (issues.length > 0) {
