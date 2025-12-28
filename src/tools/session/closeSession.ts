@@ -249,7 +249,7 @@ export async function runPhase1Analysis(
           `${sessionCommits.length} commit${
             sessionCommits.length > 1 ? 's were' : ' was'
           } made during this session. The analysis above identifies topics that may need updating.` +
-          '\n\n**INTERNAL WORKFLOW - CLAUDE HANDLES THIS AUTOMATICALLY:**\n\n' +
+          '\n\n**INTERNAL WORKFLOW - AI ASSISTANT HANDLES THIS AUTOMATICALLY:**\n\n' +
           "1. **PROACTIVELY ANALYZE** each commit's impact:\n" +
           '   - Read the analysis suggestions carefully\n' +
           '   - Think beyond direct mentions - consider conceptual relationships\n' +
