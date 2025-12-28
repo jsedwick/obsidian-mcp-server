@@ -245,11 +245,11 @@ export async function runPhase1Analysis(
         type: 'text',
         text:
           commitAnalysisReport +
-          '\n\n---\n\n**Phase 1 Complete: Commit Analysis**\n\n' +
+          '\n\n---\n\n**Commit Analysis Complete**\n\n' +
           `${sessionCommits.length} commit${
             sessionCommits.length > 1 ? 's were' : ' was'
           } made during this session. The analysis above identifies topics that may need updating.` +
-          '\n\n**Next Steps - AGGRESSIVE DOCUMENTATION DRIFT PREVENTION:**\n\n' +
+          '\n\n**INTERNAL WORKFLOW - CLAUDE HANDLES THIS AUTOMATICALLY:**\n\n' +
           "1. **PROACTIVELY ANALYZE** each commit's impact:\n" +
           '   - Read the analysis suggestions carefully\n' +
           '   - Think beyond direct mentions - consider conceptual relationships\n' +
@@ -264,7 +264,7 @@ export async function runPhase1Analysis(
           '   - Create new topics with `create_topic_page` if concepts warrant documentation\n' +
           '   - Always provide `reason` parameter explaining why updating (for audit trail)\n' +
           '   - **Err on the side of updating** rather than leaving documentation outdated\n\n' +
-          '3. **Only when ALL documentation is current**, call close_session again:\n\n' +
+          '3. **FINALIZE SESSION** - Only when ALL documentation is current, call:\n\n' +
           '```typescript\n' +
           'close_session({\n' +
           `  summary: "${summary}",\n` +
@@ -274,7 +274,7 @@ export async function runPhase1Analysis(
 ` +
           '})\n' +
           '```\n\n' +
-          '**Note:** Phase 2 does not need `_invoked_by_slash_command: true` (only Phase 1 does).\n\n' +
+          '**Note:** Finalization does not need `_invoked_by_slash_command: true`.\n\n' +
           '**Skip updates ONLY if** you have verified that no topics are affected by analyzing the commit impact.',
       },
     ],

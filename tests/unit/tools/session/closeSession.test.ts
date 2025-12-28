@@ -720,7 +720,7 @@ describe('closeSession - Two-Phase Workflow', () => {
 
       const phase1Result = await closeSession(phase1Args, context);
 
-      expect(phase1Result.content[0].text).toContain('Phase 1 Complete: Commit Analysis');
+      expect(phase1Result.content[0].text).toContain('Commit Analysis Complete');
       // May detect 1-2 commits depending on timing (initial commit + test commit)
       expect(phase1Result.content[0].text).toMatch(
         /[12] commits? (was|were) made during this session/
