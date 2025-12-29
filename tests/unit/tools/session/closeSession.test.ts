@@ -732,6 +732,14 @@ describe('closeSession - Two-Phase Workflow', () => {
       expect(sessionDataMatch).toBeTruthy();
       const sessionData = JSON.parse(sessionDataMatch![1]);
 
+      // Simulate documentation update between Phase 1 and Phase 2 (Decision 033 enforcement)
+      // The enforcement check requires vault files to be edited after Phase 1 when commits are detected
+      context.filesAccessed.push({
+        path: path.join(vaultPath, 'topics', 'test-topic.md'),
+        action: 'edit',
+        timestamp: new Date().toISOString(),
+      });
+
       // PHASE 2: Finalize with session_data
       const phase2Args: CloseSessionArgs = {
         summary: 'Implemented new feature',

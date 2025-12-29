@@ -217,6 +217,11 @@ export async function runPhase1Analysis(
 
   const uniqueFilesToCheck = Array.from(new Set(filesToCheck));
 
+  // Count vault edits/creates at Phase 1 for enforcement tracking (Decision 033)
+  const vaultEditsAtPhase1 = context.filesAccessed.filter(
+    f => (f.action === 'edit' || f.action === 'create') && f.path.startsWith(context.vaultPath)
+  ).length;
+
   const sessionData: SessionData = {
     phase: 1, // Mark as Phase 1 output
     sessionId,
@@ -234,6 +239,7 @@ export async function runPhase1Analysis(
     autoCommitMessage,
     handoff: args.handoff,
     sessionCommits, // Pass commit hashes to Phase 2 for recording
+    vaultEditsAtPhase1, // Enforcement tracking: baseline for doc update detection
   };
 
   const summary = args.summary.replace(/"/g, '\\"');
@@ -790,6 +796,39 @@ export async function runPhase2Finalization(
 ): Promise<CloseSessionResult> {
   const data = sessionData;
 
+  // ENFORCEMENT CHECK (Decision 033): Require documentation updates when commits detected
+  // This prevents the AI from skipping doc updates despite commit analysis suggestions
+  if (
+    data.sessionCommits &&
+    data.sessionCommits.length > 0 &&
+    data.vaultEditsAtPhase1 !== undefined
+  ) {
+    // Count current vault edits/creates
+    const currentVaultEdits = context.filesAccessed.filter(
+      f => (f.action === 'edit' || f.action === 'create') && f.path.startsWith(context.vaultPath)
+    ).length;
+
+    // If commits were detected but no vault files were updated between Phase 1 and Phase 2
+    if (currentVaultEdits <= data.vaultEditsAtPhase1) {
+      throw new Error(
+        '❌ Documentation Update Required\n\n' +
+          `${data.sessionCommits.length} commit(s) were made during this session, but no documentation was updated.\n\n` +
+          '**What you must do:**\n' +
+          '1. Review the commit analysis from Phase 1\n' +
+          '2. Search the vault for topics that may be affected by these commits\n' +
+          '3. Use `update_document` to update at least one topic with commit-related changes\n' +
+          '4. Call close_session with finalize: true again after updating documentation\n\n' +
+          '**Why this is enforced:**\n' +
+          'Documentation drift prevention is a core system goal. Commits that change code ' +
+          'typically warrant documentation updates to keep topics current.\n\n' +
+          '**If no documentation truly needs updating:**\n' +
+          "Add a brief note to the most relevant topic explaining why this commit doesn't " +
+          'require topic changes (e.g., "Commit abc123: Internal refactor with no API changes").\n\n' +
+          'Reference: Decision 033 - Guaranteed Commit Analysis via Tool Architecture'
+      );
+    }
+  }
+
   // Discover related content using semantic search (run in parallel)
   const [discoveredTopics, discoveredDecisions] = await Promise.all([
     discoverRelatedTopics(_args.summary, context),
@@ -1104,6 +1143,8 @@ export interface SessionData {
   autoCommitMessage?: string;
   handoff?: string; // Handoff notes for next session
   sessionCommits?: string[]; // Commit hashes made during this session
+  // Enforcement tracking (Decision 033): Require doc updates when commits detected
+  vaultEditsAtPhase1?: number; // Count of vault file edits/creates at Phase 1 completion
 }
 
 export interface CloseSessionResult {
