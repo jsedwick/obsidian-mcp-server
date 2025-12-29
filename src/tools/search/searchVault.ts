@@ -163,10 +163,21 @@ export async function searchVault(
 
         // Perform indexed search on this vault
         try {
+          const isPrimaryVault = vault.path === context.config.primaryVault.path;
+
+          // Categories that only exist in primary vault - skip secondary vaults when filtering by these
+          const primaryVaultOnlyCategories = ['topic', 'decision', 'project', 'commit', 'session'];
+          const isPrimaryVaultOnlyCategory =
+            args.category && primaryVaultOnlyCategories.includes(args.category);
+
+          // Skip secondary vaults when searching for primary-vault-only categories
+          // Topics, decisions, projects, commits, and sessions only exist in primary vault
+          if (!isPrimaryVault && isPrimaryVaultOnlyCategory) {
+            continue;
+          }
+
           // For secondary vaults, search all directories and skip category filtering
           // (they don't have the same structure or frontmatter as primary vault)
-          // This matches the linear search behavior where secondary vaults are searched recursively
-          const isPrimaryVault = vault.path === context.config.primaryVault.path;
           const directoriesToSearch = isPrimaryVault ? args.directories : undefined;
           const categoryToFilter = isPrimaryVault ? args.category : undefined;
 
