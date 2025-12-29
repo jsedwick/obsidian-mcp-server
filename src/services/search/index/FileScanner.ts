@@ -251,7 +251,7 @@ export class FileScanner {
    * Determine document category from relative path
    *
    * @param relativePath - Path relative to vault root
-   * @returns Category string
+   * @returns Category string (singular form matching frontmatter convention)
    */
   private determineCategory(relativePath: string): string {
     const parts = relativePath.split(path.sep);
@@ -261,19 +261,19 @@ export class FileScanner {
       const firstDir = parts[0];
 
       if (firstDir === 'sessions' || firstDir.match(/^\d{4}-\d{2}$/)) {
-        return 'sessions';
+        return 'session';
       }
 
       if (firstDir === 'topics') {
-        return 'topics';
+        return 'topic';
       }
 
       if (firstDir === 'decisions') {
-        return 'decisions';
+        return 'decision';
       }
 
       if (firstDir === 'projects') {
-        return 'projects';
+        return 'project';
       }
     }
 

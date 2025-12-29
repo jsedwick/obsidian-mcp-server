@@ -198,7 +198,7 @@ describe('FileScanner', () => {
 
       const files = await scanner.scanVault(tempDir, 'test-vault');
 
-      expect(files[0].category).toBe('sessions');
+      expect(files[0].category).toBe('session');
     });
 
     it('should categorize date-based sessions (YYYY-MM)', async () => {
@@ -208,7 +208,7 @@ describe('FileScanner', () => {
 
       const files = await scanner.scanVault(tempDir, 'test-vault');
 
-      expect(files[0].category).toBe('sessions');
+      expect(files[0].category).toBe('session');
     });
 
     it('should categorize topics directory', async () => {
@@ -218,7 +218,7 @@ describe('FileScanner', () => {
 
       const files = await scanner.scanVault(tempDir, 'test-vault');
 
-      expect(files[0].category).toBe('topics');
+      expect(files[0].category).toBe('topic');
     });
 
     it('should categorize decisions directory', async () => {
@@ -228,7 +228,7 @@ describe('FileScanner', () => {
 
       const files = await scanner.scanVault(tempDir, 'test-vault');
 
-      expect(files[0].category).toBe('decisions');
+      expect(files[0].category).toBe('decision');
     });
 
     it('should categorize projects directory', async () => {
@@ -238,7 +238,7 @@ describe('FileScanner', () => {
 
       const files = await scanner.scanVault(tempDir, 'test-vault');
 
-      expect(files[0].category).toBe('projects');
+      expect(files[0].category).toBe('project');
     });
 
     it('should default to document category', async () => {
@@ -377,10 +377,7 @@ describe('FileScanner', () => {
       await fs.writeFile(path.join(tempDir, 'real.md'), 'Real');
 
       try {
-        await fs.symlink(
-          path.join(tempDir, 'real.md'),
-          path.join(tempDir, 'link.md')
-        );
+        await fs.symlink(path.join(tempDir, 'real.md'), path.join(tempDir, 'link.md'));
       } catch {
         // Skip test if symlinks not supported
         return;

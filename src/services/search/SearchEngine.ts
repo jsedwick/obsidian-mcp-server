@@ -14,11 +14,7 @@ import { createLogger } from '../../utils/logger.js';
 import { KeywordSearch } from './KeywordSearch.js';
 import { SemanticSearch } from './SemanticSearch.js';
 import { SearchRanker } from './SearchRanker.js';
-import type {
-  SearchOptions,
-  SearchResults,
-  InternalSearchMatch,
-} from '../../models/Search.js';
+import type { SearchOptions, SearchResults, InternalSearchMatch } from '../../models/Search.js';
 import { ResponseDetail } from '../../models/Search.js';
 
 const logger = createLogger('SearchEngine');
@@ -253,9 +249,9 @@ export class SearchEngine {
 
           // Determine category based on path
           let category = 'document';
-          if (relativeFilePath.includes('sessions')) category = 'sessions';
-          else if (relativeFilePath.includes('topics')) category = 'topics';
-          else if (relativeFilePath.includes('decisions')) category = 'decisions';
+          if (relativeFilePath.includes('sessions')) category = 'session';
+          else if (relativeFilePath.includes('topics')) category = 'topic';
+          else if (relativeFilePath.includes('decisions')) category = 'decision';
 
           const searchResult = this.keywordSearch.scoreSearchResult(
             category,

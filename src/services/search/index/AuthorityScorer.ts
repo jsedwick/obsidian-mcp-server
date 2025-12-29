@@ -180,15 +180,15 @@ export class AuthorityScorer {
   /**
    * Get directory-based boost amount
    *
-   * @param category - Document category (directory)
+   * @param category - Document category (singular form matching frontmatter)
    * @returns Boost amount
    */
   private getDirectoryBoost(category: string): number {
-    if (category === 'topics') {
+    if (category === 'topic') {
       return this.config.topicsBoost;
-    } else if (category === 'decisions') {
+    } else if (category === 'decision') {
       return this.config.decisionsBoost;
-    } else if (category === 'sessions') {
+    } else if (category === 'session') {
       return this.config.sessionsBoost;
     }
     return 0; // Unknown categories get no boost

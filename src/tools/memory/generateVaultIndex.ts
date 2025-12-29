@@ -21,10 +21,10 @@ const DEFAULT_MAX_SIZE_BYTES = 10 * 1024;
 // Category-specific limits to prioritize work artifacts over living documents
 // Sessions/commits/decisions show discrete work; topics are noisy (updated frequently)
 const CATEGORY_LIMITS: Record<string, number> = {
-  sessions: 12, // 48% - Primary signal of recent work
-  projects: 10, // 40% - Code changes and repository activity
-  decisions: 5, // 20% - Strategic choices
-  topics: 5, // 20% - Recently touched documentation
+  session: 12, // 48% - Primary signal of recent work
+  project: 10, // 40% - Code changes and repository activity
+  decision: 5, // 20% - Strategic choices
+  topic: 5, // 20% - Recently touched documentation
   document: 0, // 0%  - Skip work vault docs (noise for MCP context)
 };
 
@@ -76,7 +76,7 @@ function formatEntry(
   const parts: string[] = [];
 
   // Special formatting for commits: include branch and message
-  if (entry.category === 'projects' && entry.commitBranch && entry.commitMessage) {
+  if (entry.category === 'project' && entry.commitBranch && entry.commitMessage) {
     const shortHash = path.basename(entry.relativePath, '.md');
     parts.push(`- **${shortHash}** [${entry.commitBranch}] "${entry.commitMessage}"`);
   } else {
@@ -142,7 +142,7 @@ export async function generateVaultIndex(
 
   // Group files by category first, then sort each category by modification time
   // Order: sessions (primary work signal), projects (code), decisions (strategy), topics (docs)
-  const categories = ['sessions', 'projects', 'decisions', 'topics', 'document'];
+  const categories = ['session', 'project', 'decision', 'topic', 'document'];
   const filesByCategory = new Map<string, ScannedFile[]>();
 
   for (const category of categories) {

@@ -333,9 +333,9 @@ export async function searchVault(
 
           // Determine category based on path
           let category = 'document';
-          if (relativeFilePath.includes('sessions')) category = 'sessions';
-          else if (relativeFilePath.includes('topics')) category = 'topics';
-          else if (relativeFilePath.includes('decisions')) category = 'decisions';
+          if (relativeFilePath.includes('sessions')) category = 'session';
+          else if (relativeFilePath.includes('topics')) category = 'topic';
+          else if (relativeFilePath.includes('decisions')) category = 'decision';
 
           const searchResult = context.scoreSearchResult(
             category,
