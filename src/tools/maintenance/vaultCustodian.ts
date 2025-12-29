@@ -1297,6 +1297,92 @@ async function removeEmptyRelatedSections(file: string): Promise<string[]> {
   return fixes;
 }
 
+/**
+ * Archive superseded decisions automatically
+ * Moves decisions with status: "superseded" to archive/decisions/ while preserving frontmatter
+ */
+async function archiveSupersededDecisions(
+  decisionsDir: string,
+  vaultPath: string,
+  filesToCheck?: string[]
+): Promise<string[]> {
+  const fixes: string[] = [];
+
+  try {
+    // Find all decision files (flat and nested)
+    const allDecisionFiles = await findMarkdownFiles(decisionsDir);
+
+    // Filter to only check specified files if provided
+    const decisionFiles = filesToCheck
+      ? allDecisionFiles.filter(f => filesToCheck.includes(f))
+      : allDecisionFiles;
+
+    for (const file of decisionFiles) {
+      try {
+        const content = await fs.readFile(file, 'utf-8');
+        const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
+
+        if (!frontmatterMatch) continue;
+
+        const frontmatter = frontmatterMatch[1];
+
+        // Check if status is "superseded" (handle various YAML formats)
+        const statusMatch = frontmatter.match(/^status:\s*["']?superseded["']?$/m);
+
+        if (statusMatch) {
+          // Decision is superseded - archive it
+          const relativePath = path.relative(decisionsDir, file);
+          const archiveFile = path.join(vaultPath, 'archive', 'decisions', relativePath);
+          const archiveDir = path.dirname(archiveFile);
+
+          // Create archive directory structure
+          await fs.mkdir(archiveDir, { recursive: true });
+
+          // Update frontmatter with archived date
+          const today = new Date().toISOString().split('T')[0];
+          let updatedFrontmatter = frontmatter;
+
+          // Add archived date if not already present
+          if (!updatedFrontmatter.includes('archived:')) {
+            updatedFrontmatter += `\narchived: "${today}"`;
+          }
+
+          // Add review history entry
+          const reviewHistoryEntry = `  - date: ${today}\n    action: archived\n    notes: "Automatically archived superseded decision"`;
+          if (updatedFrontmatter.includes('review_history:')) {
+            updatedFrontmatter = updatedFrontmatter.replace(
+              /review_history:/,
+              `review_history:\n${reviewHistoryEntry}`
+            );
+          } else {
+            updatedFrontmatter += `\nreview_history:\n${reviewHistoryEntry}`;
+          }
+
+          // Reconstruct file with updated frontmatter
+          const mainContent = content.substring(frontmatterMatch[0].length).trim();
+          const newContent = `---\n${updatedFrontmatter}\n---\n\n${mainContent}`;
+
+          // Move to archive
+          await fs.writeFile(archiveFile, newContent);
+          await fs.unlink(file);
+
+          fixes.push(
+            `Archived superseded decision: ${path.relative(vaultPath, file)} → ${path.relative(vaultPath, archiveFile)}`
+          );
+        }
+      } catch (error) {
+        console.error(
+          `Error checking decision for superseded status in ${file}: ${error instanceof Error ? error.message : String(error)}`
+        );
+      }
+    }
+  } catch (_e) {
+    // decisions directory doesn't exist or can't be read
+  }
+
+  return fixes;
+}
+
 export async function vaultCustodian(
   args: VaultCustodianArgs,
   context: {
@@ -1673,6 +1759,20 @@ ${content}`;
           `Error removing empty Related sections in ${file}: ${error instanceof Error ? error.message : String(error)}`
         );
       }
+    }
+
+    // Check 13: Archive superseded decisions
+    try {
+      const archiveFixes = await archiveSupersededDecisions(
+        decisionsDir,
+        context.vaultPath,
+        filesToCheck
+      );
+      fixes.push(...archiveFixes);
+    } catch (error) {
+      console.error(
+        `Error archiving superseded decisions: ${error instanceof Error ? error.message : String(error)}`
+      );
     }
 
     // Generate report
