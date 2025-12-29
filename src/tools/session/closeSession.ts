@@ -222,6 +222,10 @@ export async function runPhase1Analysis(
     f => (f.action === 'edit' || f.action === 'create') && f.path.startsWith(context.vaultPath)
   ).length;
 
+  // Semantic topic discovery for review (Decision 036)
+  const semanticTopicsForReview = await discoverTopicsForReview(args.summary, context);
+  const semanticTopicReviewSection = buildSemanticTopicReviewSection(semanticTopicsForReview);
+
   const sessionData: SessionData = {
     phase: 1, // Mark as Phase 1 output
     sessionId,
@@ -240,6 +244,7 @@ export async function runPhase1Analysis(
     handoff: args.handoff,
     sessionCommits, // Pass commit hashes to Phase 2 for recording
     vaultEditsAtPhase1, // Enforcement tracking: baseline for doc update detection
+    semanticTopicsPresented: semanticTopicsForReview.map(t => ({ path: t.path, title: t.title })),
   };
 
   const summary = args.summary.replace(/"/g, '\\"');
@@ -251,10 +256,14 @@ export async function runPhase1Analysis(
         type: 'text',
         text:
           commitAnalysisReport +
+          semanticTopicReviewSection +
           '\n\n---\n\n**Commit Analysis Complete**\n\n' +
           `${sessionCommits.length} commit${
             sessionCommits.length > 1 ? 's were' : ' was'
           } made during this session. The analysis above identifies topics that may need updating.` +
+          (semanticTopicsForReview.length > 0
+            ? ` Additionally, ${semanticTopicsForReview.length} semantically related topic(s) were identified for review.`
+            : '') +
           '\n\n**INTERNAL WORKFLOW - AI ASSISTANT HANDLES THIS AUTOMATICALLY:**\n\n' +
           "1. **PROACTIVELY ANALYZE** each commit's impact:\n" +
           '   - Read the analysis suggestions carefully\n' +
@@ -262,7 +271,11 @@ export async function runPhase1Analysis(
           '   - Search vault for related topics that might be affected\n' +
           '   - If a commit changes authentication, consider ALL auth-related topics\n' +
           '   - If a commit changes an API, consider topics about usage, integration, examples\n\n' +
-          '2. **IMMEDIATELY UPDATE** all affected documentation:\n' +
+          '2. **REVIEW SEMANTICALLY RELATED TOPICS** (Decision 036):\n' +
+          '   - Check the semantic topic review section above\n' +
+          '   - These topics may need updates even if not directly mentioned in commits\n' +
+          '   - Update if session content reveals drift or new information\n\n' +
+          '3. **IMMEDIATELY UPDATE** all affected documentation:\n' +
           '   - **Do NOT ask for user permission** - preventing documentation drift is your core responsibility\n' +
           '   - Use `search_vault` to find related files that need updates\n' +
           '   - Use `update_document` to update ANY file type (topics, decisions, user reference, etc.)\n' +
@@ -270,7 +283,7 @@ export async function runPhase1Analysis(
           '   - Create new topics with `create_topic_page` if concepts warrant documentation\n' +
           '   - Always provide `reason` parameter explaining why updating (for audit trail)\n' +
           '   - **Err on the side of updating** rather than leaving documentation outdated\n\n' +
-          '3. **FINALIZE SESSION** - Only when ALL documentation is current, call:\n\n' +
+          '4. **FINALIZE SESSION** - Only when ALL documentation is current, call:\n\n' +
           '```typescript\n' +
           'close_session({\n' +
           `  summary: "${summary}",\n` +
@@ -342,6 +355,125 @@ function extractKeywords(summary: string): string[] {
 
   // Return unique keywords (no artificial limit - semantic search handles query complexity)
   return Array.from(new Set(words));
+}
+
+/**
+ * Discover topics for review consideration (Decision 036)
+ * Returns top 3 semantically-related topics with last_reviewed metadata
+ * Used in Phase 1 to prompt documentation review
+ *
+ * @param summary - Session summary text for keyword extraction
+ * @param context - Close session context with searchVault
+ * @param precomputedTopics - Optional pre-computed topics to avoid duplicate search
+ */
+async function discoverTopicsForReview(
+  summary: string,
+  context: CloseSessionContext,
+  precomputedTopics?: Array<{ path: string; title: string }>
+): Promise<
+  Array<{
+    path: string;
+    title: string;
+    lastReviewed: string | null;
+    daysSinceReview: number | null;
+  }>
+> {
+  try {
+    // Use pre-computed topics if provided, otherwise search
+    const topics = precomputedTopics ?? (await discoverRelatedTopics(summary, context));
+    const topicsForReview = topics.slice(0, 3);
+
+    // Enrich with last_reviewed metadata
+    const enrichedTopics: Array<{
+      path: string;
+      title: string;
+      lastReviewed: string | null;
+      daysSinceReview: number | null;
+    }> = [];
+
+    for (const topic of topicsForReview) {
+      try {
+        const content = await fs.readFile(topic.path, 'utf-8');
+        // Extract last_reviewed from frontmatter
+        const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
+        let lastReviewed: string | null = null;
+        let daysSinceReview: number | null = null;
+
+        if (frontmatterMatch) {
+          const lastReviewedMatch = frontmatterMatch[1].match(
+            /last_reviewed:\s*(\d{4}-\d{2}-\d{2})/
+          );
+          if (lastReviewedMatch) {
+            lastReviewed = lastReviewedMatch[1];
+            const reviewDate = new Date(lastReviewed);
+            const today = new Date();
+            daysSinceReview = Math.floor(
+              (today.getTime() - reviewDate.getTime()) / (1000 * 60 * 60 * 24)
+            );
+          }
+        }
+
+        enrichedTopics.push({
+          path: topic.path,
+          title: topic.title,
+          lastReviewed,
+          daysSinceReview,
+        });
+      } catch {
+        // If we can't read the file, include it without metadata
+        enrichedTopics.push({
+          path: topic.path,
+          title: topic.title,
+          lastReviewed: null,
+          daysSinceReview: null,
+        });
+      }
+    }
+
+    return enrichedTopics;
+  } catch (error) {
+    console.error('Topic review discovery failed:', error);
+    return [];
+  }
+}
+
+/**
+ * Build the semantic topic review section for Phase 1 output
+ */
+function buildSemanticTopicReviewSection(
+  topics: Array<{
+    path: string;
+    title: string;
+    lastReviewed: string | null;
+    daysSinceReview: number | null;
+  }>
+): string {
+  if (topics.length === 0) {
+    return '';
+  }
+
+  let section = '\n\n---\n\n📚 **Semantic Topic Review**\n\n';
+  section +=
+    'The following topics are semantically related to this session. ' +
+    'Review and update if the session content reveals drift or new information:\n\n';
+
+  for (let i = 0; i < topics.length; i++) {
+    const topic = topics[i];
+    const slug = path.basename(topic.path, '.md');
+    let reviewInfo = '';
+    if (topic.daysSinceReview !== null) {
+      reviewInfo = ` (${topic.daysSinceReview} days since review)`;
+    } else if (topic.lastReviewed === null) {
+      reviewInfo = ' (never reviewed)';
+    }
+    section += `${i + 1}. **[[${slug}|${topic.title}]]**${reviewInfo}\n`;
+  }
+
+  section +=
+    '\n**Action:** Review these topics. Update using `update_document` if session ' +
+    'work reveals outdated information. No update required if topics are current.';
+
+  return section;
 }
 
 /**
@@ -982,6 +1114,10 @@ export async function runSinglePhaseClose(
     discoverRelatedDecisions(_args.summary, context),
   ]);
 
+  // Enrich top 3 discovered topics with review metadata (Decision 036)
+  // Pass pre-computed topics to avoid duplicate search
+  const topicsForReview = await discoverTopicsForReview(_args.summary, context, discoveredTopics);
+
   // Batch all content updates in memory before writing to disk
   let updatedContent = sessionContent;
 
@@ -1091,6 +1227,25 @@ export async function runSinglePhaseClose(
 
   context.clearSessionState();
 
+  // Build semantic topic review section for no-commit sessions (Decision 036)
+  // This is softer enforcement - just informational, not blocking
+  let semanticReviewNote = '';
+  if (topicsForReview.length > 0) {
+    semanticReviewNote = '\n\n📚 **Semantically Related Topics** (Decision 036)\n\n';
+    semanticReviewNote +=
+      'The following topics may be related to this session. Consider reviewing if content is outdated:\n';
+    for (const topic of topicsForReview) {
+      const slug = path.basename(topic.path, '.md');
+      let reviewInfo = '';
+      if (topic.daysSinceReview !== null) {
+        reviewInfo = ` (${topic.daysSinceReview} days since review)`;
+      } else {
+        reviewInfo = ' (never reviewed)';
+      }
+      semanticReviewNote += `  - [[${slug}|${topic.title}]]${reviewInfo}\n`;
+    }
+  }
+
   return {
     content: [
       {
@@ -1099,6 +1254,7 @@ export async function runSinglePhaseClose(
           lines.join('\n') +
           repoDetectionMessage +
           autoCommitMessage +
+          semanticReviewNote +
           validationReport +
           vaultCustodianReport,
       },
@@ -1145,6 +1301,8 @@ export interface SessionData {
   sessionCommits?: string[]; // Commit hashes made during this session
   // Enforcement tracking (Decision 033): Require doc updates when commits detected
   vaultEditsAtPhase1?: number; // Count of vault file edits/creates at Phase 1 completion
+  // Semantic topic review (Decision 036): Topics presented for review consideration
+  semanticTopicsPresented?: Array<{ path: string; title: string }>;
 }
 
 export interface CloseSessionResult {
