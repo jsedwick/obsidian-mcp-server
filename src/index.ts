@@ -1499,6 +1499,13 @@ SCOPE: Decisions can be vault-level (affecting the MCP system itself) or project
               description: 'Skip commit analysis and go straight to single-phase finalization.',
               default: false,
             },
+            working_directories: {
+              type: 'array',
+              items: { type: 'string' },
+              description:
+                "Claude Code's working directories. The MCP server runs as a separate process with a different cwd, " +
+                "so passing Claude Code's working directories enables correct Git repository detection.",
+            },
           },
           required: ['summary'],
         },

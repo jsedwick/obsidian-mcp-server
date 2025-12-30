@@ -159,6 +159,14 @@ export const CloseSessionArgsSchema = z.object({
     .optional()
     .default(false)
     .describe('Skip commit analysis and go straight to single-phase finalization'),
+  // Working directories from Claude Code (fixes repo detection gap)
+  working_directories: z
+    .array(z.string())
+    .optional()
+    .describe(
+      "Claude Code's working directories. The MCP server's process.cwd() differs from Claude Code's, " +
+        'so passing these enables correct repository detection.'
+    ),
 });
 
 // detect_session_repositories

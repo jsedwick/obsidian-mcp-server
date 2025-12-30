@@ -1272,6 +1272,9 @@ export interface CloseSessionArgs {
   finalize?: boolean; // Phase 2: run custodian, save session
   session_data?: SessionData; // Pass state from Phase 1 to Phase 2
   skip_analysis?: boolean; // Skip commit analysis, go straight to finalization
+  // Working directories from Claude Code environment (fixes repo detection gap)
+  // The MCP server's process.cwd() differs from Claude Code's working directory
+  working_directories?: string[]; // Claude Code passes its CWD and additional working dirs
 }
 
 /**
@@ -1455,10 +1458,24 @@ export async function closeSession(
     null;
   let autoCommitMessage = '';
 
-  // Always attempt repo detection - either from tracked files or from CWD
+  // Always attempt repo detection - either from tracked files or from working directories
+  // Use working_directories from Claude Code if provided, otherwise fall back to process.cwd()
+  // This fixes the repo detection gap where MCP server's cwd differs from Claude Code's
   try {
-    const cwd = process.env.PWD || process.cwd();
-    const repoPaths = await context.findGitRepos(cwd);
+    const fallbackCwd = process.env.PWD || process.cwd();
+    const searchDirs = args.working_directories?.length ? args.working_directories : [fallbackCwd];
+
+    // Search all working directories for Git repos
+    const allRepoPaths = new Set<string>();
+    for (const dir of searchDirs) {
+      try {
+        const repos = await context.findGitRepos(dir);
+        repos.forEach(r => allRepoPaths.add(r));
+      } catch {
+        // Skip directories that can't be searched
+      }
+    }
+    const repoPaths = Array.from(allRepoPaths);
 
     if (repoPaths.length > 0) {
       const candidates: RepoCandidate[] = [];
@@ -1489,15 +1506,21 @@ export async function closeSession(
           }
         }
 
-        if (repoPath === cwd) {
-          score += 15;
-          reasons.push('Repo is current working directory');
-        } else if (cwd.startsWith(repoPath)) {
-          score += 8;
-          reasons.push('CWD is within this repo');
-        } else if (repoPath.startsWith(cwd)) {
-          score += 5;
-          reasons.push('Repo is subdirectory of CWD');
+        // Score based on relationship to Claude Code's working directories
+        for (const workDir of searchDirs) {
+          if (repoPath === workDir) {
+            score += 15;
+            reasons.push('Repo is a working directory');
+            break;
+          } else if (workDir.startsWith(repoPath)) {
+            score += 8;
+            reasons.push('Working directory is within this repo');
+            break;
+          } else if (repoPath.startsWith(workDir)) {
+            score += 5;
+            reasons.push('Repo is subdirectory of working directory');
+            break;
+          }
         }
 
         if (score > 0 || repoPaths.length === 1) {
