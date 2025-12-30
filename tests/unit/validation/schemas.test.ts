@@ -263,7 +263,7 @@ describe('Validation Schemas', () => {
     describe('find_stale_topics', () => {
       it('should apply default threshold', () => {
         const result = validateToolArgs('find_stale_topics', {});
-        expect(result.age_threshold_days).toBe(365);
+        expect(result.age_threshold_days).toBe(30);
         expect(result.include_never_reviewed).toBe(true);
       });
 

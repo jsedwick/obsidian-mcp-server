@@ -262,7 +262,7 @@ export const FindStaleTopicsArgsSchema = z.object({
     .int()
     .positive()
     .optional()
-    .default(365)
+    .default(30)
     .describe('Number of days since creation or last review to consider a topic stale'),
   include_never_reviewed: z
     .boolean()
