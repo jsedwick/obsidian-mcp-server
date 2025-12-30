@@ -1,8 +1,14 @@
 /**
  * Tool: find_stale_topics
  *
- * Find topics that haven't been reviewed in a specified time period.
- * Returns list of topics that may need review.
+ * Find topics that haven't been reviewed recently, automatically archive obsolete ones,
+ * and return the remaining stale topics that need manual review.
+ *
+ * This tool implements automatic vault maintenance by:
+ * 1. Finding topics > 30 days old (top 10 oldest)
+ * 2. Assessing each for relevance (using same logic as update_document)
+ * 3. Automatically archiving obsolete topics with high confidence
+ * 4. Returning non-obsolete stale topics for manual review/update
  */
 
 import fs from 'fs/promises';
@@ -20,10 +26,74 @@ export interface FindStaleTopicsResult {
   }>;
 }
 
+export interface RelevanceAssessment {
+  should_archive: boolean;
+  confidence: 'certain' | 'likely' | 'uncertain';
+  reasoning: string;
+  evidence: string[];
+}
+
 export interface FindStaleTopicsContext {
   vaultPath: string;
   ensureVaultStructure: () => Promise<void>;
   getFileAgeDays: (dateString: string) => number;
+  slugify: (text: string) => string;
+  archiveTopic: (args: { topic: string; reason?: string }) => Promise<unknown>;
+}
+
+/**
+ * Assess whether a topic should be archived instead of updated.
+ *
+ * Same logic as update_document's assessTopicRelevance (Decision 038).
+ */
+async function assessTopicRelevance(content: string): Promise<RelevanceAssessment> {
+  const evidence: string[] = [];
+
+  // 1. Check for hook/script files mentioned in content
+  const hookFilePattern = /\/\.(?:config|claude)\/[^\s]+\.sh/g;
+  const hookFiles = content.match(hookFilePattern) || [];
+
+  for (const hookFile of hookFiles) {
+    try {
+      await fs.access(hookFile);
+    } catch {
+      evidence.push(`Hook file ${hookFile} does not exist`);
+    }
+  }
+
+  // 2. Check for deprecation/superseded markers in content
+  if (/deprecated|superseded|abandoned|no longer (?:used|exists?)/i.test(content)) {
+    evidence.push('Content explicitly mentions deprecation or abandonment');
+  }
+
+  // 3. Check for "resolved" markers indicating final state
+  if (/(?:ISSUE|CRITICAL ISSUE).*(?:RESOLVED|resolved)/i.test(content)) {
+    evidence.push('Content indicates issue was resolved (final state)');
+  }
+
+  // 4. Check for experiment conclusion markers
+  if (/Lessons Learned|experiment concluded/i.test(content)) {
+    evidence.push('Content indicates experiment or approach concluded');
+  }
+
+  // 5. Check for explicit "no longer" language
+  if (/no longer (?:relevant|applicable|needed|necessary)/i.test(content)) {
+    evidence.push('Content states it is no longer relevant');
+  }
+
+  // Conservative decision: need multiple evidence points for certainty
+  const shouldArchive = evidence.length >= 2;
+  const confidence: 'certain' | 'likely' | 'uncertain' =
+    evidence.length >= 3 ? 'certain' : evidence.length >= 2 ? 'likely' : 'uncertain';
+
+  return {
+    should_archive: shouldArchive,
+    confidence,
+    reasoning: shouldArchive
+      ? `Topic appears obsolete: ${evidence.join('; ')}`
+      : 'Topic appears current',
+    evidence,
+  };
 }
 
 export async function findStaleTopics(
@@ -32,7 +102,8 @@ export async function findStaleTopics(
 ): Promise<FindStaleTopicsResult> {
   await context.ensureVaultStructure();
 
-  const thresholdDays = args.age_threshold_days || 365;
+  // Default to 30 days (monthly review cycle)
+  const thresholdDays = args.age_threshold_days || 30;
   const includeNeverReviewed = args.include_never_reviewed !== false;
   const topicsDir = path.join(context.vaultPath, 'topics');
   const staleTopics: Array<{
@@ -96,10 +167,11 @@ export async function findStaleTopics(
     );
   }
 
-  // Sort by age (oldest first)
+  // Sort by age (oldest first), limit to top 10
   staleTopics.sort((a, b) => b.age_days - a.age_days);
+  const topicsToProcess = staleTopics.slice(0, 10);
 
-  if (staleTopics.length === 0) {
+  if (topicsToProcess.length === 0) {
     return {
       content: [
         {
@@ -110,17 +182,79 @@ export async function findStaleTopics(
     };
   }
 
-  let resultText = `Found ${staleTopics.length} stale topic(s) older than ${thresholdDays} days:\n\n`;
+  // Process each topic: assess relevance and archive if obsolete
+  const archivedTopics: Array<{ title: string; reason: string }> = [];
+  const topicsNeedingReview: typeof topicsToProcess = [];
 
-  staleTopics.forEach((topic, idx) => {
-    resultText += `${idx + 1}. **${topic.title}** (${topic.slug})\n`;
-    resultText += `   - Created: ${topic.created_date}\n`;
-    resultText += `   - Last reviewed: ${topic.last_reviewed || 'Never'}\n`;
-    resultText += `   - Age: ${topic.age_days} days\n`;
-    resultText += `   - Reviews: ${topic.review_count}\n\n`;
-  });
+  for (const topic of topicsToProcess) {
+    const filePath = path.join(context.vaultPath, topic.file_path);
+    const content = await fs.readFile(filePath, 'utf-8');
 
-  resultText += `\nUse get_topic_context to load full content, then update_topic_page to make changes.`;
+    // Assess relevance (Decision 038 logic)
+    const assessment = await assessTopicRelevance(content);
+
+    if (assessment.should_archive && assessment.confidence === 'certain') {
+      // Automatically archive obsolete topics
+      try {
+        await context.archiveTopic({
+          topic: topic.title,
+          reason: assessment.reasoning,
+        });
+
+        archivedTopics.push({
+          title: topic.title,
+          reason: assessment.reasoning,
+        });
+      } catch {
+        // If archiving fails, treat as needing manual review
+        topicsNeedingReview.push(topic);
+      }
+    } else {
+      // Topic is stale but not obsolete - needs manual review
+      topicsNeedingReview.push(topic);
+    }
+  }
+
+  // Build result message
+  let resultText = `# Stale Topics Report\n\n`;
+  resultText += `Scanned topics older than ${thresholdDays} days. Processed top 10 oldest.\n\n`;
+
+  // Report archived topics
+  if (archivedTopics.length > 0) {
+    resultText += `## ✅ Automatically Archived (${archivedTopics.length})\n\n`;
+    resultText += `The following obsolete topics were automatically moved to archive:\n\n`;
+
+    archivedTopics.forEach((topic, idx) => {
+      resultText += `${idx + 1}. **${topic.title}**\n`;
+      resultText += `   - Reason: ${topic.reason}\n\n`;
+    });
+  }
+
+  // Report topics needing review
+  if (topicsNeedingReview.length > 0) {
+    resultText += `## 📝 Topics Needing Review (${topicsNeedingReview.length})\n\n`;
+    resultText += `The following topics are stale but not obsolete. Review each for accuracy and currency:\n\n`;
+
+    topicsNeedingReview.forEach((topic, idx) => {
+      resultText += `${idx + 1}. **[[${topic.slug}|${topic.title}]]**\n`;
+      resultText += `   - Created: ${topic.created_date}\n`;
+      resultText += `   - Last reviewed: ${topic.last_reviewed || 'Never'}\n`;
+      resultText += `   - Age: ${topic.age_days} days\n`;
+      resultText += `   - Reviews: ${topic.review_count}\n\n`;
+    });
+
+    resultText += `\n---\n\n`;
+    resultText += `**Next Steps:**\n`;
+    resultText += `For each topic above:\n`;
+    resultText += `1. Use \`get_topic_context\` to load full content\n`;
+    resultText += `2. Review for outdated information, broken links, or deprecated approaches\n`;
+    resultText += `3. Use \`update_document\` with \`reason\` parameter to update if needed\n`;
+    resultText += `4. If topic is still current, \`update_document\` with no content changes to refresh \`last_reviewed\` date\n`;
+  }
+
+  if (archivedTopics.length === 0 && topicsNeedingReview.length === 0) {
+    resultText += `\nAll stale topics were processed but none required action.`;
+  }
 
   return {
     content: [

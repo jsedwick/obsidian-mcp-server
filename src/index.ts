@@ -679,6 +679,13 @@ class ObsidianMCPServer {
               vaultPath: this.config.primaryVault.path,
               ensureVaultStructure: this.ensureVaultStructure.bind(this),
               getFileAgeDays: this.getFileAgeDays.bind(this),
+              slugify: this.slugify.bind(this),
+              archiveTopic: async (args: tools.ArchiveTopicArgs) =>
+                await tools.archiveTopic(args, {
+                  vaultPath: this.config.primaryVault.path,
+                  slugify: this.slugify.bind(this),
+                  ensureVaultStructure: this.ensureVaultStructure.bind(this),
+                }),
             });
 
           case 'archive_topic':
@@ -1514,15 +1521,15 @@ SCOPE: Decisions can be vault-level (affecting the MCP system itself) or project
       {
         name: 'find_stale_topics',
         description:
-          "Find topics that haven't been reviewed in a specified time period. Returns list of topics that may need review.",
+          "Find topics that haven't been reviewed recently (>30 days), automatically archive obsolete ones using Decision 038 relevance assessment, and return remaining stale topics for manual review. Processes top 10 oldest topics.",
         inputSchema: {
           type: 'object',
           properties: {
             age_threshold_days: {
               type: 'number',
               description:
-                'Number of days since creation or last review to consider a topic stale (default: 365)',
-              default: 365,
+                'Number of days since creation or last review to consider a topic stale (default: 30)',
+              default: 30,
             },
             include_never_reviewed: {
               type: 'boolean',
