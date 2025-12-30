@@ -828,6 +828,7 @@ class ObsidianMCPServer {
                 path: v.path,
                 name: v.name,
               })),
+              ensureVaultStructure: this.ensureVaultStructure.bind(this),
             });
 
           case 'switch_mode': {
@@ -2081,6 +2082,7 @@ Check the sessions/ directory for recent conversations.
       slugify: this.slugify.bind(this),
       trackFileAccess: this.trackFileAccess.bind(this),
       secondaryVaults: this.config.secondaryVaults.map(v => ({ path: v.path, name: v.name })),
+      ensureVaultStructure: this.ensureVaultStructure.bind(this),
     });
   }
 

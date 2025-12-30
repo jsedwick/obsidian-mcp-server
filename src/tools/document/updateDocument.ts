@@ -10,13 +10,16 @@
  * - Enforces type-specific rules (read-only, append-only, etc.)
  * - Updates frontmatter automatically (Decision 011 compliance)
  * - Works for all document types
+ * - Automatically archives obsolete topics (Decision 038)
  *
  * Related: Decision 028 - Unified update_document Tool for Type-Aware Vault File Updates
+ * Related: Decision 038 - Automatic Topic Relevance Assessment Before Updates
  */
 
 import fs from 'fs/promises';
 import path from 'path';
 import yaml from 'yaml';
+import { archiveTopic } from '../topics/archiveTopic';
 
 export interface UpdateDocumentArgs {
   file_path: string;
@@ -37,6 +40,7 @@ export interface UpdateDocumentContext {
   slugify: (text: string) => string;
   trackFileAccess: (path: string, action: 'read' | 'edit' | 'create') => void;
   secondaryVaults?: Array<{ path: string; name: string }>;
+  ensureVaultStructure: () => Promise<void>;
 }
 
 type DocumentType =
@@ -187,6 +191,77 @@ const TYPE_RULES: Record<DocumentType, TypeRules> = {
 };
 
 /**
+ * Relevance assessment result
+ */
+interface RelevanceAssessment {
+  should_archive: boolean;
+  confidence: 'certain' | 'likely' | 'uncertain';
+  reasoning: string;
+  evidence: string[];
+}
+
+/**
+ * Assess whether a topic should be archived instead of updated.
+ *
+ * This function implements Decision 038's automatic relevance detection.
+ * Only archives with "certain" confidence (multiple evidence points required).
+ *
+ * Detection criteria:
+ * - Code-based: Implementation files mentioned in topic don't exist
+ * - Content-based: Explicit deprecation markers, "ISSUE RESOLVED" markers
+ * - Conservative threshold: false negatives OK, false positives NOT OK
+ */
+async function assessTopicRelevance(content: string): Promise<RelevanceAssessment> {
+  const evidence: string[] = [];
+
+  // 1. Check for hook/script files mentioned in content
+  const hookFilePattern = /\/\.(?:config|claude)\/[^\s]+\.sh/g;
+  const hookFiles = content.match(hookFilePattern) || [];
+
+  for (const hookFile of hookFiles) {
+    try {
+      await fs.access(hookFile);
+    } catch {
+      evidence.push(`Hook file ${hookFile} does not exist`);
+    }
+  }
+
+  // 2. Check for deprecation/superseded markers in content
+  if (/deprecated|superseded|abandoned|no longer (?:used|exists?)/i.test(content)) {
+    evidence.push('Content explicitly mentions deprecation or abandonment');
+  }
+
+  // 3. Check for "resolved" markers indicating final state
+  if (/(?:ISSUE|CRITICAL ISSUE).*(?:RESOLVED|resolved)/i.test(content)) {
+    evidence.push('Content indicates issue was resolved (final state)');
+  }
+
+  // 4. Check for experiment conclusion markers
+  if (/Lessons Learned|experiment concluded/i.test(content)) {
+    evidence.push('Content indicates experiment or approach concluded');
+  }
+
+  // 5. Check for explicit "no longer" language
+  if (/no longer (?:relevant|applicable|needed|necessary)/i.test(content)) {
+    evidence.push('Content states it is no longer relevant');
+  }
+
+  // Conservative decision: need multiple evidence points for certainty
+  const shouldArchive = evidence.length >= 2;
+  const confidence: 'certain' | 'likely' | 'uncertain' =
+    evidence.length >= 3 ? 'certain' : evidence.length >= 2 ? 'likely' : 'uncertain';
+
+  return {
+    should_archive: shouldArchive,
+    confidence,
+    reasoning: shouldArchive
+      ? `Topic appears obsolete: ${evidence.join('; ')}`
+      : 'Topic appears current',
+    evidence,
+  };
+}
+
+/**
  * Main update_document tool implementation
  */
 export async function updateDocument(
@@ -240,6 +315,28 @@ export async function updateDocument(
   if (!isSecondaryVault) {
     docType = detectDocumentType(filePath, frontmatter);
     rules = TYPE_RULES[docType];
+
+    // 3a. Auto-assess topic relevance (Decision 038)
+    if (docType === 'topic' && fileExists) {
+      const assessment = await assessTopicRelevance(existingContent);
+
+      if (assessment.should_archive && assessment.confidence === 'certain') {
+        // Archive instead of update
+        const topicName = (frontmatter.title as string) || path.basename(filePath, '.md');
+
+        return await archiveTopic(
+          {
+            topic: topicName,
+            reason: assessment.reasoning,
+          },
+          {
+            vaultPath: context.vaultPath,
+            slugify: context.slugify,
+            ensureVaultStructure: context.ensureVaultStructure,
+          }
+        );
+      }
+    }
 
     // 4. Validate operation (primary vault only)
     rules.validate(args);
