@@ -688,6 +688,11 @@ class ObsidianMCPServer {
                 }),
             });
 
+          case 'submit_topic_reviews':
+            return tools.submitTopicReviews(validatedArgs as tools.SubmitTopicReviewsArgs, {
+              vaultPath: this.config.primaryVault.path,
+            });
+
           case 'archive_topic':
             return await tools.archiveTopic(validatedArgs as tools.ArchiveTopicArgs, {
               vaultPath: this.config.primaryVault.path,
@@ -1537,6 +1542,91 @@ SCOPE: Decisions can be vault-level (affecting the MCP system itself) or project
               default: true,
             },
           },
+        },
+      },
+      {
+        name: 'submit_topic_reviews',
+        description:
+          'Submit structured topic review assessments with validation to detect rubber-stamping and ensure meaningful quality review. Enforces critical review workflow through tool architecture (Decision 033 principle). Returns validation errors if all topics marked as "current" without justification or if required notes are missing.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            reviews: {
+              type: 'array',
+              description: 'Array of structured assessments for each topic reviewed',
+              items: {
+                type: 'object',
+                properties: {
+                  topic_slug: {
+                    type: 'string',
+                    description: 'Topic slug (filename without .md)',
+                  },
+                  technical_accuracy: {
+                    type: 'string',
+                    enum: ['verified', 'outdated', 'needs_check'],
+                    description: 'Technical accuracy assessment',
+                  },
+                  technical_accuracy_notes: {
+                    type: 'string',
+                    description: 'Required if outdated or needs_check',
+                  },
+                  completeness: {
+                    type: 'string',
+                    enum: ['comprehensive', 'needs_expansion', 'adequate'],
+                    description: 'Completeness assessment',
+                  },
+                  completeness_notes: {
+                    type: 'string',
+                    description: 'Required if needs_expansion',
+                  },
+                  organization: {
+                    type: 'string',
+                    enum: ['excellent', 'needs_improvement', 'poor'],
+                    description: 'Organization assessment',
+                  },
+                  organization_notes: {
+                    type: 'string',
+                    description: 'Required if needs_improvement or poor',
+                  },
+                  redundancy_check: {
+                    type: 'string',
+                    enum: ['no_duplicates', 'consolidate_with', 'not_checked'],
+                    description: 'Redundancy/consolidation check',
+                  },
+                  consolidate_with_topic: {
+                    type: 'string',
+                    description: 'Required if consolidate_with selected',
+                  },
+                  outcome: {
+                    type: 'string',
+                    enum: ['current', 'expand', 'reorganize', 'consolidate', 'archive'],
+                    description: 'Final review outcome',
+                  },
+                  issues_found: {
+                    type: 'array',
+                    items: { type: 'string' },
+                    description: 'Issues discovered during review (broken links, outdated info, etc.)',
+                  },
+                  updates_needed: {
+                    type: 'array',
+                    items: { type: 'string' },
+                    description: 'Updates needed (add examples, fix organization, etc.)',
+                  },
+                },
+                required: [
+                  'topic_slug',
+                  'technical_accuracy',
+                  'completeness',
+                  'organization',
+                  'redundancy_check',
+                  'outcome',
+                  'issues_found',
+                  'updates_needed',
+                ],
+              },
+            },
+          },
+          required: ['reviews'],
         },
       },
       {

@@ -3,3 +3,4 @@
  */
 
 export * from './findStaleTopics.js';
+export * from './submitTopicReviews.js';

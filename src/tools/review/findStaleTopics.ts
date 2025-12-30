@@ -244,12 +244,21 @@ export async function findStaleTopics(
     });
 
     resultText += `\n---\n\n`;
-    resultText += `**Next Steps:**\n`;
-    resultText += `For each topic above:\n`;
-    resultText += `1. Use \`get_topic_context\` to load full content\n`;
-    resultText += `2. Review for outdated information, broken links, or deprecated approaches\n`;
-    resultText += `3. Use \`update_document\` with \`reason\` parameter to update if needed\n`;
-    resultText += `4. If topic is still current, \`update_document\` with no content changes to refresh \`last_reviewed\` date\n`;
+    resultText += `**Next Steps - Structured Review Workflow:**\n\n`;
+    resultText += `**⚠️  IMPORTANT:** To ensure meaningful review and prevent rubber-stamping, you must submit structured assessments using \`submit_topic_reviews\`.\n\n`;
+    resultText += `**Workflow:**\n`;
+    resultText += `1. Load each topic with \`get_topic_context\` to review full content\n`;
+    resultText += `2. Apply the [[topic-review-checklist-for-stale-topic-assessment|Topic Review Checklist]] systematically\n`;
+    resultText += `3. Submit structured reviews using \`submit_topic_reviews\` with:\n`;
+    resultText += `   - Technical accuracy assessment (verified/outdated/needs_check)\n`;
+    resultText += `   - Completeness assessment (comprehensive/needs_expansion/adequate)\n`;
+    resultText += `   - Organization assessment (excellent/needs_improvement/poor)\n`;
+    resultText += `   - Redundancy check (no_duplicates/consolidate_with/not_checked)\n`;
+    resultText += `   - Final outcome (current/expand/reorganize/consolidate/archive)\n`;
+    resultText += `   - Issues found and updates needed\n`;
+    resultText += `4. Tool will validate reviews and flag rubber-stamping patterns\n`;
+    resultText += `5. Apply updates based on approved review outcomes\n\n`;
+    resultText += `**Legacy workflow (discouraged):** Directly update topics without structured assessment. This bypasses quality enforcement.\n`;
   }
 
   if (archivedTopics.length === 0 && topicsNeedingReview.length === 0) {

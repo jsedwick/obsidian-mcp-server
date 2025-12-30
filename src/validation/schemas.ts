@@ -252,7 +252,7 @@ export const AnalyzeTopicContentArgsSchema = z.object({
 });
 
 /**
- * REVIEW TOOLS (3 tools)
+ * REVIEW TOOLS (2 tools)
  */
 
 // find_stale_topics
@@ -269,6 +269,38 @@ export const FindStaleTopicsArgsSchema = z.object({
     .optional()
     .default(true)
     .describe('Include topics that have never been reviewed'),
+});
+
+// submit_topic_reviews
+const TopicReviewAssessmentSchema = z.object({
+  topic_slug: NonEmptyString.describe('Topic slug (filename without .md)'),
+
+  // Technical accuracy
+  technical_accuracy: z.enum(['verified', 'outdated', 'needs_check']).describe('Technical accuracy assessment'),
+  technical_accuracy_notes: z.string().optional().describe('Required if outdated or needs_check'),
+
+  // Completeness
+  completeness: z.enum(['comprehensive', 'needs_expansion', 'adequate']).describe('Completeness assessment'),
+  completeness_notes: z.string().optional().describe('Required if needs_expansion'),
+
+  // Organization
+  organization: z.enum(['excellent', 'needs_improvement', 'poor']).describe('Organization assessment'),
+  organization_notes: z.string().optional().describe('Required if needs_improvement or poor'),
+
+  // Redundancy check
+  redundancy_check: z.enum(['no_duplicates', 'consolidate_with', 'not_checked']).describe('Redundancy/consolidation check'),
+  consolidate_with_topic: z.string().optional().describe('Required if consolidate_with'),
+
+  // Final outcome
+  outcome: z.enum(['current', 'expand', 'reorganize', 'consolidate', 'archive']).describe('Final review outcome'),
+
+  // Issues and updates
+  issues_found: z.array(z.string()).describe('Issues discovered during review'),
+  updates_needed: z.array(z.string()).describe('Updates needed'),
+});
+
+export const SubmitTopicReviewsArgsSchema = z.object({
+  reviews: z.array(TopicReviewAssessmentSchema).min(1, 'At least one review is required').describe('Structured assessments for each topic'),
 });
 
 /**
@@ -528,6 +560,7 @@ export const ValidationSchemas = {
 
   // Review tools
   find_stale_topics: FindStaleTopicsArgsSchema,
+  submit_topic_reviews: SubmitTopicReviewsArgsSchema,
 
   // Git tools
   create_project_page: CreateProjectPageArgsSchema,
