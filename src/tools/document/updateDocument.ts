@@ -19,7 +19,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import yaml from 'yaml';
-import { archiveTopic } from '../topics/archiveTopic';
+import { archiveTopic } from '../topics/archiveTopic.js';
 
 export interface UpdateDocumentArgs {
   file_path: string;
@@ -121,16 +121,12 @@ const TYPE_RULES: Record<DocumentType, TypeRules> = {
 
   decision: {
     readonly: false,
-    appendOnly: true, // Decisions can be amended but not replaced
+    appendOnly: false, // Allow full replacement for restructuring (Decision 039)
     frontmatterUpdates: (fm): Record<string, unknown> => ({
       ...fm,
       // Preserve immutable fields: number, status, date
     }),
-    validate: args => {
-      if (args.strategy === 'replace') {
-        throw new Error('Decisions cannot be fully replaced (append-only). Use strategy: "append"');
-      }
-    },
+    validate: () => {}, // No restrictions (Decision 039)
   },
 
   session: {
