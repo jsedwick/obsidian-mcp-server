@@ -17,6 +17,49 @@ import { GitError } from '../../utils/errors.js';
 
 const execAsync = promisify(exec);
 
+/**
+ * Helper function to infer working directories from file access patterns.
+ * Extracts unique Git repository roots from all accessed files.
+ * This provides AI-agnostic repository detection as a fallback when
+ * working_directories parameter is not provided.
+ *
+ * @param filesAccessed Array of file access records
+ * @returns Array of unique Git repository root paths
+ */
+async function inferWorkingDirectoriesFromFileAccess(
+  filesAccessed: FileAccess[]
+): Promise<string[]> {
+  const repoPaths = new Set<string>();
+
+  // Extract unique parent directories from accessed files
+  const directories = new Set<string>();
+  for (const file of filesAccessed) {
+    directories.add(path.dirname(file.path));
+  }
+
+  // For each directory, search upward to find git repo root
+  for (const dir of directories) {
+    let currentPath = dir;
+    // Search up to 10 levels (reasonable maximum)
+    for (let i = 0; i < 10; i++) {
+      try {
+        const gitDir = path.join(currentPath, '.git');
+        await fs.access(gitDir);
+        // Found a git repo root
+        repoPaths.add(currentPath);
+        break;
+      } catch {
+        // No .git here, try parent
+        const parentPath = path.dirname(currentPath);
+        if (parentPath === currentPath) break; // Reached filesystem root
+        currentPath = parentPath;
+      }
+    }
+  }
+
+  return Array.from(repoPaths);
+}
+
 export async function findUnrecordedCommits(
   repoPath: string,
   repoSlug: string,
@@ -1458,12 +1501,27 @@ export async function closeSession(
     null;
   let autoCommitMessage = '';
 
-  // Always attempt repo detection - either from tracked files or from working directories
-  // Use working_directories from Claude Code if provided, otherwise fall back to process.cwd()
-  // This fixes the repo detection gap where MCP server's cwd differs from Claude Code's
+  // Always attempt repo detection using hybrid approach:
+  // 1. Use working_directories parameter if provided (AI-specific, e.g., Claude Code)
+  // 2. Infer from filesAccessed if available (AI-agnostic, MCP tool usage)
+  // 3. Fall back to process.cwd() as last resort
   try {
     const fallbackCwd = process.env.PWD || process.cwd();
-    const searchDirs = args.working_directories?.length ? args.working_directories : [fallbackCwd];
+
+    let searchDirs: string[];
+    if (args.working_directories?.length) {
+      // Priority 1: AI provided working directories (Claude Code)
+      searchDirs = args.working_directories;
+    } else {
+      // Priority 2: Infer from file access patterns (AI-agnostic)
+      const inferredDirs = await inferWorkingDirectoriesFromFileAccess(context.filesAccessed);
+      if (inferredDirs.length > 0) {
+        searchDirs = inferredDirs;
+      } else {
+        // Priority 3: Fall back to MCP server's cwd
+        searchDirs = [fallbackCwd];
+      }
+    }
 
     // Search all working directories for Git repos
     const allRepoPaths = new Set<string>();
