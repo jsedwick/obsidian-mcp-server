@@ -13,11 +13,25 @@ export interface AnalyzeCommitImpactArgs {
   include_diff?: boolean;
 }
 
+/**
+ * Structured topic data for enforcement (Decision 041)
+ */
+export interface RelatedTopic {
+  path: string;
+  title: string;
+  relevance: string; // Why this topic is related to the commit
+}
+
 export interface AnalyzeCommitImpactResult {
   content: Array<{
     type: string;
     text: string;
   }>;
+  /**
+   * Structured list of topics related to this commit (Decision 041)
+   * Used by closeSession to enforce topic review
+   */
+  relatedTopics?: RelatedTopic[];
 }
 
 export async function analyzeCommitImpact(
@@ -102,6 +116,8 @@ export async function analyzeCommitImpact(
     ];
 
     const relatedContent: string[] = [];
+    // Collect structured topic data for enforcement (Decision 041)
+    const relatedTopicsMap = new Map<string, RelatedTopic>();
 
     for (const term of searchTerms) {
       try {
@@ -111,13 +127,43 @@ export async function analyzeCommitImpact(
           snippets_only: true,
         });
 
-        if (!results.content[0].text.includes('Found 0 matches')) {
-          relatedContent.push(`**Search for "${term}":**\n${results.content[0].text}\n`);
+        const resultText = results.content[0].text;
+        if (!resultText.includes('Found 0 matches')) {
+          relatedContent.push(`**Search for "${term}":**\n${resultText}\n`);
+
+          // Extract topic paths from search results (Decision 041)
+          // Format: **1. /path/to/file.md** or **/path/to/file.md**
+          const pathMatches = resultText.matchAll(/\*\*(?:\d+\.\s*)?([^*]+\.md)\*\*/g);
+          for (const match of pathMatches) {
+            const filePath = match[1].trim();
+            // Only include topics (not sessions, decisions, or archived files)
+            if (
+              filePath.includes('/topics/') &&
+              !filePath.includes('/archive/') &&
+              filePath.startsWith(context.vaultPath)
+            ) {
+              // Extract title from filename
+              const fileName = path.basename(filePath, '.md');
+              const title = fileName.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+
+              // Add to map (deduplicate by path)
+              if (!relatedTopicsMap.has(filePath)) {
+                relatedTopicsMap.set(filePath, {
+                  path: filePath,
+                  title,
+                  relevance: `Matched search term: "${term}"`,
+                });
+              }
+            }
+          }
         }
       } catch {
         // Skip failed searches
       }
     }
+
+    // Convert map to array, limit to top 5 topics
+    const relatedTopics = Array.from(relatedTopicsMap.values()).slice(0, 5);
 
     // Build impact analysis prompt
     const analysisPrompt = `Analyze this Git commit and provide COMPREHENSIVE impact assessment for documentation updates.
@@ -223,6 +269,8 @@ ${analysisPrompt}
 `,
         },
       ],
+      // Structured topic data for enforcement (Decision 041)
+      relatedTopics: relatedTopics.length > 0 ? relatedTopics : undefined,
     };
   } catch (error) {
     throw new Error(

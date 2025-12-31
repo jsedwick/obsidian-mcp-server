@@ -13,6 +13,7 @@ import { generateSessionTemplate } from '../../templates.js';
 import { analyzeTopicContentInternal } from '../topics/analyzeTopicContent.js';
 import type { FileAccess } from '../../models/Session.js';
 import type { RepoCandidate } from '../../models/Git.js';
+import type { RelatedTopic } from '../git/analyzeCommitImpact.js';
 import { GitError } from '../../utils/errors.js';
 
 const execAsync = promisify(exec);
@@ -208,6 +209,9 @@ export async function runPhase1Analysis(
   }
 
   let commitAnalysisReport = commitDetectionError;
+  // Collect commit-related topics for enforcement (Decision 041)
+  const commitRelatedTopicsMap = new Map<string, RelatedTopic & { commitHash: string }>();
+
   if (sessionCommits.length > 0) {
     commitAnalysisReport += `
 
@@ -226,11 +230,30 @@ export async function runPhase1Analysis(
         if (analysis.content && analysis.content[0]) {
           commitAnalysisReport += `---\n${(analysis.content[0] as { text: string }).text}\n\n`;
         }
+
+        // Collect related topics from this commit (Decision 041)
+        if (analysis.relatedTopics) {
+          for (const topic of analysis.relatedTopics) {
+            const topicPath: string = topic.path;
+            if (!commitRelatedTopicsMap.has(topicPath)) {
+              const typedTopic: RelatedTopic & { commitHash: string } = {
+                path: topic.path,
+                title: topic.title,
+                relevance: topic.relevance,
+                commitHash: commitHash.substring(0, 12),
+              };
+              commitRelatedTopicsMap.set(topicPath, typedTopic);
+            }
+          }
+        }
       } catch (_error) {
         commitAnalysisReport += `⚠️  Failed to analyze commit ${commitHash.substring(0, 12)}\n\n`;
       }
     }
   }
+
+  // Convert to array for sessionData
+  const commitRelatedTopics = Array.from(commitRelatedTopicsMap.values());
 
   let repoDetectionMessage = '';
   if (detectedRepoInfo) {
@@ -288,10 +311,33 @@ export async function runPhase1Analysis(
     sessionCommits, // Pass commit hashes to Phase 2 for recording
     vaultEditsAtPhase1, // Enforcement tracking: baseline for doc update detection
     semanticTopicsPresented: semanticTopicsForReview.map(t => ({ path: t.path, title: t.title })),
+    // Commit-related topics for enforcement (Decision 041)
+    commitRelatedTopics: commitRelatedTopics.length > 0 ? commitRelatedTopics : undefined,
   };
 
   const summary = args.summary.replace(/"/g, '\\"');
   const topic = args.topic ? `topic: "${args.topic.replace(/"/g, '\\"')}",` : '';
+
+  // Build commit-related topics enforcement section (Decision 041)
+  let commitTopicsEnforcementSection = '';
+  if (commitRelatedTopics.length > 0) {
+    commitTopicsEnforcementSection =
+      '\n\n---\n\n' +
+      '⚠️ **COMMIT-RELATED TOPICS - REVIEW REQUIRED (Decision 041)**\n\n' +
+      'The following topics were identified as potentially affected by commits.\n' +
+      '**You MUST read each topic** using `Read` or `get_topic_context` before finalizing.\n' +
+      'Finalization will be BLOCKED if any topic is not reviewed.\n\n' +
+      commitRelatedTopics
+        .map(
+          t =>
+            `- **${t.title}**\n` +
+            `  - Path: \`${t.path}\`\n` +
+            `  - Commit: ${t.commitHash}\n` +
+            `  - Reason: ${t.relevance}`
+        )
+        .join('\n\n') +
+      '\n';
+  }
 
   return {
     content: [
@@ -299,13 +345,17 @@ export async function runPhase1Analysis(
         type: 'text',
         text:
           commitAnalysisReport +
+          commitTopicsEnforcementSection +
           semanticTopicReviewSection +
           '\n\n---\n\n**Commit Analysis Complete**\n\n' +
           `${sessionCommits.length} commit${
             sessionCommits.length > 1 ? 's were' : ' was'
           } made during this session. The analysis above identifies topics that may need updating.` +
+          (commitRelatedTopics.length > 0
+            ? ` **${commitRelatedTopics.length} topic(s) MUST be reviewed** before finalization (hard enforcement).`
+            : '') +
           (semanticTopicsForReview.length > 0
-            ? ` Additionally, ${semanticTopicsForReview.length} semantically related topic(s) were identified for review.`
+            ? ` Additionally, ${semanticTopicsForReview.length} semantically related topic(s) were identified for review (soft enforcement).`
             : '') +
           '\n\n**INTERNAL WORKFLOW - AI ASSISTANT HANDLES THIS AUTOMATICALLY:**\n\n' +
           "1. **PROACTIVELY ANALYZE** each commit's impact:\n" +
@@ -1004,6 +1054,42 @@ export async function runPhase2Finalization(
     }
   }
 
+  // ENFORCEMENT CHECK (Decision 041): Require review of commit-related topics
+  // This ensures Claude reads each topic identified as potentially affected by commits
+  if (data.commitRelatedTopics && data.commitRelatedTopics.length > 0) {
+    const unreviewedTopics = data.commitRelatedTopics.filter(topic => {
+      // Check if topic was accessed (read, edit, or create all count as review)
+      return !context.filesAccessed.some(
+        f => f.path === topic.path && ['read', 'edit', 'create'].includes(f.action)
+      );
+    });
+
+    if (unreviewedTopics.length > 0) {
+      throw new Error(
+        '❌ Commit-Related Topics Not Reviewed (Decision 041)\n\n' +
+          `${unreviewedTopics.length} topic(s) were identified as potentially affected by commits but were not examined:\n\n` +
+          unreviewedTopics
+            .map(
+              t =>
+                `- **${t.title}**\n` +
+                `  Path: ${t.path}\n` +
+                `  Commit: ${t.commitHash}\n` +
+                `  Reason: ${t.relevance}`
+            )
+            .join('\n\n') +
+          '\n\n**What you must do:**\n' +
+          '1. Read each topic using `Read` tool or `get_topic_context`\n' +
+          '2. Decide if the commit warrants updates to that topic\n' +
+          '3. Update topics that need changes using `update_document`\n' +
+          '4. Call close_session with finalize: true again after reviewing all topics\n\n' +
+          '**Why this is enforced:**\n' +
+          'Commit analysis identified these topics as potentially outdated. ' +
+          'Reading them ensures you consciously evaluate whether updates are needed.\n\n' +
+          'Reference: Decision 041 - Enforce Topic Review for Commit-Related Documentation'
+      );
+    }
+  }
+
   // Discover related content using semantic search (run in parallel)
   const [discoveredTopics, discoveredDecisions] = await Promise.all([
     discoverRelatedTopics(_args.summary, context),
@@ -1349,6 +1435,14 @@ export interface SessionData {
   vaultEditsAtPhase1?: number; // Count of vault file edits/creates at Phase 1 completion
   // Semantic topic review (Decision 036): Topics presented for review consideration
   semanticTopicsPresented?: Array<{ path: string; title: string }>;
+  // Commit-related topics for hard enforcement (Decision 041)
+  // These topics MUST be read before Phase 2 can complete
+  commitRelatedTopics?: Array<{
+    path: string;
+    title: string;
+    relevance: string;
+    commitHash: string;
+  }>;
 }
 
 export interface CloseSessionResult {
