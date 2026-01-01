@@ -352,10 +352,10 @@ export async function runPhase1Analysis(
             sessionCommits.length > 1 ? 's were' : ' was'
           } made during this session. The analysis above identifies topics that may need updating.` +
           (commitRelatedTopics.length > 0
-            ? ` **${commitRelatedTopics.length} topic(s) MUST be reviewed** before finalization (hard enforcement).`
+            ? ` **${commitRelatedTopics.length} commit-related topic(s) MUST be reviewed** before finalization (Decision 041).`
             : '') +
           (semanticTopicsForReview.length > 0
-            ? ` Additionally, ${semanticTopicsForReview.length} semantically related topic(s) were identified for review (soft enforcement).`
+            ? ` **${semanticTopicsForReview.length} semantically-related topic(s) MUST also be reviewed** before finalization (Decision 042).`
             : '') +
           '\n\n**INTERNAL WORKFLOW - AI ASSISTANT HANDLES THIS AUTOMATICALLY:**\n\n' +
           "1. **PROACTIVELY ANALYZE** each commit's impact:\n" +
@@ -364,7 +364,8 @@ export async function runPhase1Analysis(
           '   - Search vault for related topics that might be affected\n' +
           '   - If a commit changes authentication, consider ALL auth-related topics\n' +
           '   - If a commit changes an API, consider topics about usage, integration, examples\n\n' +
-          '2. **REVIEW SEMANTICALLY RELATED TOPICS** (Decision 036):\n' +
+          '2. **REVIEW SEMANTICALLY RELATED TOPICS** (Decision 042):\n' +
+          '   - These topics MUST be read (hard enforcement like commit-related topics)\n' +
           '   - Check the semantic topic review section above\n' +
           '   - These topics may need updates even if not directly mentioned in commits\n' +
           '   - Update if session content reveals drift or new information\n\n' +
@@ -545,10 +546,10 @@ function buildSemanticTopicReviewSection(
     return '';
   }
 
-  let section = '\n\n---\n\n📚 **Semantic Topic Review**\n\n';
+  let section = '\n\n---\n\n📚 **Semantic Topic Review (Decision 042 - Hard Enforcement)**\n\n';
   section +=
     'The following topics are semantically related to this session. ' +
-    'Review and update if the session content reveals drift or new information:\n\n';
+    '**You MUST read each topic** before finalizing. Finalization will be BLOCKED if any topic is not reviewed.\n\n';
 
   for (let i = 0; i < topics.length; i++) {
     const topic = topics[i];
@@ -563,8 +564,9 @@ function buildSemanticTopicReviewSection(
   }
 
   section +=
-    '\n**Action:** Review these topics. Update using `update_document` if session ' +
-    'work reveals outdated information. No update required if topics are current.';
+    '\n**Action Required:** Read each topic using `Read` or `get_topic_context`. ' +
+    'Evaluate if session content reveals outdated information. ' +
+    'Update topics that need changes using `update_document`.';
 
   return section;
 }
@@ -1090,6 +1092,34 @@ export async function runPhase2Finalization(
     }
   }
 
+  // ENFORCEMENT CHECK (Decision 042): Require review of semantic topics
+  // This ensures Claude reads the top 3 semantically-related topics presented in Phase 1
+  if (data.semanticTopicsPresented && data.semanticTopicsPresented.length > 0) {
+    const unreviewedSemanticTopics = data.semanticTopicsPresented.filter(topic => {
+      // Check if topic was accessed (read, edit, or create all count as review)
+      return !context.filesAccessed.some(
+        f => f.path === topic.path && ['read', 'edit', 'create'].includes(f.action)
+      );
+    });
+
+    if (unreviewedSemanticTopics.length > 0) {
+      throw new Error(
+        '❌ Semantic Topics Not Reviewed (Decision 042)\n\n' +
+          `${unreviewedSemanticTopics.length} semantically-related topic(s) were presented in Phase 1 but were not examined:\n\n` +
+          unreviewedSemanticTopics.map(t => `- **${t.title}**\n  Path: ${t.path}`).join('\n\n') +
+          '\n\n**What you must do:**\n' +
+          '1. Read each topic using `Read` tool or `get_topic_context`\n' +
+          '2. Evaluate if the session content reveals outdated information\n' +
+          '3. Update topics that need changes using `update_document`\n' +
+          '4. Call close_session with finalize: true again after reviewing all topics\n\n' +
+          '**Why this is enforced:**\n' +
+          'Semantic search identified these topics as highly related to this session. ' +
+          'If confidence was high enough to surface them in the top 3, they deserve review.\n\n' +
+          'Reference: Decision 042 - Extend Hard Enforcement to Semantic Topics'
+      );
+    }
+  }
+
   // Discover related content using semantic search (run in parallel)
   const [discoveredTopics, discoveredDecisions] = await Promise.all([
     discoverRelatedTopics(_args.summary, context),
@@ -1356,11 +1386,12 @@ export async function runSinglePhaseClose(
 
   context.clearSessionState();
 
-  // Build semantic topic review section for no-commit sessions (Decision 036)
-  // This is softer enforcement - just informational, not blocking
+  // Build semantic topic review section for no-commit sessions (Decision 042)
+  // Hard enforcement - these topics are reviewed for linking but not enforced
+  // (enforcement only applies to two-phase workflow where topics are presented in Phase 1)
   let semanticReviewNote = '';
   if (topicsForReview.length > 0) {
-    semanticReviewNote = '\n\n📚 **Semantically Related Topics** (Decision 036)\n\n';
+    semanticReviewNote = '\n\n📚 **Semantically Related Topics** (Decision 042)\n\n';
     semanticReviewNote +=
       'The following topics may be related to this session. Consider reviewing if content is outdated:\n';
     for (const topic of topicsForReview) {
