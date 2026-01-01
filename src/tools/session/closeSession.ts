@@ -438,6 +438,40 @@ function extractKeywords(summary: string): string[] {
     'which',
     'why',
     'how',
+    // Generic action words that cause false positives
+    'created',
+    'updated',
+    'added',
+    'modified',
+    'changed',
+    'removed',
+    'deleted',
+    'fixed',
+    'implemented',
+    'documented',
+    // Generic document/file terms
+    'file',
+    'files',
+    'document',
+    'documents',
+    'content',
+    'section',
+    'sections',
+    'page',
+    'pages',
+    // Generic descriptors that match too broadly
+    'comprehensive',
+    'complete',
+    'both',
+    'existing',
+    'reference',
+    'information',
+    'details',
+    'system',
+    'work',
+    'using',
+    'based',
+    'related',
   ]);
 
   // Extract words, filter stop words, keep significant terms
@@ -447,8 +481,12 @@ function extractKeywords(summary: string): string[] {
     .split(/\s+/)
     .filter(word => word.length > 3 && !stopWords.has(word));
 
-  // Return unique keywords (no artificial limit - semantic search handles query complexity)
-  return Array.from(new Set(words));
+  // Get unique words
+  const uniqueWords = Array.from(new Set(words));
+
+  // Limit to 10 most distinctive keywords to improve search precision
+  // Keep first 10 as they appear in order in summary (usually most important)
+  return uniqueWords.slice(0, 10);
 }
 
 /**
@@ -586,6 +624,38 @@ async function discoverRelatedTopics(
       return [];
     }
 
+    // Skip semantic discovery if keywords are too generic or non-technical
+    // This prevents false positives when session content doesn't match vault topics
+    const genericKeywords = new Set([
+      'family',
+      'personal',
+      'people',
+      'name',
+      'names',
+      'time',
+      'day',
+      'week',
+      'month',
+      'year',
+      'email',
+      'phone',
+      'address',
+      'city',
+      'state',
+      'country',
+    ]);
+
+    const technicalKeywordCount = keywords.filter(k => !genericKeywords.has(k)).length;
+
+    // Require at least 5 technical keywords for discovery
+    // If most keywords are generic (names, places, times), skip discovery
+    if (technicalKeywordCount < 5) {
+      console.log(
+        `Skipping semantic discovery: insufficient technical keywords (${technicalKeywordCount}/10)`
+      );
+      return [];
+    }
+
     // Search vault with keywords, filtering to topics only
     const searchResult = await context.searchVault({
       query: keywords.join(' '),
@@ -614,6 +684,28 @@ async function discoverRelatedTopics(
         filePath.includes('/topics/') && // Is a topic file
         !filePath.includes('/archive/') // Not archived
       ) {
+        // Quality check: Read topic and verify meaningful keyword matches
+        try {
+          const topicContent = await fs.readFile(filePath, 'utf-8');
+          const contentLower = topicContent.toLowerCase();
+
+          // Count how many keywords appear in topic content
+          const matchCount = keywords.filter(keyword => {
+            // Skip single-char or very short keywords
+            if (keyword.length < 4) return false;
+            return contentLower.includes(keyword);
+          }).length;
+
+          // Require at least 3 keyword matches to consider topic related
+          // This prevents false positives from single generic term matches
+          if (matchCount < 3) {
+            continue; // Skip this topic
+          }
+        } catch {
+          // If can't read file, skip it
+          continue;
+        }
+
         // Extract topic title from filename
         const fileName = path.basename(filePath, '.md');
         const title = fileName
