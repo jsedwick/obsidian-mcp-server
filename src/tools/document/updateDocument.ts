@@ -318,11 +318,12 @@ export async function updateDocument(
 
       if (assessment.should_archive && assessment.confidence === 'certain') {
         // Archive instead of update
-        const topicName = (frontmatter.title as string) || path.basename(filePath, '.md');
+        // Use filename slug, not frontmatter title (titles may not match slugs)
+        const topicSlug = path.basename(filePath, '.md');
 
         return await archiveTopic(
           {
-            topic: topicName,
+            topic: topicSlug,
             reason: assessment.reasoning,
           },
           {
