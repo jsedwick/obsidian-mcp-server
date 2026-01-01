@@ -624,39 +624,9 @@ async function discoverRelatedTopics(
       return [];
     }
 
-    // Skip semantic discovery if keywords are too generic or non-technical
-    // This prevents false positives when session content doesn't match vault topics
-    const genericKeywords = new Set([
-      'family',
-      'personal',
-      'people',
-      'name',
-      'names',
-      'time',
-      'day',
-      'week',
-      'month',
-      'year',
-      'email',
-      'phone',
-      'address',
-      'city',
-      'state',
-      'country',
-    ]);
-
-    const technicalKeywordCount = keywords.filter(k => !genericKeywords.has(k)).length;
-
-    // Require at least 5 technical keywords for discovery
-    // If most keywords are generic (names, places, times), skip discovery
-    if (technicalKeywordCount < 5) {
-      console.log(
-        `Skipping semantic discovery: insufficient technical keywords (${technicalKeywordCount}/10)`
-      );
-      return [];
-    }
-
     // Search vault with keywords, filtering to topics only
+    // Embeddings provide semantic understanding to distinguish contexts
+    // (e.g., "California vacation" vs "California AWS region")
     const searchResult = await context.searchVault({
       query: keywords.join(' '),
       max_results: 15, // Get more results to filter down
