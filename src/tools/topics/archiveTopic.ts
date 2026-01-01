@@ -58,16 +58,7 @@ export async function archiveTopic(
     updatedFrontmatter += `\narchive_reason: ${args.reason}`;
   }
 
-  // Add to review history
-  const reviewHistoryEntry = `  - date: ${today}\n    action: archived\n    notes: "${args.reason || 'Topic archived'}"`;
-  if (updatedFrontmatter.includes('review_history:')) {
-    updatedFrontmatter = updatedFrontmatter.replace(
-      /review_history:/,
-      `review_history:\n${reviewHistoryEntry}`
-    );
-  } else {
-    updatedFrontmatter += `\nreview_history:\n${reviewHistoryEntry}`;
-  }
+  // Decision 043: review_history no longer updated, use Git commit history instead
 
   const mainContent = content.substring(frontmatterMatch[0].length).trim();
   const newContent = `---\n${updatedFrontmatter}\n---\n\n${mainContent}`;

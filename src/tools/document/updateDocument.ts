@@ -92,23 +92,16 @@ const TYPE_RULES: Record<DocumentType, TypeRules> = {
   topic: {
     readonly: false,
     appendOnly: false,
-    frontmatterUpdates: (fm, reason): Record<string, unknown> => {
+    frontmatterUpdates: (fm, _reason): Record<string, unknown> => {
       const today = new Date().toISOString().split('T')[0];
       const reviewCount = typeof fm.review_count === 'number' ? fm.review_count : 0;
-      const reviewHistory = Array.isArray(fm.review_history) ? fm.review_history : [];
 
+      // Decision 043: review_history deprecated, use Git commit history instead
       return {
         ...fm,
         last_reviewed: today,
         review_count: reviewCount + 1,
-        review_history: [
-          ...reviewHistory,
-          {
-            date: today,
-            action: 'updated',
-            notes: reason || 'Content updated',
-          },
-        ],
+        // review_history no longer updated (Decision 043)
       };
     },
     validate: args => {

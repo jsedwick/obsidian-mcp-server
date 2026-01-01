@@ -59,19 +59,20 @@ describe('archiveTopic', () => {
     expect(content).toContain('archive_reason: No longer relevant');
   });
 
-  it('should update review history', async () => {
+  it('should add archived metadata (Decision 043: review_history deprecated)', async () => {
     await createTopicFile(vaultPath, 'review-topic', 'Review Topic', 'Content');
 
     await archiveTopic({ topic: 'Review Topic', reason: 'Outdated' }, context);
 
     const content = await readVaultFile(vaultPath, 'archive/topics/review-topic.md');
-    expect(content).toContain('review_history:');
-    expect(content).toContain('action: archived');
+    // Decision 043: review_history no longer updated, check archived fields instead
+    expect(content).toContain('archived:');
+    expect(content).toContain('archive_reason: Outdated');
   });
 
   it('should throw error for non-existent topic', async () => {
-    await expect(
-      archiveTopic({ topic: 'Nonexistent Topic' }, context)
-    ).rejects.toThrow('Topic not found');
+    await expect(archiveTopic({ topic: 'Nonexistent Topic' }, context)).rejects.toThrow(
+      'Topic not found'
+    );
   });
 });

@@ -40,6 +40,7 @@ export interface TopicFrontmatter {
   review_count: number; // Number of times reviewed
   tags: string[]; // Categorization tags
   review_history: Array<{
+    // DEPRECATED (Decision 043): Will be removed in Phase 2
     date: string;
     action: string;
     notes: string;
@@ -130,6 +131,7 @@ export function generateTopicTemplate(args: TopicTemplateArgs): string {
     last_reviewed: args.created,
     review_count: 0,
     tags: args.tags || ['topic'],
+    // Decision 043: review_history deprecated, kept for Phase 1 compatibility
     review_history: [
       {
         date: args.created,
@@ -477,8 +479,8 @@ export function validateTopicFrontmatter(fm: any): fm is TopicFrontmatter {
     typeof fm.created === 'string' &&
     typeof fm.last_reviewed === 'string' &&
     typeof fm.review_count === 'number' &&
-    Array.isArray(fm.tags) &&
-    Array.isArray(fm.review_history)
+    Array.isArray(fm.tags)
+    // Decision 043: review_history is optional (deprecated)
   );
 }
 
