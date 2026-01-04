@@ -843,6 +843,16 @@ class ObsidianMCPServer {
               ensureVaultStructure: this.ensureVaultStructure.bind(this),
             });
 
+          case 'code_file':
+            return await tools.codeFile(validatedArgs as tools.CodeFileArgs, {
+              vaultPath: this.config.primaryVault.path,
+              secondaryVaults: this.config.secondaryVaults.map(v => ({
+                path: v.path,
+                name: v.name,
+              })),
+              trackFileAccess: this.trackFileAccess.bind(this),
+            });
+
           case 'switch_mode': {
             const { mode } = validatedArgs as { mode: VaultMode };
             const result = this.switchMode(mode);
@@ -1605,7 +1615,8 @@ SCOPE: Decisions can be vault-level (affecting the MCP system itself) or project
                   issues_found: {
                     type: 'array',
                     items: { type: 'string' },
-                    description: 'Issues discovered during review (broken links, outdated info, etc.)',
+                    description:
+                      'Issues discovered during review (broken links, outdated info, etc.)',
                   },
                   updates_needed: {
                     type: 'array',
@@ -2028,6 +2039,34 @@ SCOPE: Decisions can be vault-level (affecting the MCP system itself) or project
             },
           },
           required: ['file_path', 'content'],
+        },
+      },
+      {
+        name: 'code_file',
+        description:
+          'Edit or write non-vault code files with automatic file access tracking. Use this instead of native Edit/Write to ensure repository detection and vault_custodian processing. For vault files, use update_document instead.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            file_path: {
+              type: 'string',
+              description: 'Absolute path to the code file',
+            },
+            operation: {
+              type: 'string',
+              enum: ['edit', 'write'],
+              description: 'Operation type: edit (search-replace) or write (create/overwrite)',
+            },
+            content: {
+              type: 'string',
+              description: 'For write: full file content. For edit: replacement text (new_string)',
+            },
+            old_string: {
+              type: 'string',
+              description: 'Required for edit: text to find and replace',
+            },
+          },
+          required: ['file_path', 'operation', 'content'],
         },
       },
       {

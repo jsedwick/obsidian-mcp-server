@@ -534,6 +534,31 @@ export const UpdateDocumentArgsSchema = z.object({
 });
 
 /**
+ * CODE TOOLS (1 tool)
+ */
+
+// Code file operation enum
+const CodeFileOperationSchema = z.enum(['edit', 'write'], {
+  errorMap: () => ({ message: 'operation must be one of: edit, write' }),
+});
+
+// code_file
+export const CodeFileArgsSchema = z
+  .object({
+    file_path: AbsolutePath.describe('Absolute path to the code file'),
+    operation: CodeFileOperationSchema.describe(
+      'Operation type: edit (search-replace) or write (create/overwrite)'
+    ),
+    content: NonEmptyString.describe(
+      'For write: full file content. For edit: replacement text (new_string)'
+    ),
+    old_string: z.string().optional().describe('Required for edit: text to find and replace'),
+  })
+  .refine(data => !(data.operation === 'edit' && !data.old_string), {
+    message: 'old_string is required when operation is "edit"',
+  });
+
+/**
  * MODE TOOLS (2 tools)
  */
 
@@ -603,6 +628,9 @@ export const ValidationSchemas = {
 
   // Document tools
   update_document: UpdateDocumentArgsSchema,
+
+  // Code tools
+  code_file: CodeFileArgsSchema,
 
   // Mode tools
   switch_mode: SwitchModeArgsSchema,
