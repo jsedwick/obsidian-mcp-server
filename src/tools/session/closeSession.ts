@@ -194,19 +194,9 @@ export async function runPhase1Analysis(
     commitDetectionError = `⚠️  Failed to detect session commits: ${String(error)}\n\n`;
   }
 
-  if (sessionCommits.length === 0) {
-    return runSinglePhaseClose(
-      args,
-      context,
-      sessionId,
-      sessionFile,
-      sessionContent,
-      dateStr,
-      monthDir,
-      detectedRepoInfo,
-      commitDetectionError + autoCommitMessage
-    );
-  }
+  // Decision 044: Always run two-phase workflow, never skip to single-phase
+  // Even with 0 commits, Phase 2 is required for semantic topic enforcement (Decision 042)
+  // The previous early-return to runSinglePhaseClose() bypassed critical enforcement checks
 
   let commitAnalysisReport = commitDetectionError;
   // Collect commit-related topics for enforcement (Decision 041)
@@ -347,29 +337,36 @@ export async function runPhase1Analysis(
           commitAnalysisReport +
           commitTopicsEnforcementSection +
           semanticTopicReviewSection +
-          '\n\n---\n\n**Commit Analysis Complete**\n\n' +
-          `${sessionCommits.length} commit${
-            sessionCommits.length > 1 ? 's were' : ' was'
-          } made during this session. The analysis above identifies topics that may need updating.` +
+          '\n\n---\n\n**Session Analysis Complete**\n\n' +
+          (sessionCommits.length === 0
+            ? 'No commits were made during this session.'
+            : `${sessionCommits.length} commit${sessionCommits.length > 1 ? 's were' : ' was'} made during this session.`) +
+          (sessionCommits.length > 0
+            ? ' The analysis above identifies topics that may need updating.'
+            : '') +
           (commitRelatedTopics.length > 0
             ? ` **${commitRelatedTopics.length} commit-related topic(s) MUST be reviewed** before finalization (Decision 041).`
             : '') +
           (semanticTopicsForReview.length > 0
-            ? ` **${semanticTopicsForReview.length} semantically-related topic(s) MUST also be reviewed** before finalization (Decision 042).`
+            ? ` **${semanticTopicsForReview.length} semantically-related topic(s) MUST be reviewed** before finalization (Decision 042).`
             : '') +
           '\n\n**INTERNAL WORKFLOW - AI ASSISTANT HANDLES THIS AUTOMATICALLY:**\n\n' +
-          "1. **PROACTIVELY ANALYZE** each commit's impact:\n" +
-          '   - Read the analysis suggestions carefully\n' +
-          '   - Think beyond direct mentions - consider conceptual relationships\n' +
-          '   - Search vault for related topics that might be affected\n' +
-          '   - If a commit changes authentication, consider ALL auth-related topics\n' +
-          '   - If a commit changes an API, consider topics about usage, integration, examples\n\n' +
-          '2. **REVIEW SEMANTICALLY RELATED TOPICS** (Decision 042):\n' +
+          (sessionCommits.length > 0
+            ? "1. **PROACTIVELY ANALYZE** each commit's impact:\n" +
+              '   - Read the analysis suggestions carefully\n' +
+              '   - Think beyond direct mentions - consider conceptual relationships\n' +
+              '   - Search vault for related topics that might be affected\n' +
+              '   - If a commit changes authentication, consider ALL auth-related topics\n' +
+              '   - If a commit changes an API, consider topics about usage, integration, examples\n\n'
+            : '') +
+          (semanticTopicsForReview.length > 0
+            ? `${sessionCommits.length > 0 ? '2' : '1'}. **REVIEW SEMANTICALLY RELATED TOPICS** (Decision 042):\n`
+            : '1. **REVIEW SEMANTICALLY RELATED TOPICS** (Decision 042):\n') +
           '   - These topics MUST be read (hard enforcement like commit-related topics)\n' +
           '   - Check the semantic topic review section above\n' +
           '   - These topics may need updates even if not directly mentioned in commits\n' +
           '   - Update if session content reveals drift or new information\n\n' +
-          '3. **IMMEDIATELY UPDATE** all affected documentation:\n' +
+          `${sessionCommits.length > 0 ? '3' : '2'}. **IMMEDIATELY UPDATE** all affected documentation:\n` +
           '   - **Do NOT ask for user permission** - preventing documentation drift is your core responsibility\n' +
           '   - Use `search_vault` to find related files that need updates\n' +
           '   - Use `update_document` to update ANY file type (topics, decisions, user reference, etc.)\n' +
@@ -377,7 +374,7 @@ export async function runPhase1Analysis(
           '   - Create new topics with `create_topic_page` if concepts warrant documentation\n' +
           '   - Always provide `reason` parameter explaining why updating (for audit trail)\n' +
           '   - **Err on the side of updating** rather than leaving documentation outdated\n\n' +
-          '4. **FINALIZE SESSION** - Only when ALL documentation is current, call:\n\n' +
+          `${sessionCommits.length > 0 ? '4' : '3'}. **FINALIZE SESSION** - Only when ALL documentation is current, call:\n\n` +
           '```typescript\n' +
           'close_session({\n' +
           `  summary: "${summary}",\n` +
@@ -388,7 +385,9 @@ export async function runPhase1Analysis(
           '})\n' +
           '```\n\n' +
           '**Note:** Finalization does not need `_invoked_by_slash_command: true`.\n\n' +
-          '**Skip updates ONLY if** you have verified that no topics are affected by analyzing the commit impact.',
+          (sessionCommits.length > 0
+            ? '**Skip updates ONLY if** you have verified that no topics are affected by analyzing the commit impact and reviewing semantic topics.'
+            : '**Skip updates ONLY if** you have verified that no semantic topics need updating after reading each one.'),
       },
     ],
   };

@@ -252,7 +252,7 @@ describe('closeSession - Two-Phase Workflow', () => {
       expect(result.content[0].text).not.toContain('Phase 1 Complete');
     });
 
-    it('should fall back to single-phase when no commits detected', async () => {
+    it('should use two-phase workflow even with no commits (Decision 044)', async () => {
       const args: CloseSessionArgs = {
         summary: 'Test session',
         _invoked_by_slash_command: true,
@@ -285,9 +285,12 @@ describe('closeSession - Two-Phase Workflow', () => {
         ''
       );
 
-      // Should run single-phase close instead
-      expect(result.content[0].text).toContain('Session created:');
-      expect(result.content[0].text).not.toContain('Phase 1 Complete');
+      // Decision 044: Even with 0 commits, should use two-phase workflow
+      // to ensure semantic topic enforcement (Decision 042) cannot be bypassed
+      expect(result.content[0].text).toContain('Session Analysis Complete');
+      expect(result.content[0].text).toContain('No commits were made during this session.');
+      // Should NOT finalize - this is Phase 1, waiting for Phase 2
+      expect(result.content[0].text).not.toContain('Session created:');
     });
 
     it('should handle commit detection errors gracefully', async () => {
@@ -323,9 +326,12 @@ describe('closeSession - Two-Phase Workflow', () => {
         ''
       );
 
-      // Should show error but continue with single-phase
+      // Decision 044: Should show error but continue with two-phase workflow
+      // (no longer falls back to single-phase)
       expect(result.content[0].text).toContain('Failed to detect session commits');
-      expect(result.content[0].text).toContain('Session created:');
+      expect(result.content[0].text).toContain('Session Analysis Complete');
+      // Should NOT finalize - this is Phase 1, waiting for Phase 2
+      expect(result.content[0].text).not.toContain('Session created:');
     });
   });
 
@@ -720,7 +726,7 @@ describe('closeSession - Two-Phase Workflow', () => {
 
       const phase1Result = await closeSession(phase1Args, context);
 
-      expect(phase1Result.content[0].text).toContain('Commit Analysis Complete');
+      expect(phase1Result.content[0].text).toContain('Session Analysis Complete');
       // May detect 1-2 commits depending on timing (initial commit + test commit)
       expect(phase1Result.content[0].text).toMatch(
         /[12] commits? (was|were) made during this session/
@@ -757,7 +763,7 @@ describe('closeSession - Two-Phase Workflow', () => {
       // not within runPhase2Finalization()
     });
 
-    it('should fall back to single-phase when no commits detected', async () => {
+    it('should use two-phase workflow even with no commits (Decision 044)', async () => {
       // Set session start to way in the future so no commits are detected
       context.getSessionStartTime = vi.fn().mockReturnValue(new Date('2099-01-01T00:00:00Z'));
 
@@ -770,10 +776,13 @@ describe('closeSession - Two-Phase Workflow', () => {
 
       const result = await closeSession(args, context);
 
-      // Should use single-phase (no Phase 1 analysis message)
-      expect(result.content[0].text).not.toContain('Phase 1 Complete');
-      expect(result.content[0].text).toContain('Session created:');
-      expect(context.clearSessionState).toHaveBeenCalled();
+      // Decision 044: Even with 0 commits, should use two-phase workflow
+      // to ensure semantic topic enforcement (Decision 042) cannot be bypassed
+      expect(result.content[0].text).toContain('Session Analysis Complete');
+      expect(result.content[0].text).toContain('No commits were made during this session.');
+      // Should NOT finalize - this is Phase 1, waiting for Phase 2
+      expect(result.content[0].text).not.toContain('Session created:');
+      expect(context.clearSessionState).not.toHaveBeenCalled();
     });
 
     it('should handle skip_analysis flag', async () => {
