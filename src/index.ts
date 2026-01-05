@@ -801,13 +801,6 @@ class ObsidianMCPServer {
               { sessionStartTime: this.sessionStartTime }
             );
 
-          case 'generate_vault_index':
-            return await tools.writeVaultIndex(
-              validatedArgs as tools.GenerateVaultIndexArgs,
-              this.config.primaryVault.path,
-              this.config.secondaryVaults.map(v => ({ path: v.path, name: v.name }))
-            );
-
           case 'append_to_accumulator':
             return await tools.appendToAccumulator(validatedArgs as tools.AppendToAccumulatorArgs, {
               vaultPath: this.config.primaryVault.path,
@@ -1882,32 +1875,6 @@ SCOPE: Decisions can be vault-level (affecting the MCP system itself) or project
         inputSchema: {
           type: 'object',
           properties: {},
-        },
-      },
-      {
-        name: 'generate_vault_index',
-        description:
-          'Generate a procedural index of vault files sorted by modification time. This creates a file index in memory-base.md that helps Claude understand what content exists in the vault, improving cross-referencing and file update suggestions.',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            max_files: {
-              type: 'number',
-              description: 'Maximum number of files to include in index (default: 100)',
-            },
-            max_size_bytes: {
-              type: 'number',
-              description: 'Maximum size of generated index in bytes (default: 10240)',
-            },
-            include_tags: {
-              type: 'boolean',
-              description: 'Include frontmatter tags in index entries (default: true)',
-            },
-            include_description: {
-              type: 'boolean',
-              description: 'Include frontmatter description in index entries (default: false)',
-            },
-          },
         },
       },
       {

@@ -2,14 +2,13 @@
  * Tool: get_memory_base
  *
  * Description: Load session context including system directives, user reference,
- * recent handoffs, recent corrections, and vault index.
+ * recent handoffs, and recent corrections.
  * Provides layered context at session start:
  * 1. MCP directives (system philosophy and values)
  * 2. User reference (user identity and preferences)
  * 3. Recent handoffs (from last 2-3 sessions for continuity)
  * 4. Recent corrections (last 2 mistake/correction pairs from accumulator-corrections.md)
  * 5. Task status (overdue and today's tasks - loaded via CLAUDE.md workflow)
- * 6. Vault index (recently modified files for orientation)
  *
  * Used for session initialization and establishing timing for commit detection
  * in the two-phase close workflow.
@@ -120,23 +119,46 @@ This file reinforces the principles that guide all procedural decisions in CLAUD
 `;
 
 /**
- * Extract handoff notes from recent session files
+ * Extract handoff notes from recent session files by scanning sessions/ directory
  * Returns formatted handoff text from last N sessions, skipping empty handoffs
  */
-async function extractRecentHandoffs(
-  vaultPath: string,
-  memoryContent: string,
-  maxSessions = 3
-): Promise<string> {
+async function extractRecentHandoffs(vaultPath: string, maxSessions = 3): Promise<string> {
   try {
-    // Extract session file paths from memory-base.md
-    const sessionMatches = memoryContent.match(/sessions\/\d{4}-\d{2}\/[^\s)]+\.md/g);
+    const sessionsPath = path.join(vaultPath, 'sessions');
 
-    if (!sessionMatches || sessionMatches.length === 0) {
-      return '';
+    // Get all month directories (YYYY-MM format)
+    const monthDirs = await fs.readdir(sessionsPath);
+    const validMonthDirs = monthDirs
+      .filter(dir => /^\d{4}-\d{2}$/.test(dir))
+      .sort()
+      .reverse(); // Most recent months first
+
+    // Collect all session files across month directories
+    const allSessionFiles: Array<{ path: string; mtime: number }> = [];
+
+    for (const monthDir of validMonthDirs) {
+      const monthPath = path.join(sessionsPath, monthDir);
+      try {
+        const files = await fs.readdir(monthPath);
+        for (const file of files) {
+          if (file.endsWith('.md')) {
+            const filePath = path.join(monthPath, file);
+            const stats = await fs.stat(filePath);
+            allSessionFiles.push({
+              path: path.join('sessions', monthDir, file),
+              mtime: stats.mtimeMs,
+            });
+          }
+        }
+      } catch {
+        continue;
+      }
     }
 
-    const recentSessionPaths = sessionMatches.slice(0, maxSessions);
+    // Sort by modification time (most recent first) and take top N
+    allSessionFiles.sort((a, b) => b.mtime - a.mtime);
+    const recentSessionPaths = allSessionFiles.slice(0, maxSessions).map(f => f.path);
+
     const handoffs: string[] = [];
 
     for (const sessionPath of recentSessionPaths) {
@@ -211,7 +233,6 @@ export async function getMemoryBase(
   vaultPath: string,
   context?: GetMemoryBaseContext
 ): Promise<GetMemoryBaseResult> {
-  const memoryFilePath = path.join(vaultPath, 'memory-base.md');
   const userRefPath = path.join(vaultPath, 'user-reference.md');
   const mcpDirectivesPath = path.join(vaultPath, 'mcp-directives.md');
 
@@ -248,107 +269,57 @@ export async function getMemoryBase(
     }
   }
 
-  try {
-    const content = await fs.readFile(memoryFilePath, 'utf-8');
-    const stats = await fs.stat(memoryFilePath);
+  // Extract recent handoffs from session files (scan filesystem directly)
+  const recentHandoffs = await extractRecentHandoffs(vaultPath, 3);
 
-    // Count session boundaries
-    const sessionCount = (content.match(/### --- SESSION BOUNDARY/g) || []).length;
-    const sizeBytes = Buffer.byteLength(content, 'utf-8');
+  // Load recent corrections (most recent 2 entries)
+  const corrections = await loadRecentAccumulatorEntries(
+    vaultPath,
+    'accumulator-corrections.md',
+    2
+  );
 
-    const memoryInfo = `Rolling memory base contents:\n\n${content}\n\n---\nMetadata:\n- Size: ${sizeBytes} bytes\n- Last modified: ${stats.mtime.toISOString()}\n- Session count: ${sessionCount}`;
-
-    // Extract recent handoffs from session files
-    const recentHandoffs = await extractRecentHandoffs(vaultPath, content, 3);
-
-    // Load recent corrections (most recent 2 entries)
-    // Note: accumulator-learnings is skipped - long-form content should be topics
-    const corrections = await loadRecentAccumulatorEntries(
-      vaultPath,
-      'accumulator-corrections.md',
-      2
-    );
-
-    let crossSessionKnowledge = '';
-    if (corrections) {
-      crossSessionKnowledge = `## Recent Corrections\n\n${corrections}`;
-    }
-
-    // Build layered context: Session start -> System directives -> User reference -> Handoffs -> Knowledge -> Vault index
-    const sections = [];
-
-    // Add session start time for context recovery (fallback if MCP server state is lost)
-    if (context?.sessionStartTime) {
-      sections.push(`SESSION_START_TIME: ${context.sessionStartTime.toISOString()}`);
-    }
-
-    // Add creation notice if mcp-directives was just created
-    if (mcpDirectivesCreated) {
-      sections.push(
-        `✨ Created mcp-directives.md in vault root\n\nThis file contains the MCP system philosophy and core values. It will be loaded automatically with every \`/mb\` command.`
-      );
-    }
-
-    if (mcpDirectivesContent) {
-      sections.push(mcpDirectivesContent);
-    }
-    if (userRefContent) {
-      sections.push(userRefContent);
-    }
-    if (recentHandoffs) {
-      sections.push(recentHandoffs);
-    }
-    if (crossSessionKnowledge) {
-      sections.push(crossSessionKnowledge);
-    }
-    sections.push(memoryInfo);
-
-    const fullContent = sections.join('\n\n---\n\n');
-
-    return {
-      content: [
-        {
-          type: 'text',
-          text: fullContent,
-        },
-      ],
-    };
-  } catch (error) {
-    if ((error as { code?: string }).code === 'ENOENT') {
-      // Memory base doesn't exist, return available context
-      const sections = [];
-
-      // Add session start time for context recovery (fallback if MCP server state is lost)
-      if (context?.sessionStartTime) {
-        sections.push(`SESSION_START_TIME: ${context.sessionStartTime.toISOString()}`);
-      }
-
-      // Add creation notice if mcp-directives was just created
-      if (mcpDirectivesCreated) {
-        sections.push(
-          `✨ Created mcp-directives.md in vault root\n\nThis file contains the MCP system philosophy and core values. It will be loaded automatically with every \`/mb\` command.`
-        );
-      }
-
-      if (mcpDirectivesContent) {
-        sections.push(mcpDirectivesContent);
-      }
-      if (userRefContent) {
-        sections.push(userRefContent);
-      }
-
-      return {
-        content: [
-          {
-            type: 'text',
-            text:
-              sections.length > 0
-                ? sections.join('\n\n---\n\n')
-                : 'Rolling memory base is empty. No previous session context available.',
-          },
-        ],
-      };
-    }
-    throw error;
+  let crossSessionKnowledge = '';
+  if (corrections) {
+    crossSessionKnowledge = `## Recent Corrections\n\n${corrections}`;
   }
+
+  // Build layered context: Session start -> System directives -> User reference -> Handoffs -> Corrections
+  const sections = [];
+
+  // Add session start time for context recovery (fallback if MCP server state is lost)
+  if (context?.sessionStartTime) {
+    sections.push(`SESSION_START_TIME: ${context.sessionStartTime.toISOString()}`);
+  }
+
+  // Add creation notice if mcp-directives was just created
+  if (mcpDirectivesCreated) {
+    sections.push(
+      `✨ Created mcp-directives.md in vault root\n\nThis file contains the MCP system philosophy and core values. It will be loaded automatically with every \`/mb\` command.`
+    );
+  }
+
+  if (mcpDirectivesContent) {
+    sections.push(mcpDirectivesContent);
+  }
+  if (userRefContent) {
+    sections.push(userRefContent);
+  }
+  if (recentHandoffs) {
+    sections.push(recentHandoffs);
+  }
+  if (crossSessionKnowledge) {
+    sections.push(crossSessionKnowledge);
+  }
+
+  const fullContent = sections.join('\n\n---\n\n');
+
+  return {
+    content: [
+      {
+        type: 'text',
+        text: fullContent,
+      },
+    ],
+  };
 }
