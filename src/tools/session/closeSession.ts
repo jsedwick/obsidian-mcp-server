@@ -1671,13 +1671,17 @@ export async function closeSession(
     }
 
     // Run Phase 2 finalization (this does NOT clear session state anymore)
-    const phase2Result = await runPhase2Finalization(args, context, args.session_data!);
-
-    // Clear session state now that Phase 2 is complete
-    // This allows record_commit() and other post-finalization operations to work if needed
-    context.clearSessionState();
-
-    return phase2Result;
+    // Wrap in try-finally to ensure state is always cleared, even if Phase 2 fails
+    // This allows multiple /close operations in the same Claude Code session
+    try {
+      const phase2Result = await runPhase2Finalization(args, context, args.session_data!);
+      return phase2Result;
+    } finally {
+      // Clear session state now that Phase 2 is complete (or failed)
+      // This allows record_commit() and other post-finalization operations to work if needed
+      // AND allows subsequent /close operations in the same session
+      context.clearSessionState();
+    }
   }
 
   // Generate session ID from current timestamp and optional topic (using local timezone)
