@@ -188,6 +188,14 @@ export const CloseSessionArgsSchema = z.object({
       "Claude Code's working directories. The MCP server's process.cwd() differs from Claude Code's, " +
         'so passing these enables correct repository detection.'
     ),
+  // Session start time fallback - if MCP server state was lost mid-session
+  session_start_override: z
+    .string()
+    .optional()
+    .describe(
+      'ISO 8601 timestamp of session start. Extracted from context (SESSION_START_TIME: ...) ' +
+        'as fallback when MCP server state is lost.'
+    ),
 });
 
 // detect_session_repositories

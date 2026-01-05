@@ -797,7 +797,8 @@ class ObsidianMCPServer {
             this.sessionStartTime = new Date();
             return await tools.getMemoryBase(
               validatedArgs as tools.GetMemoryBaseArgs,
-              this.config.primaryVault.path
+              this.config.primaryVault.path,
+              { sessionStartTime: this.sessionStartTime }
             );
 
           case 'generate_vault_index':
@@ -1528,6 +1529,12 @@ SCOPE: Decisions can be vault-level (affecting the MCP system itself) or project
               description:
                 "Claude Code's working directories. The MCP server runs as a separate process with a different cwd, " +
                 "so passing Claude Code's working directories enables correct Git repository detection.",
+            },
+            session_start_override: {
+              type: 'string',
+              description:
+                'ISO 8601 timestamp of session start. Fallback if MCP server state was lost. ' +
+                'Extract from context (SESSION_START_TIME: ...) emitted by /mb.',
             },
           },
           required: ['summary'],

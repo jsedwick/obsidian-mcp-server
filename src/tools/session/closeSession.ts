@@ -170,7 +170,19 @@ export async function runPhase1Analysis(
   detectedRepoInfo: { path: string; name: string; branch?: string; remote?: string } | null,
   autoCommitMessage: string
 ): Promise<CloseSessionResult> {
-  const sessionStartTime = context.getSessionStartTime();
+  // Get session start time - prefer MCP server state, fall back to context override
+  let sessionStartTime = context.getSessionStartTime();
+  if (!sessionStartTime && args.session_start_override) {
+    try {
+      sessionStartTime = new Date(args.session_start_override);
+      // Validate the parsed date is reasonable (not NaN, not in future, not too old)
+      if (isNaN(sessionStartTime.getTime())) {
+        sessionStartTime = null;
+      }
+    } catch {
+      sessionStartTime = null;
+    }
+  }
 
   if (!detectedRepoInfo || !sessionStartTime) {
     return runSinglePhaseClose(
@@ -1496,6 +1508,9 @@ export interface CloseSessionArgs {
   // Working directories from Claude Code environment (fixes repo detection gap)
   // The MCP server's process.cwd() differs from Claude Code's working directory
   working_directories?: string[]; // Claude Code passes its CWD and additional working dirs
+  // Session start time override - fallback if MCP server state was lost
+  // Claude extracts this from context (SESSION_START_TIME: ...) and passes it back
+  session_start_override?: string; // ISO 8601 timestamp
 }
 
 /**

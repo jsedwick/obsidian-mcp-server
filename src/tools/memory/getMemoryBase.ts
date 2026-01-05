@@ -23,6 +23,10 @@ export interface GetMemoryBaseArgs {
   // No arguments needed - reads from fixed location
 }
 
+export interface GetMemoryBaseContext {
+  sessionStartTime: Date;
+}
+
 /**
  * Default template for mcp-directives.md
  * Created automatically when /mb is run in a vault without this file
@@ -204,7 +208,8 @@ export interface GetMemoryBaseResult {
 
 export async function getMemoryBase(
   _args: GetMemoryBaseArgs,
-  vaultPath: string
+  vaultPath: string,
+  context?: GetMemoryBaseContext
 ): Promise<GetMemoryBaseResult> {
   const memoryFilePath = path.join(vaultPath, 'memory-base.md');
   const userRefPath = path.join(vaultPath, 'user-reference.md');
@@ -269,8 +274,13 @@ export async function getMemoryBase(
       crossSessionKnowledge = `## Recent Corrections\n\n${corrections}`;
     }
 
-    // Build layered context: System directives -> User reference -> Handoffs -> Knowledge -> Vault index
+    // Build layered context: Session start -> System directives -> User reference -> Handoffs -> Knowledge -> Vault index
     const sections = [];
+
+    // Add session start time for context recovery (fallback if MCP server state is lost)
+    if (context?.sessionStartTime) {
+      sections.push(`SESSION_START_TIME: ${context.sessionStartTime.toISOString()}`);
+    }
 
     // Add creation notice if mcp-directives was just created
     if (mcpDirectivesCreated) {
@@ -307,6 +317,11 @@ export async function getMemoryBase(
     if ((error as { code?: string }).code === 'ENOENT') {
       // Memory base doesn't exist, return available context
       const sections = [];
+
+      // Add session start time for context recovery (fallback if MCP server state is lost)
+      if (context?.sessionStartTime) {
+        sections.push(`SESSION_START_TIME: ${context.sessionStartTime.toISOString()}`);
+      }
 
       // Add creation notice if mcp-directives was just created
       if (mcpDirectivesCreated) {
