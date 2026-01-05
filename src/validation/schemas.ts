@@ -130,6 +130,27 @@ const SessionDataSchema = z.object({
   repoDetectionMessage: z.string(),
   autoCommitMessage: z.string().optional(),
   handoff: z.string().optional(),
+  // Enforcement fields - CRITICAL: Must be included or Zod strips them (see bug fix 2026-01-05)
+  sessionCommits: z.array(z.string()).optional(),
+  vaultEditsAtPhase1: z.number().optional(),
+  semanticTopicsPresented: z
+    .array(
+      z.object({
+        path: z.string(),
+        title: z.string(),
+      })
+    )
+    .optional(),
+  commitRelatedTopics: z
+    .array(
+      z.object({
+        path: z.string(),
+        title: z.string(),
+        relevance: z.string(),
+        commitHash: z.string(),
+      })
+    )
+    .optional(),
 });
 
 export const CloseSessionArgsSchema = z.object({
