@@ -66,6 +66,8 @@ export interface SessionToolsContext extends BaseContext {
   clearSessionState?: () => void;
   hasPhase1Completed?: () => boolean;
   markPhase1Complete?: () => void;
+  storePhase1SessionData?: (data: any) => void;
+  getStoredPhase1SessionData?: () => any | null;
 }
 
 /**
@@ -82,6 +84,7 @@ export function createSessionToolsContext(
 
   // Track Phase 1 completion state
   let phase1Completed = false;
+  let storedPhase1Data: any | null = null;
 
   return {
     vaultPath: '/tmp/test-vault',
@@ -115,11 +118,16 @@ export function createSessionToolsContext(
     setCurrentSession: vi.fn(),
     clearSessionState: vi.fn().mockImplementation(() => {
       phase1Completed = false;
+      storedPhase1Data = null;
     }),
     hasPhase1Completed: vi.fn().mockImplementation(() => phase1Completed),
     markPhase1Complete: vi.fn().mockImplementation(() => {
       phase1Completed = true;
     }),
+    storePhase1SessionData: vi.fn().mockImplementation((data: any) => {
+      storedPhase1Data = data;
+    }),
+    getStoredPhase1SessionData: vi.fn().mockImplementation(() => storedPhase1Data),
     ...overrides,
   };
 }

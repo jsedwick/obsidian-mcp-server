@@ -388,6 +388,9 @@ export async function runPhase1Analysis(
     commitRelatedTopics: commitRelatedTopics.length > 0 ? commitRelatedTopics : undefined,
   };
 
+  // Store session_data in MCP server state for context truncation recovery (Decision 048)
+  context.storePhase1SessionData(sessionData);
+
   const summary = args.summary.replace(/"/g, '\\"');
   const topic = args.topic ? `topic: "${args.topic.replace(/"/g, '\\"')}",` : '';
 
@@ -1631,6 +1634,8 @@ interface CloseSessionContext {
   clearSessionState: () => void;
   hasPhase1Completed: () => boolean;
   markPhase1Complete: () => void;
+  storePhase1SessionData: (data: SessionData) => void;
+  getStoredPhase1SessionData: () => SessionData | null;
   getMostRecentSessionDate: (repoSlug: string) => Promise<Date | null>;
   getSessionStartTime: () => Date | null; // Get first file access timestamp
   searchVault: (args: {
@@ -1659,21 +1664,28 @@ export async function closeSession(
   await context.ensureVaultStructure();
 
   // Validate session_data is present if finalizing
+  // Decision 048: Fallback to stored session_data if context was truncated
   if (args.finalize && !args.session_data) {
-    throw new Error(
-      '❌ Phase 2 Error: finalize=true requires session_data from Phase 1.\n\n' +
-        'The two-phase workflow requires calling close_session twice:\n' +
-        '1. First call (Phase 1): Run via /close command with _invoked_by_slash_command: true\n' +
-        '   Returns: commit analysis + session_data\n' +
-        '2. Second call (Phase 2): Claude calls directly with finalize: true\n' +
-        '   Does NOT need _invoked_by_slash_command (only Phase 1 does)\n\n' +
-        'Example Phase 2 call:\n' +
-        'close_session({\n' +
-        '  summary: "...",\n' +
-        '  finalize: true,\n' +
-        '  session_data: { ...data from Phase 1... }\n' +
-        '})'
-    );
+    const storedData = context.getStoredPhase1SessionData();
+    if (storedData) {
+      // Recovered from MCP server state after context truncation
+      args.session_data = storedData;
+    } else {
+      throw new Error(
+        '❌ Phase 2 Error: finalize=true requires session_data from Phase 1.\n\n' +
+          'The two-phase workflow requires calling close_session twice:\n' +
+          '1. First call (Phase 1): Run via /close command with _invoked_by_slash_command: true\n' +
+          '   Returns: commit analysis + session_data\n' +
+          '2. Second call (Phase 2): Claude calls directly with finalize: true\n' +
+          '   Does NOT need _invoked_by_slash_command (only Phase 1 does)\n\n' +
+          'Example Phase 2 call:\n' +
+          'close_session({\n' +
+          '  summary: "...",\n' +
+          '  finalize: true,\n' +
+          '  session_data: { ...data from Phase 1... }\n' +
+          '})'
+      );
+    }
   }
 
   // PHASE 2: Finalization mode (Decision 022)

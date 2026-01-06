@@ -288,6 +288,9 @@ class ObsidianMCPServer {
   private sessionStartTime: Date | null = null;
   // Track if Phase 1 analysis has completed to prevent loop bug
   private phase1Completed: boolean = false;
+  // Store Phase 1 session data for context truncation recovery (Decision 048)
+  // eslint-disable-next-line @typescript-eslint/no-redundant-type-constituents
+  private phase1SessionData: any | null = null;
   private embeddingConfig: EmbeddingConfig;
   // LRU cache with 2000 entry limit (~6MB for embeddings at 384 dimensions × 4 bytes × 2000)
   // Prevents unbounded memory growth during heavy search sessions
@@ -669,6 +672,8 @@ class ObsidianMCPServer {
               clearSessionState: this.clearSessionState.bind(this),
               hasPhase1Completed: this.hasPhase1Completed.bind(this),
               markPhase1Complete: this.markPhase1Complete.bind(this),
+              storePhase1SessionData: this.storePhase1SessionData.bind(this),
+              getStoredPhase1SessionData: this.getStoredPhase1SessionData.bind(this),
               getMostRecentSessionDate: this.getMostRecentSessionDate.bind(this),
               getSessionStartTime: this.getSessionStartTime.bind(this),
               searchVault: this.searchVaultWrapper.bind(this),
@@ -2278,6 +2283,15 @@ Check the sessions/ directory for recent conversations.
     this.phase1Completed = true;
   }
 
+  private storePhase1SessionData(data: any): void {
+    this.phase1SessionData = data;
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-redundant-type-constituents
+  private getStoredPhase1SessionData(): any | null {
+    return this.phase1SessionData;
+  }
+
   private clearSessionState(): void {
     this.filesAccessed = [];
     this.topicsCreated = [];
@@ -2285,6 +2299,7 @@ Check the sessions/ directory for recent conversations.
     this.projectsCreated = [];
     this.sessionStartTime = null;
     this.phase1Completed = false;
+    this.phase1SessionData = null;
   }
 
   /**
