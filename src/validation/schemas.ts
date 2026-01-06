@@ -129,10 +129,9 @@ const SessionDataSchema = z.object({
   filesToCheck: z.array(z.string()),
   repoDetectionMessage: z.string(),
   autoCommitMessage: z.string().optional(),
-  handoff: z.string().optional(),
+  handoff: z.string(), // Required in SessionData (auto-generated if not in args)
   // Enforcement fields - CRITICAL: Must be included or Zod strips them (see bug fix 2026-01-05)
   sessionCommits: z.array(z.string()).optional(),
-  vaultEditsAtPhase1: z.number().optional(),
   semanticTopicsPresented: z
     .array(
       z.object({
@@ -160,7 +159,7 @@ export const CloseSessionArgsSchema = z.object({
     .string()
     .optional()
     .describe(
-      'Handoff notes for next session - unfinished business, queued questions, context needed. Verbose encouraged.'
+      'Handoff notes for next session - unfinished business, queued questions, context needed. Auto-generated if not provided. Verbose encouraged.'
     ),
   _invoked_by_slash_command: z
     .boolean()
