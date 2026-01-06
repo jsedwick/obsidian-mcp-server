@@ -1173,9 +1173,12 @@ export async function runPhase2Finalization(
   // ENFORCEMENT CHECK (Decision 041): Require review of commit-related topics
   // This ensures Claude reads each topic identified as potentially affected by commits
   if (data.commitRelatedTopics && data.commitRelatedTopics.length > 0) {
+    // Merge Phase 1 filesAccessed with current context (Decision 048)
+    const allFilesAccessed = [...(data.filesAccessed || []), ...context.filesAccessed];
+
     const unreviewedTopics = data.commitRelatedTopics.filter(topic => {
       // Check if topic was accessed (read, edit, or create all count as review)
-      return !context.filesAccessed.some(
+      return !allFilesAccessed.some(
         f => f.path === topic.path && ['read', 'edit', 'create'].includes(f.action)
       );
     });
@@ -1209,9 +1212,12 @@ export async function runPhase2Finalization(
   // ENFORCEMENT CHECK (Decision 042): Require review of semantic topics
   // This ensures Claude reads the top 3 semantically-related topics presented in Phase 1
   if (data.semanticTopicsPresented && data.semanticTopicsPresented.length > 0) {
+    // Merge Phase 1 filesAccessed with current context (Decision 048)
+    const allFilesAccessed = [...(data.filesAccessed || []), ...context.filesAccessed];
+
     const unreviewedSemanticTopics = data.semanticTopicsPresented.filter(topic => {
       // Check if topic was accessed (read, edit, or create all count as review)
-      return !context.filesAccessed.some(
+      return !allFilesAccessed.some(
         f => f.path === topic.path && ['read', 'edit', 'create'].includes(f.action)
       );
     });
