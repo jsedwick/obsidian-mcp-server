@@ -64,12 +64,29 @@ interface TypeRules {
 }
 
 /**
+ * Valid document types
+ */
+const VALID_DOCUMENT_TYPES: ReadonlySet<string> = new Set([
+  'topic',
+  'decision',
+  'session',
+  'project',
+  'commit',
+  'user-reference',
+  'accumulator',
+  'task-list',
+]);
+
+/**
  * Detect document type from file path and frontmatter
  */
 function detectDocumentType(filePath: string, frontmatter: Record<string, unknown>): DocumentType {
-  // Check frontmatter category first (authoritative)
-  if (frontmatter?.category) {
-    return frontmatter.category as DocumentType;
+  // Check frontmatter category first (authoritative) - but validate it!
+  if (frontmatter?.category && typeof frontmatter.category === 'string') {
+    if (VALID_DOCUMENT_TYPES.has(frontmatter.category)) {
+      return frontmatter.category as DocumentType;
+    }
+    // Invalid category in frontmatter - fall through to path-based detection
   }
 
   // Fallback to path-based detection

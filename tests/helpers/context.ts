@@ -444,3 +444,28 @@ export function createFileAccesses(
 ): FileAccess[] {
   return paths.map(path => createFileAccess(path, action));
 }
+
+/**
+ * Document tools context (for update_document tool)
+ */
+export interface DocumentToolsContext extends BaseContext {
+  slugify: (text: string) => string;
+  trackFileAccess: ReturnType<typeof vi.fn>;
+  secondaryVaults?: Array<{ path: string; name: string }>;
+  ensureVaultStructure: () => Promise<void>;
+}
+
+/**
+ * Create mock context for document tools
+ */
+export function createDocumentToolsContext(
+  overrides?: Partial<DocumentToolsContext>
+): DocumentToolsContext {
+  return {
+    vaultPath: '/tmp/test-vault',
+    slugify,
+    trackFileAccess: vi.fn(),
+    ensureVaultStructure: vi.fn().mockResolvedValue(undefined),
+    ...overrides,
+  };
+}
