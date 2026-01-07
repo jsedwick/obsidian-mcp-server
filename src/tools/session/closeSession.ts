@@ -586,13 +586,24 @@ function extractKeywords(summary: string): string[] {
 async function discoverTopicsForReview(
   summary: string,
   context: CloseSessionContext,
-  precomputedTopics?: Array<{ path: string; title: string }>
+  precomputedTopics?: Array<{
+    path: string;
+    title: string;
+    similarity?: number;
+    _tier?: string;
+    _threshold?: number;
+    _topicCount?: number;
+  }>
 ): Promise<
   Array<{
     path: string;
     title: string;
+    similarity: number;
     lastReviewed: string | null;
     daysSinceReview: number | null;
+    _tier?: string;
+    _threshold?: number;
+    _topicCount?: number;
   }>
 > {
   try {
@@ -604,8 +615,12 @@ async function discoverTopicsForReview(
     const enrichedTopics: Array<{
       path: string;
       title: string;
+      similarity: number;
       lastReviewed: string | null;
       daysSinceReview: number | null;
+      _tier?: string;
+      _threshold?: number;
+      _topicCount?: number;
     }> = [];
 
     for (const topic of topicsForReview) {
@@ -633,16 +648,24 @@ async function discoverTopicsForReview(
         enrichedTopics.push({
           path: topic.path,
           title: topic.title,
+          similarity: topic.similarity ?? 0.0,
           lastReviewed,
           daysSinceReview,
+          _tier: topic._tier,
+          _threshold: topic._threshold,
+          _topicCount: topic._topicCount,
         });
       } catch {
         // If we can't read the file, include it without metadata
         enrichedTopics.push({
           path: topic.path,
           title: topic.title,
+          similarity: topic.similarity ?? 0.0,
           lastReviewed: null,
           daysSinceReview: null,
+          _tier: topic._tier,
+          _threshold: topic._threshold,
+          _topicCount: topic._topicCount,
         });
       }
     }
@@ -655,35 +678,45 @@ async function discoverTopicsForReview(
 }
 
 /**
- * Build the semantic topic review section for Phase 1 output
+ * Build the semantic topic review section for Phase 1 output (Decision 049)
+ * Shows similarity scores and adaptive threshold tier for transparency
  */
 function buildSemanticTopicReviewSection(
   topics: Array<{
     path: string;
     title: string;
+    similarity: number;
     lastReviewed: string | null;
     daysSinceReview: number | null;
+    _tier?: string;
+    _threshold?: number;
+    _topicCount?: number;
   }>
 ): string {
   if (topics.length === 0) {
     return '';
   }
 
-  let section = '\n\n---\n\n📚 **Semantic Topic Review (Decision 042 - Hard Enforcement)**\n\n';
-  section +=
-    'The following topics are semantically related to this session. ' +
-    '**You MUST read each topic** before finalizing. Finalization will be BLOCKED if any topic is not reviewed.\n\n';
+  const tier = topics[0]._tier || 'unknown';
+  const threshold = topics[0]._threshold || 0.55;
+  const topicCount = topics[0]._topicCount || 0;
+
+  let section = '\n\n---\n\n📚 **Semantic Topic Review (Decision 042)**\n\n';
+  section += `Related topics (${topicCount} topics in vault [${tier}], threshold: ${threshold}):\n\n`;
 
   for (let i = 0; i < topics.length; i++) {
     const topic = topics[i];
     const slug = path.basename(topic.path, '.md');
+    const simScore = topic.similarity.toFixed(2);
+
     let reviewInfo = '';
     if (topic.daysSinceReview !== null) {
-      reviewInfo = ` (${topic.daysSinceReview} days since review)`;
+      reviewInfo = ` - ${topic.daysSinceReview} days since review`;
     } else if (topic.lastReviewed === null) {
-      reviewInfo = ' (never reviewed)';
+      reviewInfo = ' - never reviewed';
     }
-    section += `${i + 1}. **[[${slug}|${topic.title}]]**${reviewInfo}\n`;
+
+    section += `${i + 1}. **[[${slug}|${topic.title}]]** (${simScore})${reviewInfo}\n`;
   }
 
   section +=
@@ -695,19 +728,73 @@ function buildSemanticTopicReviewSection(
 }
 
 /**
+ * Calculate adaptive similarity threshold based on vault topic count (Decision 049)
+ * Automatically scales as vault grows: small vaults require stronger matches
+ */
+async function calculateAdaptiveThreshold(
+  vaultPath: string
+): Promise<{ threshold: number; topicCount: number; tier: string }> {
+  try {
+    const topicsDir = path.join(vaultPath, 'topics');
+    const files = await fs.readdir(topicsDir);
+
+    // Count non-archived .md files
+    const topicFiles = files.filter(
+      f => f.endsWith('.md') && !f.startsWith('.') && !f.includes('archive')
+    );
+
+    const count = topicFiles.length;
+
+    // Tier mapping: more topics = lower threshold (better match likelihood)
+    if (count < 25) {
+      return { threshold: 0.65, topicCount: count, tier: 'very-small' };
+    } else if (count < 50) {
+      return { threshold: 0.6, topicCount: count, tier: 'small' };
+    } else if (count < 100) {
+      return { threshold: 0.55, topicCount: count, tier: 'medium' };
+    } else if (count < 200) {
+      return { threshold: 0.5, topicCount: count, tier: 'large' };
+    } else {
+      return { threshold: 0.45, topicCount: count, tier: 'very-large' };
+    }
+  } catch (error) {
+    // Default fallback if directory read fails
+    console.error('Failed to count topics for adaptive threshold:', error);
+    return { threshold: 0.55, topicCount: 0, tier: 'unknown' };
+  }
+}
+
+/**
  * Discover related topics using semantic search on session summary
  * Filters to primary vault topics only to avoid cross-vault pollution
+ * Applies adaptive threshold based on vault size (Decision 049)
  */
 async function discoverRelatedTopics(
   summary: string,
   context: CloseSessionContext
-): Promise<Array<{ path: string; title: string }>> {
+): Promise<
+  Array<{
+    path: string;
+    title: string;
+    similarity: number;
+    _tier?: string;
+    _threshold?: number;
+    _topicCount?: number;
+  }>
+> {
   try {
     // Extract keywords for search
     const keywords = extractKeywords(summary);
     if (keywords.length === 0) {
       return [];
     }
+
+    // Calculate adaptive threshold based on vault size
+    const { threshold, topicCount, tier } = await calculateAdaptiveThreshold(context.vaultPath);
+
+    console.log(
+      `Semantic discovery: ${topicCount} topics (${tier} vault) → threshold ${threshold}`
+    );
 
     // Search vault with keywords, filtering to topics only
     // Embeddings provide semantic understanding to distinguish contexts
@@ -728,10 +815,23 @@ async function discoverRelatedTopics(
     const resultText = (searchResult.content[0] as { text: string }).text;
     const fileMatches = resultText.matchAll(/\*\*(.+?)\*\*/g);
 
-    const topics: Array<{ path: string; title: string }> = [];
+    const topics: Array<{ path: string; title: string; similarity: number }> = [];
 
     for (const match of fileMatches) {
       const filePath = match[1];
+
+      // Extract similarity score from search result
+      // Format: "Semantic match (score: 0.850)" or fallback to 0.0
+      const matchIndex = match.index;
+      const remainingText = resultText.substring(matchIndex);
+      const nextFileMatch = remainingText.indexOf('**', 2); // Find next file
+      const sectionText =
+        nextFileMatch > 0
+          ? remainingText.substring(0, nextFileMatch)
+          : remainingText.substring(0, 500); // Limit search area
+
+      const scoreMatch = sectionText.match(/score:\s*([\d.]+)/);
+      const similarity = scoreMatch ? parseFloat(scoreMatch[1]) : 0.0;
 
       // Filter: Only include topics from primary vault
       if (
@@ -739,6 +839,11 @@ async function discoverRelatedTopics(
         filePath.includes('/topics/') && // Is a topic file
         !filePath.includes('/archive/') // Not archived
       ) {
+        // Apply adaptive threshold filter (Decision 049)
+        if (similarity < threshold) {
+          continue; // Skip topics below threshold
+        }
+
         // Quality check: Read topic and verify meaningful keyword matches
         try {
           const topicContent = await fs.readFile(filePath, 'utf-8');
@@ -751,9 +856,9 @@ async function discoverRelatedTopics(
             return contentLower.includes(keyword);
           }).length;
 
-          // Require at least 3 keyword matches to consider topic related
+          // Require at least 3 keyword matches OR very high similarity (≥0.75)
           // This prevents false positives from single generic term matches
-          if (matchCount < 3) {
+          if (matchCount < 3 && similarity < 0.75) {
             continue; // Skip this topic
           }
         } catch {
@@ -768,7 +873,7 @@ async function discoverRelatedTopics(
           .map(word => word.charAt(0).toUpperCase() + word.slice(1))
           .join(' ');
 
-        topics.push({ path: filePath, title });
+        topics.push({ path: filePath, title, similarity });
 
         // Limit to top 5 topics
         if (topics.length >= 5) {
@@ -777,7 +882,13 @@ async function discoverRelatedTopics(
       }
     }
 
-    return topics;
+    // Attach metadata for Phase 1 output
+    return topics.map(t => ({
+      ...t,
+      _tier: tier,
+      _threshold: threshold,
+      _topicCount: topicCount,
+    }));
   } catch (error) {
     // Silent failure - discovery is non-critical
     console.error('Topic discovery failed:', error);
