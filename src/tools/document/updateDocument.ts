@@ -176,13 +176,9 @@ const TYPE_RULES: Record<DocumentType, TypeRules> = {
 
   accumulator: {
     readonly: false,
-    appendOnly: true,
+    appendOnly: false, // Allow full replacement for consolidation/reorganization
     frontmatterUpdates: (fm): Record<string, unknown> => fm,
-    validate: args => {
-      if (args.strategy === 'replace') {
-        throw new Error('Accumulators are append-only. Use strategy: "append"');
-      }
-    },
+    validate: () => {}, // No restrictions
   },
 
   'task-list': {

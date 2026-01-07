@@ -174,7 +174,7 @@ Commit details`;
       ).rejects.toThrow('Commit files are read-only');
     });
 
-    it('should prevent replacing append-only accumulator files', async () => {
+    it('should allow replacing accumulator files', async () => {
       const accumulatorPath = path.join(vaultPath, 'accumulator-corrections.md');
       const content = `---
 category: accumulator
@@ -182,16 +182,19 @@ category: accumulator
 Existing corrections`;
       await fs.writeFile(accumulatorPath, content, 'utf-8');
 
-      await expect(
-        updateDocument(
-          {
-            file_path: accumulatorPath,
-            content: 'Replaced',
-            strategy: 'replace',
-          },
-          context
-        )
-      ).rejects.toThrow('Accumulators are append-only');
+      const result = await updateDocument(
+        {
+          file_path: accumulatorPath,
+          content: 'Replaced',
+          strategy: 'replace',
+        },
+        context
+      );
+
+      expect(result.content[0].text).toContain('accumulator updated');
+      const updatedContent = await fs.readFile(accumulatorPath, 'utf-8');
+      expect(updatedContent).toContain('Replaced');
+      expect(updatedContent).not.toContain('Existing corrections');
     });
 
     it('should require reason parameter for topic updates', async () => {
