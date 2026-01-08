@@ -22,6 +22,7 @@ export async function getTopicContext(
   context: {
     vaultPath: string;
     slugify: (text: string) => string;
+    trackFileAccess?: (path: string, action: 'read' | 'edit' | 'create') => void;
   }
 ): Promise<GetTopicContextResult> {
   const slug = context.slugify(args.topic);
@@ -30,10 +31,17 @@ export async function getTopicContext(
   try {
     await fs.access(topicFile);
   } catch {
-    throw new Error(`Topic not found: ${args.topic}. Use search_vault to find available topics, or create_topic_page to create a new one.`);
+    throw new Error(
+      `Topic not found: ${args.topic}. Use search_vault to find available topics, or create_topic_page to create a new one.`
+    );
   }
 
   const content = await fs.readFile(topicFile, 'utf-8');
+
+  // Track file access for enforcement (Decision 041)
+  if (context.trackFileAccess) {
+    context.trackFileAccess(topicFile, 'read');
+  }
 
   // Parse frontmatter to extract title
   const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
@@ -45,8 +53,10 @@ export async function getTopicContext(
     if (titleMatch) {
       title = titleMatch[1].trim();
       // Remove surrounding quotes if present
-      if ((title.startsWith('"') && title.endsWith('"')) ||
-          (title.startsWith("'") && title.endsWith("'"))) {
+      if (
+        (title.startsWith('"') && title.endsWith('"')) ||
+        (title.startsWith("'") && title.endsWith("'"))
+      ) {
         title = title.slice(1, -1);
       }
     }
