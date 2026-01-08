@@ -897,19 +897,79 @@ async function discoverRelatedTopics(
 }
 
 /**
+ * Calculate adaptive similarity threshold for decision discovery based on decision count
+ * More decisions = lower threshold (better match likelihood in larger corpus)
+ * Decision 049 pattern applied to decisions
+ */
+async function calculateDecisionAdaptiveThreshold(
+  vaultPath: string
+): Promise<{ threshold: number; decisionCount: number; tier: string }> {
+  try {
+    const decisionsDir = path.join(vaultPath, 'decisions');
+    const projects = await fs.readdir(decisionsDir);
+
+    // Count non-archived .md files across all project directories
+    let decisionCount = 0;
+    for (const project of projects) {
+      const projectPath = path.join(decisionsDir, project);
+      try {
+        const stat = await fs.stat(projectPath);
+        if (stat.isDirectory() && !project.startsWith('.')) {
+          const files = await fs.readdir(projectPath);
+          const decisionFiles = files.filter(
+            f => f.endsWith('.md') && !f.startsWith('.') && !f.includes('archive')
+          );
+          decisionCount += decisionFiles.length;
+        }
+      } catch {
+        // Skip if can't read directory
+        continue;
+      }
+    }
+
+    // Tier mapping: more decisions = lower threshold (better match likelihood)
+    if (decisionCount < 25) {
+      return { threshold: 0.65, decisionCount, tier: 'very-small' };
+    } else if (decisionCount < 50) {
+      return { threshold: 0.6, decisionCount, tier: 'small' };
+    } else if (decisionCount < 100) {
+      return { threshold: 0.55, decisionCount, tier: 'medium' };
+    } else if (decisionCount < 200) {
+      return { threshold: 0.5, decisionCount, tier: 'large' };
+    } else {
+      return { threshold: 0.45, decisionCount, tier: 'very-large' };
+    }
+  } catch (error) {
+    // Default fallback if directory read fails
+    console.error('Failed to count decisions for adaptive threshold:', error);
+    return { threshold: 0.55, decisionCount: 0, tier: 'unknown' };
+  }
+}
+
+/**
  * Discover related decisions using semantic search on session summary
  * Filters to primary vault decisions only to avoid cross-vault pollution
+ * Applies adaptive threshold based on decision count (Decision 049 pattern)
  */
 async function discoverRelatedDecisions(
   summary: string,
   context: CloseSessionContext
-): Promise<Array<{ path: string; title: string; projectSlug: string }>> {
+): Promise<Array<{ path: string; title: string; projectSlug: string; similarity: number }>> {
   try {
     // Extract keywords for search
     const keywords = extractKeywords(summary);
     if (keywords.length === 0) {
       return [];
     }
+
+    // Calculate adaptive threshold based on decision corpus size
+    const { threshold, decisionCount, tier } = await calculateDecisionAdaptiveThreshold(
+      context.vaultPath
+    );
+
+    console.log(
+      `Decision discovery: ${decisionCount} decisions (${tier} vault) → threshold ${threshold}`
+    );
 
     // Search vault with keywords, filtering to decisions only
     const searchResult = await context.searchVault({
@@ -928,10 +988,28 @@ async function discoverRelatedDecisions(
     const resultText = (searchResult.content[0] as { text: string }).text;
     const fileMatches = resultText.matchAll(/\*\*(.+?)\*\*/g);
 
-    const decisions: Array<{ path: string; title: string; projectSlug: string }> = [];
+    const decisions: Array<{
+      path: string;
+      title: string;
+      projectSlug: string;
+      similarity: number;
+    }> = [];
 
     for (const match of fileMatches) {
       const filePath = match[1];
+
+      // Extract similarity score from search result
+      // Format: "Semantic match (score: 0.850)" or fallback to 0.0
+      const matchIndex = match.index;
+      const remainingText = resultText.substring(matchIndex);
+      const nextFileMatch = remainingText.indexOf('**', 2); // Find next file
+      const sectionText =
+        nextFileMatch > 0
+          ? remainingText.substring(0, nextFileMatch)
+          : remainingText.substring(0, 500); // Limit search area
+
+      const scoreMatch = sectionText.match(/score:\s*([\d.]+)/);
+      const similarity = scoreMatch ? parseFloat(scoreMatch[1]) : 0.0;
 
       // Filter: Only include decisions from primary vault
       // decisions/project-slug/###-decision-name.md
@@ -940,6 +1018,33 @@ async function discoverRelatedDecisions(
         filePath.includes('/decisions/') && // Is a decision file
         !filePath.includes('/archive/') // Not archived
       ) {
+        // Apply adaptive threshold filter
+        if (similarity < threshold) {
+          continue; // Skip decisions below threshold
+        }
+
+        // Quality check: Read decision and verify meaningful keyword matches
+        try {
+          const decisionContent = await fs.readFile(filePath, 'utf-8');
+          const contentLower = decisionContent.toLowerCase();
+
+          // Count how many keywords appear in decision content
+          const matchCount = keywords.filter(keyword => {
+            // Skip single-char or very short keywords
+            if (keyword.length < 4) return false;
+            return contentLower.includes(keyword);
+          }).length;
+
+          // Require at least 3 keyword matches OR very high similarity (≥0.75)
+          // This prevents false positives from single generic term matches
+          if (matchCount < 3 && similarity < 0.75) {
+            continue; // Skip this decision
+          }
+        } catch {
+          // If can't read file, skip it
+          continue;
+        }
+
         // Extract decision info from path
         const relativePath = filePath.substring(context.vaultPath.length + 1);
         const parts = relativePath.split('/');
@@ -955,7 +1060,7 @@ async function discoverRelatedDecisions(
             .map(word => word.charAt(0).toUpperCase() + word.slice(1))
             .join(' ');
 
-          decisions.push({ path: filePath, title, projectSlug });
+          decisions.push({ path: filePath, title, projectSlug, similarity });
 
           // Limit to top 5 decisions
           if (decisions.length >= 5) {
@@ -1025,7 +1130,7 @@ function addRelatedTopicsToSession(
  */
 function addRelatedDecisionsToSession(
   sessionContent: string,
-  decisions: Array<{ path: string; title: string; projectSlug: string }>
+  decisions: Array<{ path: string; title: string; projectSlug: string; similarity: number }>
 ): string {
   if (decisions.length === 0) {
     return sessionContent;
