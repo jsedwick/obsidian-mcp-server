@@ -18,7 +18,7 @@ const logger = createLogger('SearchVault');
 export interface SearchVaultArgs {
   query: string;
   directories?: string[];
-  category?: 'topic' | 'task-list' | 'decision' | 'session' | 'project' | 'commit';
+  category?: 'topic' | 'task-list' | 'decision' | 'session' | 'project' | 'commit' | 'workflow';
   max_results?: number;
   date_range?: { start?: string; end?: string };
   snippets_only?: boolean;
@@ -166,7 +166,14 @@ export async function searchVault(
           const isPrimaryVault = vault.path === context.config.primaryVault.path;
 
           // Categories that only exist in primary vault - skip secondary vaults when filtering by these
-          const primaryVaultOnlyCategories = ['topic', 'decision', 'project', 'commit', 'session'];
+          const primaryVaultOnlyCategories = [
+            'topic',
+            'decision',
+            'project',
+            'commit',
+            'session',
+            'workflow',
+          ];
           const isPrimaryVaultOnlyCategory =
             args.category && primaryVaultOnlyCategories.includes(args.category);
 

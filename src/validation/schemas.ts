@@ -212,7 +212,7 @@ export const SearchVaultArgsSchema = z.object({
     .optional()
     .describe('Directories to search (e.g., ["sessions", "topics"])'),
   category: z
-    .enum(['topic', 'task-list', 'decision', 'session', 'project', 'commit'])
+    .enum(['topic', 'task-list', 'decision', 'session', 'project', 'commit', 'workflow'])
     .optional()
     .describe('Filter by document category'),
   max_results: PositiveNumber.optional()
@@ -575,6 +575,19 @@ export const SwitchModeArgsSchema = z.object({
 // get_current_mode
 export const GetCurrentModeArgsSchema = z.object({}).describe('No arguments required');
 
+export const WorkflowArgsSchema = z.object({
+  workflow_name: z
+    .string()
+    .optional()
+    .describe(
+      'The name of the workflow to execute (without .md extension). If omitted, lists all available workflows.'
+    ),
+  _invoked_by_slash_command: z
+    .boolean()
+    .default(false)
+    .describe('Internal parameter - must be true to invoke this tool. Only set by slash commands.'),
+});
+
 /**
  * Validation schemas registry
  * Maps tool names to their Zod schemas
@@ -634,6 +647,9 @@ export const ValidationSchemas = {
   // Mode tools
   switch_mode: SwitchModeArgsSchema,
   get_current_mode: GetCurrentModeArgsSchema,
+
+  // Workflow tools
+  workflow: WorkflowArgsSchema,
 } as const;
 
 /**

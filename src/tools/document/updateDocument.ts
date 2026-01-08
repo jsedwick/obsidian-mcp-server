@@ -51,7 +51,8 @@ type DocumentType =
   | 'commit'
   | 'user-reference'
   | 'accumulator'
-  | 'task-list';
+  | 'task-list'
+  | 'workflow';
 
 interface TypeRules {
   readonly: boolean;
@@ -75,6 +76,7 @@ const VALID_DOCUMENT_TYPES: ReadonlySet<string> = new Set([
   'user-reference',
   'accumulator',
   'task-list',
+  'workflow',
 ]);
 
 /**
@@ -96,6 +98,7 @@ function detectDocumentType(filePath: string, frontmatter: Record<string, unknow
   if (filePath.includes('/projects/') && filePath.includes('/commits/')) return 'commit';
   if (filePath.includes('/projects/') && filePath.endsWith('/project.md')) return 'project';
   if (filePath.includes('/tasks/')) return 'task-list';
+  if (filePath.includes('/workflows/')) return 'workflow';
   if (filePath.endsWith('user-reference.md')) return 'user-reference';
   if (path.basename(filePath).startsWith('accumulator-')) return 'accumulator';
 
@@ -189,6 +192,13 @@ const TYPE_RULES: Record<DocumentType, TypeRules> = {
       category: 'task-list', // Ensure category is always present
     }),
     validate: () => {},
+  },
+
+  workflow: {
+    readonly: false,
+    appendOnly: false,
+    frontmatterUpdates: (fm): Record<string, unknown> => fm, // Preserve frontmatter as-is
+    validate: () => {}, // No special validation
   },
 };
 

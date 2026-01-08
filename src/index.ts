@@ -852,6 +852,11 @@ class ObsidianMCPServer {
               trackFileAccess: this.trackFileAccess.bind(this),
             });
 
+          case 'workflow':
+            return await tools.workflow(validatedArgs as tools.WorkflowArgs, {
+              vaultPath: this.config.primaryVault.path,
+            });
+
           case 'switch_mode': {
             const { mode } = validatedArgs as { mode: VaultMode };
             const result = this.switchMode(mode);
@@ -1318,7 +1323,7 @@ class ObsidianMCPServer {
             },
             category: {
               type: 'string',
-              enum: ['topic', 'task-list', 'decision', 'session', 'project', 'commit'],
+              enum: ['topic', 'task-list', 'decision', 'session', 'project', 'commit', 'workflow'],
               description: 'Optional: filter by document category (from frontmatter)',
             },
             max_results: {
@@ -2046,6 +2051,28 @@ SCOPE: Decisions can be vault-level (affecting the MCP system itself) or project
             },
           },
           required: ['file_path', 'operation', 'content'],
+        },
+      },
+      {
+        name: 'workflow',
+        description:
+          'Execute a workflow or list available workflows. If workflow_name is provided, executes that workflow by reading its instructions from the workflows/ directory. If workflow_name is omitted, lists all available workflows. ONLY callable via the /workflow slash command.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            workflow_name: {
+              type: 'string',
+              description:
+                'The name of the workflow to execute (without .md extension). If omitted, lists all available workflows.',
+            },
+            _invoked_by_slash_command: {
+              type: 'boolean',
+              description:
+                'Internal parameter - must be true to invoke this tool. Only set by slash commands.',
+              default: false,
+            },
+          },
+          required: [],
         },
       },
       {

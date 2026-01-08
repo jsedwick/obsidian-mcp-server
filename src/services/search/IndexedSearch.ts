@@ -59,8 +59,8 @@ export interface IndexedSearchOptions {
   /** Directories to filter (sessions, topics, decisions) */
   directories?: string[];
 
-  /** Optional category filter (topic, task-list, decision, session, project, commit) */
-  category?: 'topic' | 'task-list' | 'decision' | 'session' | 'project' | 'commit';
+  /** Optional category filter (topic, task-list, decision, session, project, commit, workflow) */
+  category?: 'topic' | 'task-list' | 'decision' | 'session' | 'project' | 'commit' | 'workflow';
 
   /** Whether to include archived files (default: false) */
   includeArchived?: boolean;
