@@ -188,7 +188,7 @@ function isDateInRange(date: string, range: DateRange): boolean {
 
 /**
  * Parse task list file and extract tasks for specified date
- * Now supports natural language date headers
+ * Now supports natural language date headers and completed section
  */
 async function parseTaskListFile(
   filePath: string,
@@ -204,6 +204,7 @@ async function parseTaskListFile(
   // Find "Due Today (YYYY-MM-DD)" section (original strict format)
   const dueTodayRegex = new RegExp(`## Due Today \\(${targetDate.replace(/-/g, '\\-')}\\)`, 'i');
   let inTargetSection = false;
+  let inCompletedSection = false;
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
@@ -213,6 +214,7 @@ async function parseTaskListFile(
       // First check strict format
       if (dueTodayRegex.test(line)) {
         inTargetSection = true;
+        inCompletedSection = false;
         continue;
       }
 
@@ -227,22 +229,32 @@ async function parseTaskListFile(
           // Date range match
           inTargetSection = isDateInRange(targetDate, parsedDate);
         }
+        inCompletedSection = false;
         continue;
       }
 
       // If we hit a ## header that doesn't match, we're leaving any previous section
       inTargetSection = false;
+      inCompletedSection = false;
       continue;
     }
 
-    // Check if we've entered a different section (non-Due header)
-    if (line.startsWith('## ') && inTargetSection) {
-      // We've left the target section
+    // Check for Completed section
+    if (line.startsWith('## Completed')) {
+      inCompletedSection = true;
       inTargetSection = false;
       continue;
     }
 
-    // Parse task line
+    // Check if we've entered a different section (non-Due header)
+    if (line.startsWith('## ')) {
+      // We've left any previous section
+      inTargetSection = false;
+      inCompletedSection = false;
+      continue;
+    }
+
+    // Parse task line from due date sections
     if (inTargetSection && line.trim().startsWith('- [')) {
       const isComplete = line.includes('[x]') || line.includes('[X]');
       const status: 'complete' | 'incomplete' = isComplete ? 'complete' : 'incomplete';
@@ -273,6 +285,44 @@ async function parseTaskListFile(
         status,
         metadata,
       });
+    }
+
+    // Parse completed tasks from Completed section
+    if (inCompletedSection && line.trim().startsWith('- [')) {
+      // Extract completion date from (completed: YYYY-MM-DD) pattern
+      const completionDateMatch = line.match(/\(completed: (\d{4}-\d{2}-\d{2})\)/);
+
+      // Only include if completion date matches target date and status filter allows completed tasks
+      if (
+        completionDateMatch &&
+        completionDateMatch[1] === targetDate &&
+        (statusFilter === 'complete' || statusFilter === 'all')
+      ) {
+        const isComplete = line.includes('[x]') || line.includes('[X]');
+        const status: 'complete' | 'incomplete' = isComplete ? 'complete' : 'incomplete';
+
+        // Extract task text (remove checkbox and completion date)
+        let taskText = line
+          .replace(/^- \[[xX ]\]\s*/, '')
+          .replace(/\(completed: \d{4}-\d{2}-\d{2}\)/, '')
+          .trim();
+
+        // Extract metadata
+        const metadata = extractMetadata(taskText);
+
+        // Remove metadata from task text for cleaner display
+        taskText = taskText.replace(/@\w+:[^\s@]+/g, '').trim();
+
+        tasks.push({
+          task: taskText,
+          source: filePath,
+          priority: metadata.priority,
+          project: metadata.project,
+          context: metadata.context,
+          status,
+          metadata,
+        });
+      }
     }
   }
 
