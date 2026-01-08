@@ -20,7 +20,7 @@ An MCP (Model Context Protocol) server that enables Claude Code to automatically
 - **Smart Linking**: Automatic Obsidian-style wiki links between content
 - **Recent Sessions Command**: List recent sessions via `/sessions` slash command with configurable detail levels
 - **Recent Projects Command**: List recent projects via `/projects` slash command with configurable detail levels
-- **Memory Continuity**: Vault index generation and memory base loading via `/mb` command for session start
+- **Memory Continuity**: Memory base loading via `/mb` command for session start (directives, user reference, handoffs, corrections)
 - **Zero Storage Overhead**: Text-based storage uses minimal disk space
 
 ## Installation
@@ -302,10 +302,10 @@ Best practice: Search first to identify relevant topics, then load full content
 
 ### Memory & Continuity
 
-**get_memory_base** - Load vault index and session context at session start
+**get_memory_base** - Load session context at startup
 ```
 Parameters: None
-Returns: Memory base content with procedural vault index
+Returns: System directives, user reference, recent handoffs, and corrections
 
 Side effects:
   - Sets explicit session start time (used for commit detection)

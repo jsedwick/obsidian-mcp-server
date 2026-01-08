@@ -1881,7 +1881,7 @@ SCOPE: Decisions can be vault-level (affecting the MCP system itself) or project
       {
         name: 'get_memory_base',
         description:
-          'Load session context at startup including: system directives, user reference, recent session handoffs (last 2-3 sessions), recent corrections (last 2 mistake/correction pairs), and vault index. Used for session initialization and establishing timing for commit detection. Provides orientation context with recent continuity information.',
+          'Load session context at startup including: system directives, user reference, recent session handoffs (last 2-3 sessions), and recent corrections (last 2 mistake/correction pairs). Used for session initialization and establishing timing for commit detection. Provides orientation context with recent continuity information.',
         inputSchema: {
           type: 'object',
           properties: {},
