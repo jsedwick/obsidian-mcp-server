@@ -749,7 +749,7 @@ async function calculateAdaptiveThreshold(
     if (count < 25) {
       return { threshold: 0.65, topicCount: count, tier: 'very-small' };
     } else if (count < 50) {
-      return { threshold: 0.6, topicCount: count, tier: 'small' };
+      return { threshold: 0.5, topicCount: count, tier: 'small' };
     } else if (count < 100) {
       return { threshold: 0.55, topicCount: count, tier: 'medium' };
     } else if (count < 200) {
@@ -931,7 +931,7 @@ async function calculateDecisionAdaptiveThreshold(
     if (decisionCount < 25) {
       return { threshold: 0.65, decisionCount, tier: 'very-small' };
     } else if (decisionCount < 50) {
-      return { threshold: 0.6, decisionCount, tier: 'small' };
+      return { threshold: 0.5, decisionCount, tier: 'small' };
     } else if (decisionCount < 100) {
       return { threshold: 0.55, decisionCount, tier: 'medium' };
     } else if (decisionCount < 200) {
