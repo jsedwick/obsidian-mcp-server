@@ -127,6 +127,34 @@ Original content`;
         )
       ).rejects.toThrow('Unknown document type');
     });
+
+    it('should throw helpful error for malformed YAML frontmatter', async () => {
+      // Create a file with malformed YAML (unbalanced quote)
+      const filePath = path.join(vaultPath, 'topics/malformed-yaml.md');
+      await fs.mkdir(path.dirname(filePath), { recursive: true });
+      const malformedContent = `---
+tags:
+  - book
+  - fiction
+author: "[[Janelle Brown]]
+date: 2026-01-07
+---
+Original content`;
+      await fs.writeFile(filePath, malformedContent, 'utf-8');
+
+      // Should throw descriptive error about YAML parsing failure
+      await expect(
+        updateDocument(
+          {
+            file_path: filePath,
+            content: 'Updated content',
+            strategy: 'replace',
+            reason: 'Testing malformed YAML handling',
+          },
+          context
+        )
+      ).rejects.toThrow(/Failed to parse YAML frontmatter/);
+    });
   });
 
   describe('Type Validation', () => {

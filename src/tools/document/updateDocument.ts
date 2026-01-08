@@ -304,10 +304,23 @@ export async function updateDocument(
 
     const fmMatch = existingContent.match(/^---\n([\s\S]*?)\n---/);
     if (fmMatch) {
-      frontmatter = yaml.parse(fmMatch[1]) as Record<string, unknown>;
+      try {
+        frontmatter = yaml.parse(fmMatch[1]) as Record<string, unknown>;
+      } catch (parseError) {
+        // YAML parsing failed - preserve existing frontmatter string
+        throw new Error(
+          `Failed to parse YAML frontmatter in ${path.basename(filePath)}:\n` +
+            `${parseError instanceof Error ? parseError.message : String(parseError)}\n\n` +
+            `Frontmatter content:\n${fmMatch[1]}`
+        );
+      }
     }
-  } catch {
-    // File doesn't exist - will create
+  } catch (error) {
+    // If file doesn't exist, that's fine - will create
+    // But if it's a YAML parse error, rethrow it
+    if (fileExists) {
+      throw error;
+    }
   }
 
   // 3. Detect document type (only validate for primary vault files)
