@@ -69,6 +69,11 @@ export interface SessionToolsContext extends BaseContext {
   markPhase1Complete?: () => void;
   storePhase1SessionData?: (data: any) => void;
   getStoredPhase1SessionData?: () => any | null;
+  // Helper for testing filesAccessed accumulation fix
+  accumulateFilesAccessedAfterPhase1?: (
+    filePath: string,
+    action: 'read' | 'edit' | 'create'
+  ) => void;
 }
 
 /**
@@ -127,9 +132,30 @@ export function createSessionToolsContext(
       phase1Completed = true;
     }),
     storePhase1SessionData: vi.fn().mockImplementation((data: any) => {
-      storedPhase1Data = data;
+      // Deep clone filesAccessed to match real implementation (Decision 048 fix)
+      storedPhase1Data = {
+        ...data,
+        filesAccessed: [...(data.filesAccessed || [])],
+      };
     }),
     getStoredPhase1SessionData: vi.fn().mockImplementation(() => storedPhase1Data),
+    // Helper to simulate file access tracking after Phase 1 (for testing enforcement fix)
+    accumulateFilesAccessedAfterPhase1: vi
+      .fn()
+      .mockImplementation((filePath: string, action: 'read' | 'edit' | 'create') => {
+        if (storedPhase1Data && storedPhase1Data.filesAccessed) {
+          const exists = storedPhase1Data.filesAccessed.some(
+            (f: { path: string; action: string }) => f.path === filePath && f.action === action
+          );
+          if (!exists) {
+            storedPhase1Data.filesAccessed.push({
+              path: filePath,
+              action,
+              timestamp: new Date().toISOString(),
+            });
+          }
+        }
+      }),
     ...overrides,
   };
 }

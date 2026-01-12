@@ -2311,7 +2311,37 @@ Check the sessions/ directory for recent conversations.
   }
 
   private storePhase1SessionData(data: any): void {
-    this.phase1SessionData = data;
+    // Deep clone filesAccessed to avoid reference issues (Decision 048 fix)
+    // This allows us to accumulate file accesses after Phase 1 completes
+    this.phase1SessionData = {
+      ...data,
+      filesAccessed: [...(data.filesAccessed || [])],
+    };
+  }
+
+  /**
+   * Accumulate file access into stored Phase 1 session data.
+   * This ensures file accesses tracked after Phase 1 (e.g., via get_topic_context)
+   * are available during Phase 2 enforcement checks.
+   * Fixes: Phase 2 Enforcement Blocking Bug (filesAccessed context loss)
+   */
+  private accumulateFilesAccessedAfterPhase1(
+    filePath: string,
+    action: 'read' | 'edit' | 'create'
+  ): void {
+    if (this.phase1SessionData && this.phase1SessionData.filesAccessed) {
+      // Avoid duplicates - check if this exact path+action already exists
+      const exists = this.phase1SessionData.filesAccessed.some(
+        (f: { path: string; action: string }) => f.path === filePath && f.action === action
+      );
+      if (!exists) {
+        this.phase1SessionData.filesAccessed.push({
+          path: filePath,
+          action,
+          timestamp: new Date().toISOString(),
+        });
+      }
+    }
   }
 
   // eslint-disable-next-line @typescript-eslint/no-redundant-type-constituents
@@ -2332,6 +2362,10 @@ Check the sessions/ directory for recent conversations.
   /**
    * Track file access with bounded array size.
    * When limit is reached, older entries are removed (FIFO).
+   *
+   * Also accumulates into Phase 1 session data if Phase 1 has completed,
+   * ensuring file accesses (e.g., topic reads via get_topic_context) are
+   * available for Phase 2 enforcement checks.
    */
   private trackFileAccess(filePath: string, action: 'read' | 'edit' | 'create'): void {
     // If at capacity, remove oldest entry (FIFO)
@@ -2339,6 +2373,11 @@ Check the sessions/ directory for recent conversations.
       this.filesAccessed.shift();
     }
     this.filesAccessed.push({ path: filePath, action, timestamp: new Date().toISOString() });
+
+    // Accumulate into Phase 1 data for enforcement (fixes filesAccessed context loss bug)
+    if (this.phase1Completed) {
+      this.accumulateFilesAccessedAfterPhase1(filePath, action);
+    }
   }
 
   // ==================== End Tool Wrapper Methods ====================

@@ -482,6 +482,114 @@ describe('closeSession - Two-Phase Workflow', () => {
       expect(result.content[0].text).toContain('Project 1');
       expect(result.content[0].text).toContain('Files accessed: 2');
     });
+
+    it('should recognize file accesses accumulated after Phase 1 for enforcement (Decision 041 fix)', async () => {
+      const topicPath = path.join(vaultPath, 'topics/test-topic.md');
+
+      // Create the topic file (simulating existing topic)
+      await fs.mkdir(path.join(vaultPath, 'topics'), { recursive: true });
+      await fs.writeFile(topicPath, '---\ntitle: Test Topic\n---\n# Test Topic\nContent');
+
+      // Session data with commit-related topic that MUST be reviewed
+      const sessionData: SessionData = {
+        phase: 1,
+        sessionId: '2025-01-15_14-30-00',
+        sessionFile: path.join(vaultPath, 'sessions/2025-01/2025-01-15_14-30-00.md'),
+        sessionContent: '# Test session content',
+        dateStr: '2025-01-15',
+        monthDir: path.join(vaultPath, 'sessions/2025-01'),
+        detectedRepoInfo: null,
+        topicsCreated: [],
+        decisionsCreated: [],
+        projectsCreated: [],
+        filesAccessed: [], // Empty at Phase 1 time
+        filesToCheck: [],
+        repoDetectionMessage: '',
+        autoCommitMessage: '',
+        // Commit-related topic requiring enforcement (Decision 041)
+        commitRelatedTopics: [
+          {
+            path: topicPath,
+            title: 'Test Topic',
+            relevance: 'Matched search term',
+            commitHash: 'abc123',
+          },
+        ],
+      };
+
+      // Store Phase 1 data (simulating storePhase1SessionData being called)
+      context.storePhase1SessionData!(sessionData);
+
+      // Simulate file access AFTER Phase 1 (e.g., via get_topic_context)
+      // This is what happens when Claude reads topics between Phase 1 and Phase 2
+      context.accumulateFilesAccessedAfterPhase1!(topicPath, 'read');
+
+      const args: CloseSessionArgs = {
+        summary: 'Test summary',
+        finalize: true,
+        session_data: sessionData,
+        _invoked_by_slash_command: true,
+      };
+
+      await fs.mkdir(sessionData.monthDir, { recursive: true });
+
+      // Phase 2 should succeed because topic was "read" via accumulated filesAccessed
+      const result = await runPhase2Finalization(args, context, sessionData);
+
+      // Verify Phase 2 completed successfully (no enforcement error)
+      expect(result.content[0].text).toContain('Session finalized:');
+      expect(result.content[0].text).toContain('2025-01-15_14-30-00');
+    });
+
+    it('should still block when commit-related topics are not reviewed (enforcement working)', async () => {
+      const topicPath = path.join(vaultPath, 'topics/unread-topic.md');
+
+      // Session data with commit-related topic that MUST be reviewed
+      const sessionData: SessionData = {
+        phase: 1,
+        sessionId: '2025-01-15_14-30-00',
+        sessionFile: path.join(vaultPath, 'sessions/2025-01/2025-01-15_14-30-00.md'),
+        sessionContent: '# Test session content',
+        dateStr: '2025-01-15',
+        monthDir: path.join(vaultPath, 'sessions/2025-01'),
+        detectedRepoInfo: null,
+        topicsCreated: [],
+        decisionsCreated: [],
+        projectsCreated: [],
+        filesAccessed: [], // Empty - topic never read
+        filesToCheck: [],
+        repoDetectionMessage: '',
+        autoCommitMessage: '',
+        // Commit-related topic requiring enforcement (Decision 041)
+        commitRelatedTopics: [
+          {
+            path: topicPath,
+            title: 'Unread Topic',
+            relevance: 'Matched search term',
+            commitHash: 'abc123',
+          },
+        ],
+      };
+
+      // Store Phase 1 data
+      context.storePhase1SessionData!(sessionData);
+
+      // DO NOT accumulate file access - simulating topic was NOT read
+
+      const args: CloseSessionArgs = {
+        summary: 'Test summary',
+        finalize: true,
+        session_data: sessionData,
+        _invoked_by_slash_command: true,
+      };
+
+      await fs.mkdir(sessionData.monthDir, { recursive: true });
+
+      // Phase 2 should FAIL because topic was not read
+      await expect(runPhase2Finalization(args, context, sessionData)).rejects.toThrow(
+        'Commit-Related Topics Not Reviewed'
+      );
+    });
   });
 
   describe('runSinglePhaseClose', () => {

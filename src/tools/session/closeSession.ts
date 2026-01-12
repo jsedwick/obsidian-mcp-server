@@ -1393,8 +1393,14 @@ export async function runPhase2Finalization(
   // ENFORCEMENT CHECK (Decision 041): Require review of commit-related topics
   // This ensures Claude reads each topic identified as potentially affected by commits
   if (data.commitRelatedTopics && data.commitRelatedTopics.length > 0) {
-    // Merge Phase 1 filesAccessed with current context (Decision 048)
-    const allFilesAccessed = [...(data.filesAccessed || []), ...context.filesAccessed];
+    // Use stored Phase 1 data's filesAccessed (which accumulates file accesses after Phase 1)
+    // This fixes the bug where get_topic_context reads weren't persisting across turns
+    // Fallback chain: stored Phase 1 data -> args session_data -> current context
+    const storedPhase1Data = context.getStoredPhase1SessionData();
+    const allFilesAccessed = [
+      ...(storedPhase1Data?.filesAccessed || data.filesAccessed || []),
+      ...context.filesAccessed,
+    ];
 
     const unreviewedTopics = data.commitRelatedTopics.filter(topic => {
       // Check if topic was accessed (read, edit, or create all count as review)
@@ -1432,8 +1438,14 @@ export async function runPhase2Finalization(
   // ENFORCEMENT CHECK (Decision 042): Require review of semantic topics
   // This ensures Claude reads the top 3 semantically-related topics presented in Phase 1
   if (data.semanticTopicsPresented && data.semanticTopicsPresented.length > 0) {
-    // Merge Phase 1 filesAccessed with current context (Decision 048)
-    const allFilesAccessed = [...(data.filesAccessed || []), ...context.filesAccessed];
+    // Use stored Phase 1 data's filesAccessed (which accumulates file accesses after Phase 1)
+    // This fixes the bug where get_topic_context reads weren't persisting across turns
+    // Fallback chain: stored Phase 1 data -> args session_data -> current context
+    const storedPhase1Data = context.getStoredPhase1SessionData();
+    const allFilesAccessed = [
+      ...(storedPhase1Data?.filesAccessed || data.filesAccessed || []),
+      ...context.filesAccessed,
+    ];
 
     const unreviewedSemanticTopics = data.semanticTopicsPresented.filter(topic => {
       // Check if topic was accessed (read, edit, or create all count as review)
