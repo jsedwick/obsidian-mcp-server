@@ -261,26 +261,30 @@ export async function runPhase1Analysis(
     }
   }
 
-  if (!detectedRepoInfo || !sessionStartTime) {
-    return runSinglePhaseClose(
-      args,
-      context,
-      sessionId,
-      sessionFile,
-      sessionContent,
-      dateStr,
-      monthDir,
-      detectedRepoInfo,
-      autoCommitMessage
-    );
-  }
+  // Decision 044 FIX: Remove early return to single-phase mode
+  // The previous bypass at this location (!detectedRepoInfo || !sessionStartTime)
+  // allowed enforcement to be skipped when repo detection failed.
+  // Now we continue with two-phase workflow regardless, just without commit analysis.
 
   let sessionCommits: string[] = [];
   let commitDetectionError = '';
-  try {
-    sessionCommits = await findSessionCommits(detectedRepoInfo.path, sessionStartTime);
-  } catch (error) {
-    commitDetectionError = `⚠️  Failed to detect session commits: ${String(error)}\n\n`;
+
+  if (detectedRepoInfo && sessionStartTime) {
+    // Both repo and session start time available - can detect commits
+    try {
+      sessionCommits = await findSessionCommits(detectedRepoInfo.path, sessionStartTime);
+    } catch (error) {
+      commitDetectionError = `⚠️  Failed to detect session commits: ${String(error)}\n\n`;
+    }
+  } else {
+    // Missing repo or session start time - can't detect commits but still run two-phase
+    // This ensures semantic topic enforcement (Decision 042) cannot be bypassed
+    if (!detectedRepoInfo) {
+      commitDetectionError += '⚠️  No Git repository detected - commit analysis skipped\n\n';
+    }
+    if (!sessionStartTime) {
+      commitDetectionError += '⚠️  Session start time unknown - commit analysis skipped\n\n';
+    }
   }
 
   // Decision 044: Always run two-phase workflow, never skip to single-phase

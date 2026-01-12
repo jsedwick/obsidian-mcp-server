@@ -219,7 +219,7 @@ describe('closeSession - Two-Phase Workflow', () => {
       expect(context.analyzeCommitImpact).toHaveBeenCalledTimes(3);
     });
 
-    it('should fall back to single-phase when no session start time', async () => {
+    it('should use two-phase workflow even without session start time (Decision 044 fix)', async () => {
       const args: CloseSessionArgs = {
         summary: 'Test session',
         _invoked_by_slash_command: true,
@@ -247,9 +247,14 @@ describe('closeSession - Two-Phase Workflow', () => {
         ''
       );
 
-      // Should run single-phase close instead
-      expect(result.content[0].text).toContain('Session created:');
-      expect(result.content[0].text).not.toContain('Phase 1 Complete');
+      // Decision 044 fix: Even without session start time, should use two-phase workflow
+      // to ensure semantic topic enforcement (Decision 042) cannot be bypassed
+      expect(result.content[0].text).toContain('Session Analysis Complete');
+      expect(result.content[0].text).toContain(
+        'Session start time unknown - commit analysis skipped'
+      );
+      // Should NOT finalize - this is Phase 1, waiting for Phase 2
+      expect(result.content[0].text).not.toContain('Session created:');
     });
 
     it('should use two-phase workflow even with no commits (Decision 044)', async () => {
