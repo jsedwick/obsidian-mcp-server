@@ -635,6 +635,7 @@ class ObsidianMCPServer {
             return await tools.getTopicContext(validatedArgs as tools.GetTopicContextArgs, {
               vaultPath: this.config.primaryVault.path,
               slugify: this.slugify.bind(this),
+              trackFileAccess: this.trackFileAccess.bind(this),
             });
 
           case 'analyze_session_commits':
