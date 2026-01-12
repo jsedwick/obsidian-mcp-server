@@ -653,6 +653,10 @@ class ObsidianMCPServer {
           case 'close_session':
             return await tools.closeSession(validatedArgs as tools.CloseSessionArgs, {
               vaultPath: this.config.primaryVault.path,
+              allVaultPaths: [
+                this.config.primaryVault.path,
+                ...this.config.secondaryVaults.map(v => v.path),
+              ],
               currentSessionId: this.currentSessionId,
               filesAccessed: this.filesAccessed,
               topicsCreated: this.topicsCreated,

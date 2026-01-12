@@ -295,7 +295,7 @@ export async function runPhase1Analysis(
   // Collect commit-related topics for enforcement (Decision 041)
   const commitRelatedTopicsMap = new Map<string, RelatedTopic & { commitHash: string }>();
 
-  if (sessionCommits.length > 0) {
+  if (sessionCommits.length > 0 && detectedRepoInfo) {
     commitAnalysisReport += `
 
 📝 **Commit Analysis (${sessionCommits.length} commit${sessionCommits.length > 1 ? 's' : ''} made during session)**
@@ -1826,6 +1826,7 @@ export interface CloseSessionResult {
 
 interface CloseSessionContext {
   vaultPath: string;
+  allVaultPaths: string[]; // All vault paths (primary + secondary) for filtering during repo detection
   currentSessionId: string | null;
   filesAccessed: FileAccess[];
   topicsCreated: Array<{ slug: string; title: string; file: string }>;
@@ -2012,7 +2013,14 @@ export async function closeSession(
         // Skip directories that can't be searched
       }
     }
-    const repoPaths = Array.from(allRepoPaths);
+    let repoPaths = Array.from(allRepoPaths);
+
+    // Filter out repositories inside vault directories (they're just for syncing markdown)
+    repoPaths = repoPaths.filter(repoPath => {
+      return !context.allVaultPaths.some(
+        vaultPath => repoPath === vaultPath || repoPath.startsWith(vaultPath + path.sep)
+      );
+    });
 
     if (repoPaths.length > 0) {
       const candidates: RepoCandidate[] = [];

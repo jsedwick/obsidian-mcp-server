@@ -32,6 +32,7 @@ export interface BaseContext {
  * Session tools context (for session management tools)
  */
 export interface SessionToolsContext extends BaseContext {
+  allVaultPaths: string[];
   currentSessionId: string | null;
   currentSessionFile: string | null;
   filesAccessed: FileAccess[];
@@ -88,6 +89,7 @@ export function createSessionToolsContext(
 
   return {
     vaultPath: '/tmp/test-vault',
+    allVaultPaths: ['/tmp/test-vault'],
     currentSessionId: null,
     currentSessionFile: null,
     filesAccessed,
