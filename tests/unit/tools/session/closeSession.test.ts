@@ -624,13 +624,15 @@ describe('closeSession - Two-Phase Workflow', () => {
     it('should create monthly session directory structure', async () => {
       const args: CloseSessionArgs = {
         summary: 'Test session',
-        skip_analysis: true,
         _invoked_by_slash_command: true,
       };
 
       context.findGitRepos = vi.fn().mockResolvedValue([]);
 
-      await closeSession(args, context);
+      const result = await closeSession(args, context);
+
+      // Decision 044: Always runs Phase 1 (two-phase workflow required)
+      expect(result.content[0].text).toContain('Session Analysis Complete');
 
       // Should create YYYY-MM directory structure
       const now = new Date();
@@ -649,7 +651,6 @@ describe('closeSession - Two-Phase Workflow', () => {
       const args: CloseSessionArgs = {
         summary: 'Test summary',
         topic: 'Feature X Implementation',
-        skip_analysis: true,
         _invoked_by_slash_command: true,
       };
 
@@ -657,13 +658,14 @@ describe('closeSession - Two-Phase Workflow', () => {
 
       const result = await closeSession(args, context);
 
+      // Decision 044: Always runs Phase 1 (two-phase workflow required)
+      expect(result.content[0].text).toContain('Session Analysis Complete');
       expect(result.content[0].text).toContain('feature-x-implementation');
     });
 
     it('should auto-detect Git repository from CWD', async () => {
       const args: CloseSessionArgs = {
         summary: 'Test',
-        skip_analysis: true,
         _invoked_by_slash_command: true,
       };
 
@@ -676,8 +678,10 @@ describe('closeSession - Two-Phase Workflow', () => {
       });
       context.createProjectPage = vi.fn().mockResolvedValue({ content: [] });
 
-      await closeSession(args, context);
+      const result = await closeSession(args, context);
 
+      // Decision 044: Always runs Phase 1 (two-phase workflow required)
+      expect(result.content[0].text).toContain('Session Analysis Complete');
       expect(context.createProjectPage).toHaveBeenCalledWith({ repo_path: mockRepoPath });
     });
   });
@@ -790,25 +794,7 @@ describe('closeSession - Two-Phase Workflow', () => {
       expect(context.clearSessionState).not.toHaveBeenCalled();
     });
 
-    it('should handle skip_analysis flag', async () => {
-      context.getSessionStartTime = vi.fn().mockReturnValue(new Date('2025-01-15T10:00:00Z'));
-
-      await createTestCommit(testRepoPath, {
-        message: 'Quick fix',
-        files: { 'fix.ts': 'fixed' },
-      });
-
-      const args: CloseSessionArgs = {
-        summary: 'Quick fix',
-        skip_analysis: true,
-        _invoked_by_slash_command: true,
-      };
-
-      const result = await closeSession(args, context);
-
-      // Should skip Phase 1 analysis even though commits exist
-      expect(result.content[0].text).not.toContain('Phase 1 Complete');
-      expect(result.content[0].text).toContain('Session created:');
-    });
+    // Note: skip_analysis test removed per Decision 044
+    // Two-phase workflow is now always required, skip_analysis parameter was removed
   });
 });

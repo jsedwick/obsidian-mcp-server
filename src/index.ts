@@ -1526,11 +1526,6 @@ SCOPE: Decisions can be vault-level (affecting the MCP system itself) or project
               description:
                 'Session state from Phase 1. Required when finalize=true. Contains session ID, file path, and metadata needed for finalization.',
             },
-            skip_analysis: {
-              type: 'boolean',
-              description: 'Skip commit analysis and go straight to single-phase finalization.',
-              default: false,
-            },
             working_directories: {
               type: 'array',
               items: { type: 'string' },

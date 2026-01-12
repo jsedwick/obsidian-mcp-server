@@ -1771,7 +1771,6 @@ export interface CloseSessionArgs {
   analyze_only?: boolean; // Phase 1: analyze commits, return suggestions
   finalize?: boolean; // Phase 2: run custodian, save session
   session_data?: SessionData; // Pass state from Phase 1 to Phase 2
-  skip_analysis?: boolean; // Skip commit analysis, go straight to finalization
   // Working directories from Claude Code environment (fixes repo detection gap)
   // The MCP server's process.cwd() differs from Claude Code's working directory
   working_directories?: string[]; // Claude Code passes its CWD and additional working dirs
@@ -2200,15 +2199,16 @@ export async function closeSession(
   });
 
   // PHASE 1: Analyze commits and return suggestions (Decision 022)
-  if (!args.skip_analysis && !args.finalize) {
+  // Decision 044: Always run two-phase workflow, skip_analysis parameter removed
+  if (!args.finalize) {
     // Prevent Phase 1 from running more than once per session (prevents loop bug)
     if (context.hasPhase1Completed()) {
       throw new Error(
         '❌ Phase 1 Error: Commit analysis already completed for this session.\n\n' +
-          'Phase 1 can only run once per session. You should either:\n' +
-          '1. Call close_session with finalize: true and session_data from Phase 1\n' +
-          '2. Use skip_analysis: true to bypass commit analysis entirely\n\n' +
-          'This prevents the Phase 1 loop bug where commit analysis repeats indefinitely.'
+          'Phase 1 can only run once per session. You must:\n' +
+          'Call close_session with finalize: true and session_data from Phase 1\n\n' +
+          'This prevents the Phase 1 loop bug where commit analysis repeats indefinitely.\n' +
+          '(Decision 044: Two-phase workflow is always required)'
       );
     }
 
@@ -2231,15 +2231,11 @@ export async function closeSession(
     return result;
   }
 
-  return runSinglePhaseClose(
-    args,
-    context,
-    sessionId,
-    sessionFile,
-    sessionContent,
-    dateStr,
-    monthDir,
-    detectedRepoInfo,
-    autoCommitMessage
+  // Decision 044: This code path should never be reached
+  // Two-phase workflow is always required - skip_analysis was removed
+  throw new Error(
+    '❌ Internal Error: Unreachable code path reached.\n\n' +
+      'This indicates a bug in the close_session flow. The two-phase workflow ' +
+      'should always be used (Decision 044). Please report this issue.'
   );
 }

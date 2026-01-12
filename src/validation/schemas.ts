@@ -174,11 +174,6 @@ export const CloseSessionArgsSchema = z.object({
   session_data: SessionDataSchema.optional().describe(
     'Session state from Phase 1. Required when finalize=true'
   ),
-  skip_analysis: z
-    .boolean()
-    .optional()
-    .default(false)
-    .describe('Skip commit analysis and go straight to single-phase finalization'),
   // Working directories from Claude Code (fixes repo detection gap)
   working_directories: z
     .array(z.string())
