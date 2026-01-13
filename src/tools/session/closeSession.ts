@@ -825,7 +825,9 @@ async function discoverRelatedTopics(
       const filePath = match[1];
 
       // Extract similarity score from search result
-      // Format: "Semantic match (score: 0.850)" or fallback to 0.0
+      // Two possible formats:
+      // 1. "[semantic: 27%]" - from indexed search with re-ranking (percentage)
+      // 2. "Semantic match (score: 0.850)" - from pure semantic search (decimal)
       const matchIndex = match.index;
       const remainingText = resultText.substring(matchIndex);
       const nextFileMatch = remainingText.indexOf('**', 2); // Find next file
@@ -834,8 +836,14 @@ async function discoverRelatedTopics(
           ? remainingText.substring(0, nextFileMatch)
           : remainingText.substring(0, 500); // Limit search area
 
-      const scoreMatch = sectionText.match(/score:\s*([\d.]+)/);
-      const similarity = scoreMatch ? parseFloat(scoreMatch[1]) : 0.0;
+      // Try percentage format first (more common with indexed search)
+      const percentMatch = sectionText.match(/\[semantic:\s*([\d.]+)%\]/);
+      const decimalMatch = sectionText.match(/score:\s*([\d.]+)/);
+      const similarity = percentMatch
+        ? parseFloat(percentMatch[1]) / 100
+        : decimalMatch
+          ? parseFloat(decimalMatch[1])
+          : 0.0;
 
       // Filter: Only include topics from primary vault
       if (
@@ -1003,7 +1011,9 @@ async function discoverRelatedDecisions(
       const filePath = match[1];
 
       // Extract similarity score from search result
-      // Format: "Semantic match (score: 0.850)" or fallback to 0.0
+      // Two possible formats:
+      // 1. "[semantic: 27%]" - from indexed search with re-ranking (percentage)
+      // 2. "Semantic match (score: 0.850)" - from pure semantic search (decimal)
       const matchIndex = match.index;
       const remainingText = resultText.substring(matchIndex);
       const nextFileMatch = remainingText.indexOf('**', 2); // Find next file
@@ -1012,8 +1022,14 @@ async function discoverRelatedDecisions(
           ? remainingText.substring(0, nextFileMatch)
           : remainingText.substring(0, 500); // Limit search area
 
-      const scoreMatch = sectionText.match(/score:\s*([\d.]+)/);
-      const similarity = scoreMatch ? parseFloat(scoreMatch[1]) : 0.0;
+      // Try percentage format first (more common with indexed search)
+      const percentMatch = sectionText.match(/\[semantic:\s*([\d.]+)%\]/);
+      const decimalMatch = sectionText.match(/score:\s*([\d.]+)/);
+      const similarity = percentMatch
+        ? parseFloat(percentMatch[1]) / 100
+        : decimalMatch
+          ? parseFloat(decimalMatch[1])
+          : 0.0;
 
       // Filter: Only include decisions from primary vault
       // decisions/project-slug/###-decision-name.md

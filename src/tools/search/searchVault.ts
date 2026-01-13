@@ -672,6 +672,7 @@ async function applySemanticReranking(
           result.fileStats
         );
         const semanticScore = context.cosineSimilarity(queryEmbedding, docEmbedding);
+        (result as any).semanticScore = semanticScore;
         result.score = semanticScore;
       } catch (error) {
         logger.error(
