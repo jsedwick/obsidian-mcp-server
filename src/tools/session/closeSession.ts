@@ -15,6 +15,7 @@ import type { FileAccess } from '../../models/Session.js';
 import type { RepoCandidate } from '../../models/Git.js';
 import type { RelatedTopic } from '../git/analyzeCommitImpact.js';
 import { GitError } from '../../utils/errors.js';
+import { logger } from '../../utils/logger.js';
 
 const execAsync = promisify(exec);
 
@@ -1421,21 +1422,22 @@ export async function runPhase2Finalization(
     const allFilesAccessed = [...phase1Files, ...context.filesAccessed];
 
     // DEBUG: Log enforcement data to diagnose bug
-    console.log('=== ENFORCEMENT DEBUG (Decision 041) ===');
-    console.log('storedPhase1Data exists:', !!storedPhase1Data);
-    console.log(
-      'storedPhase1Data.filesAccessed count:',
-      storedPhase1Data?.filesAccessed?.length || 0
-    );
-    console.log('data.filesAccessed count:', data.filesAccessed?.length || 0);
-    console.log('context.filesAccessed count:', context.filesAccessed?.length || 0);
-    console.log('allFilesAccessed count:', allFilesAccessed.length);
-    console.log('commitRelatedTopics count:', data.commitRelatedTopics.length);
-    console.log('\nTopic paths being checked:');
-    data.commitRelatedTopics.forEach(t => console.log(`  - ${t.path}`));
-    console.log('\nAll accessed file paths:');
-    allFilesAccessed.forEach(f => console.log(`  - ${f.path} (${f.action})`));
-    console.log('=== END ENFORCEMENT DEBUG ===\n');
+    logger.info('=== ENFORCEMENT DEBUG (Decision 041) ===');
+    logger.info('storedPhase1Data exists:', { exists: !!storedPhase1Data });
+    logger.info('storedPhase1Data.filesAccessed count:', {
+      count: storedPhase1Data?.filesAccessed?.length || 0,
+    });
+    logger.info('data.filesAccessed count:', { count: data.filesAccessed?.length || 0 });
+    logger.info('context.filesAccessed count:', { count: context.filesAccessed?.length || 0 });
+    logger.info('allFilesAccessed count:', { count: allFilesAccessed.length });
+    logger.info('commitRelatedTopics count:', { count: data.commitRelatedTopics.length });
+    logger.info('Topic paths being checked:', {
+      topics: data.commitRelatedTopics.map(t => t.path),
+    });
+    logger.info('All accessed file paths:', {
+      files: allFilesAccessed.map(f => `${f.path} (${f.action})`),
+    });
+    logger.info('=== END ENFORCEMENT DEBUG ===');
 
     const unreviewedTopics = data.commitRelatedTopics.filter(topic => {
       // Check if topic was accessed (read, edit, or create all count as review)
@@ -1485,21 +1487,24 @@ export async function runPhase2Finalization(
     const allFilesAccessed = [...phase1Files, ...context.filesAccessed];
 
     // DEBUG: Log enforcement data to diagnose bug
-    console.log('=== ENFORCEMENT DEBUG (Decision 042) ===');
-    console.log('storedPhase1Data exists:', !!storedPhase1Data);
-    console.log(
-      'storedPhase1Data.filesAccessed count:',
-      storedPhase1Data?.filesAccessed?.length || 0
-    );
-    console.log('data.filesAccessed count:', data.filesAccessed?.length || 0);
-    console.log('context.filesAccessed count:', context.filesAccessed?.length || 0);
-    console.log('allFilesAccessed count:', allFilesAccessed.length);
-    console.log('semanticTopicsPresented count:', data.semanticTopicsPresented.length);
-    console.log('\nSemantic topic paths being checked:');
-    data.semanticTopicsPresented.forEach(t => console.log(`  - ${t.path}`));
-    console.log('\nAll accessed file paths:');
-    allFilesAccessed.forEach(f => console.log(`  - ${f.path} (${f.action})`));
-    console.log('=== END ENFORCEMENT DEBUG ===\n');
+    logger.info('=== ENFORCEMENT DEBUG (Decision 042) ===');
+    logger.info('storedPhase1Data exists:', { exists: !!storedPhase1Data });
+    logger.info('storedPhase1Data.filesAccessed count:', {
+      count: storedPhase1Data?.filesAccessed?.length || 0,
+    });
+    logger.info('data.filesAccessed count:', { count: data.filesAccessed?.length || 0 });
+    logger.info('context.filesAccessed count:', { count: context.filesAccessed?.length || 0 });
+    logger.info('allFilesAccessed count:', { count: allFilesAccessed.length });
+    logger.info('semanticTopicsPresented count:', {
+      count: data.semanticTopicsPresented.length,
+    });
+    logger.info('Semantic topic paths being checked:', {
+      topics: data.semanticTopicsPresented.map(t => t.path),
+    });
+    logger.info('All accessed file paths:', {
+      files: allFilesAccessed.map(f => `${f.path} (${f.action})`),
+    });
+    logger.info('=== END ENFORCEMENT DEBUG ===');
 
     const unreviewedSemanticTopics = data.semanticTopicsPresented.filter(topic => {
       // Check if topic was accessed (read, edit, or create all count as review)

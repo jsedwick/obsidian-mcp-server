@@ -29,6 +29,16 @@ import { createTestGitRepo, createTestCommit, cleanupTestGitRepo } from '../../.
 import * as fs from 'fs/promises';
 import * as path from 'path';
 
+// Mock logger to prevent console output during tests
+vi.mock('../../../../src/utils/logger.js', () => ({
+  logger: {
+    info: vi.fn(),
+    debug: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+  },
+}));
+
 describe('closeSession - Two-Phase Workflow', () => {
   let vaultPath: string;
   let context: SessionToolsContext;
