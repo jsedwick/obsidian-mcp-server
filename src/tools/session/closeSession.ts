@@ -1413,10 +1413,12 @@ export async function runPhase2Finalization(
     // This fixes the bug where get_topic_context reads weren't persisting across turns
     // Fallback chain: stored Phase 1 data -> args session_data -> current context
     const storedPhase1Data = context.getStoredPhase1SessionData();
-    const allFilesAccessed = [
-      ...(storedPhase1Data?.filesAccessed || data.filesAccessed || []),
-      ...context.filesAccessed,
-    ];
+    // Check array length, not just truthiness (empty arrays are truthy!)
+    const phase1Files =
+      (storedPhase1Data?.filesAccessed?.length ?? 0) > 0
+        ? storedPhase1Data.filesAccessed
+        : data.filesAccessed || [];
+    const allFilesAccessed = [...phase1Files, ...context.filesAccessed];
 
     // DEBUG: Log enforcement data to diagnose bug
     console.log('=== ENFORCEMENT DEBUG (Decision 041) ===');
@@ -1475,10 +1477,12 @@ export async function runPhase2Finalization(
     // This fixes the bug where get_topic_context reads weren't persisting across turns
     // Fallback chain: stored Phase 1 data -> args session_data -> current context
     const storedPhase1Data = context.getStoredPhase1SessionData();
-    const allFilesAccessed = [
-      ...(storedPhase1Data?.filesAccessed || data.filesAccessed || []),
-      ...context.filesAccessed,
-    ];
+    // Check array length, not just truthiness (empty arrays are truthy!)
+    const phase1Files =
+      (storedPhase1Data?.filesAccessed?.length ?? 0) > 0
+        ? storedPhase1Data.filesAccessed
+        : data.filesAccessed || [];
+    const allFilesAccessed = [...phase1Files, ...context.filesAccessed];
 
     // DEBUG: Log enforcement data to diagnose bug
     console.log('=== ENFORCEMENT DEBUG (Decision 042) ===');
