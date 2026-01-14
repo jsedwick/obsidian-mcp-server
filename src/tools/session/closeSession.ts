@@ -407,7 +407,7 @@ export async function runPhase1Analysis(
       '\n\n---\n\n' +
       '⚠️ **COMMIT-RELATED TOPICS - REVIEW REQUIRED (Decision 041)**\n\n' +
       'The following topics were identified as potentially affected by commits.\n' +
-      '**You MUST read each topic** using `Read` or `get_topic_context` before finalizing.\n' +
+      '**You MUST read each topic** using `get_topic_context` before finalizing.\n' +
       'Finalization will be BLOCKED if any topic is not reviewed.\n\n' +
       commitRelatedTopics
         .map(
@@ -726,7 +726,7 @@ function buildSemanticTopicReviewSection(
   }
 
   section +=
-    '\n**Action Required:** Read each topic using `Read` or `get_topic_context`. ' +
+    '\n**Action Required:** Read each topic using `get_topic_context`. ' +
     'Evaluate if session content reveals outdated information. ' +
     'Update topics that need changes using `update_document`.';
 
@@ -1461,7 +1461,7 @@ export async function runPhase2Finalization(
             )
             .join('\n\n') +
           '\n\n**What you must do:**\n' +
-          '1. Read each topic using `Read` tool or `get_topic_context`\n' +
+          '1. Read each topic using `get_topic_context`\n' +
           '2. Decide if the commit warrants updates to that topic\n' +
           '3. Update topics that need changes using `update_document`\n' +
           '4. Call close_session with finalize: true again after reviewing all topics\n\n' +
@@ -1520,7 +1520,7 @@ export async function runPhase2Finalization(
           `${unreviewedSemanticTopics.length} semantically-related topic(s) were presented in Phase 1 but were not examined:\n\n` +
           unreviewedSemanticTopics.map(t => `- **${t.title}**\n  Path: ${t.path}`).join('\n\n') +
           '\n\n**What you must do:**\n' +
-          '1. Read each topic using `Read` tool or `get_topic_context`\n' +
+          '1. Read each topic using `get_topic_context`\n' +
           '2. Evaluate if the session content reveals outdated information\n' +
           '3. Update topics that need changes using `update_document`\n' +
           '4. Call close_session with finalize: true again after reviewing all topics\n\n' +
