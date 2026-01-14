@@ -2062,7 +2062,13 @@ export async function closeSession(
     let searchDirs: string[];
     if (args.working_directories?.length) {
       // Priority 1: AI provided working directories (Claude Code)
-      searchDirs = args.working_directories;
+      // Sanitize: strip common prefixes from <env> context display format
+      searchDirs = args.working_directories.map(dir => {
+        return dir
+          .replace(/^Working directory:\s*/i, '') // "Working directory: /path"
+          .replace(/^Additional working directories?:\s*/i, '') // "Additional working directories: /path"
+          .trim();
+      });
     } else {
       // Priority 2: Infer from file access patterns (AI-agnostic)
       const inferredDirs = await inferWorkingDirectoriesFromFileAccess(context.filesAccessed);
