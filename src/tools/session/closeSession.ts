@@ -124,8 +124,14 @@ async function inferWorkingDirectoriesFromFileAccess(
       try {
         const gitDir = path.join(currentPath, '.git');
         await fs.access(gitDir);
-        // Found a git repo root
-        repoPaths.add(currentPath);
+        // Found a git repo root - normalize to resolve symlinks
+        try {
+          const realPath = await fs.realpath(currentPath);
+          repoPaths.add(realPath);
+        } catch {
+          // If normalization fails, use the path as-is
+          repoPaths.add(currentPath);
+        }
         break;
       } catch {
         // No .git here, try parent

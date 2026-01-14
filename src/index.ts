@@ -2368,15 +2368,38 @@ Check the sessions/ directory for recent conversations.
    * available for Phase 2 enforcement checks.
    */
   private trackFileAccess(filePath: string, action: 'read' | 'edit' | 'create'): void {
+    // Normalize path to resolve symlinks for consistent repo detection
+    // Use the directory's real path for files being created (file doesn't exist yet)
+    let normalizedPath: string;
+    try {
+      if (action === 'create') {
+        // For new files, normalize the directory path and append the filename
+        const dir = path.dirname(filePath);
+        const filename = path.basename(filePath);
+        const realDir = fssync.realpathSync(dir);
+        normalizedPath = path.join(realDir, filename);
+      } else {
+        // For existing files, normalize the full path
+        normalizedPath = fssync.realpathSync(filePath);
+      }
+    } catch {
+      // If normalization fails, use the original path
+      normalizedPath = filePath;
+    }
+
     // If at capacity, remove oldest entry (FIFO)
     if (this.filesAccessed.length >= ObsidianMCPServer.MAX_FILES_ACCESSED) {
       this.filesAccessed.shift();
     }
-    this.filesAccessed.push({ path: filePath, action, timestamp: new Date().toISOString() });
+    this.filesAccessed.push({
+      path: normalizedPath,
+      action,
+      timestamp: new Date().toISOString(),
+    });
 
     // Accumulate into Phase 1 data for enforcement (fixes filesAccessed context loss bug)
     if (this.phase1Completed) {
-      this.accumulateFilesAccessedAfterPhase1(filePath, action);
+      this.accumulateFilesAccessedAfterPhase1(normalizedPath, action);
     }
   }
 
@@ -2916,7 +2939,9 @@ Check the sessions/ directory for recent conversations.
         const gitDir = path.join(dirPath, '.git');
         try {
           await fs.access(gitDir);
-          repos.push(dirPath);
+          // Resolve symlinks to get the real path for consistent comparison
+          const realPath = await fs.realpath(dirPath);
+          repos.push(realPath);
         } catch {
           // Not a git repo, continue searching
         }
@@ -2944,8 +2969,10 @@ Check the sessions/ directory for recent conversations.
       try {
         const gitDir = path.join(parentPath, '.git');
         await fs.access(gitDir);
-        if (!repos.includes(parentPath)) {
-          repos.push(parentPath);
+        // Resolve symlinks to get the real path for consistent comparison
+        const realPath = await fs.realpath(parentPath);
+        if (!repos.includes(realPath)) {
+          repos.push(realPath);
         }
       } catch {
         // No git repo here
