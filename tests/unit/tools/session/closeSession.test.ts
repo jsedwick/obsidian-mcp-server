@@ -31,12 +31,12 @@ import * as path from 'path';
 
 // Mock logger to prevent console output during tests
 vi.mock('../../../../src/utils/logger.js', () => ({
-  logger: {
+  createLogger: vi.fn(() => ({
     info: vi.fn(),
     debug: vi.fn(),
     warn: vi.fn(),
     error: vi.fn(),
-  },
+  })),
 }));
 
 describe('closeSession - Two-Phase Workflow', () => {

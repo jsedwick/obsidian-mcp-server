@@ -15,9 +15,10 @@ import type { FileAccess } from '../../models/Session.js';
 import type { RepoCandidate } from '../../models/Git.js';
 import type { RelatedTopic } from '../git/analyzeCommitImpact.js';
 import { GitError } from '../../utils/errors.js';
-import { logger } from '../../utils/logger.js';
+import { createLogger } from '../../utils/logger.js';
 
 const execAsync = promisify(exec);
+const logger = createLogger('closeSession');
 
 /**
  * Generate automatic handoff notes based on session activity (Decision 046).
@@ -752,15 +753,15 @@ async function calculateAdaptiveThreshold(
 
     // Tier mapping: more topics = lower threshold (better match likelihood)
     if (count < 25) {
-      return { threshold: 0.65, topicCount: count, tier: 'very-small' };
+      return { threshold: 0.6, topicCount: count, tier: 'very-small' };
     } else if (count < 50) {
-      return { threshold: 0.5, topicCount: count, tier: 'small' };
+      return { threshold: 0.45, topicCount: count, tier: 'small' };
     } else if (count < 100) {
-      return { threshold: 0.55, topicCount: count, tier: 'medium' };
+      return { threshold: 0.45, topicCount: count, tier: 'medium' };
     } else if (count < 200) {
-      return { threshold: 0.5, topicCount: count, tier: 'large' };
+      return { threshold: 0.45, topicCount: count, tier: 'large' };
     } else {
-      return { threshold: 0.45, topicCount: count, tier: 'very-large' };
+      return { threshold: 0.4, topicCount: count, tier: 'very-large' };
     }
   } catch (error) {
     // Default fallback if directory read fails
@@ -942,15 +943,15 @@ async function calculateDecisionAdaptiveThreshold(
 
     // Tier mapping: more decisions = lower threshold (better match likelihood)
     if (decisionCount < 25) {
-      return { threshold: 0.65, decisionCount, tier: 'very-small' };
+      return { threshold: 0.6, decisionCount, tier: 'very-small' };
     } else if (decisionCount < 50) {
-      return { threshold: 0.5, decisionCount, tier: 'small' };
+      return { threshold: 0.45, decisionCount, tier: 'small' };
     } else if (decisionCount < 100) {
-      return { threshold: 0.55, decisionCount, tier: 'medium' };
+      return { threshold: 0.45, decisionCount, tier: 'medium' };
     } else if (decisionCount < 200) {
-      return { threshold: 0.5, decisionCount, tier: 'large' };
+      return { threshold: 0.45, decisionCount, tier: 'large' };
     } else {
-      return { threshold: 0.45, decisionCount, tier: 'very-large' };
+      return { threshold: 0.4, decisionCount, tier: 'very-large' };
     }
   } catch (error) {
     // Default fallback if directory read fails
@@ -1417,7 +1418,7 @@ export async function runPhase2Finalization(
     // Check array length, not just truthiness (empty arrays are truthy!)
     const phase1Files =
       (storedPhase1Data?.filesAccessed?.length ?? 0) > 0
-        ? storedPhase1Data.filesAccessed
+        ? storedPhase1Data!.filesAccessed
         : data.filesAccessed || [];
     const allFilesAccessed = [...phase1Files, ...context.filesAccessed];
 
@@ -1482,7 +1483,7 @@ export async function runPhase2Finalization(
     // Check array length, not just truthiness (empty arrays are truthy!)
     const phase1Files =
       (storedPhase1Data?.filesAccessed?.length ?? 0) > 0
-        ? storedPhase1Data.filesAccessed
+        ? storedPhase1Data!.filesAccessed
         : data.filesAccessed || [];
     const allFilesAccessed = [...phase1Files, ...context.filesAccessed];
 
