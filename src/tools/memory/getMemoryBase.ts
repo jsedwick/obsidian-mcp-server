@@ -195,6 +195,56 @@ async function extractRecentHandoffs(vaultPath: string, maxSessions = 3): Promis
 }
 
 /**
+ * Load active persistent issues summary for /mb display
+ * Returns formatted summary of active issues (Decision 048)
+ */
+async function loadActivePersistentIssues(vaultPath: string): Promise<string> {
+  try {
+    const issuesPath = path.join(vaultPath, 'persistent-issues.md');
+    const content = await fs.readFile(issuesPath, 'utf-8');
+
+    // Find Active Issues section
+    const activeStart = content.indexOf('## Active Issues');
+    const archivedStart = content.indexOf('## Archived');
+
+    if (activeStart === -1) {
+      return '';
+    }
+
+    const activeEnd = archivedStart > -1 ? archivedStart : content.length;
+    const activeSection = content.slice(activeStart + '## Active Issues'.length, activeEnd);
+
+    // Parse individual issues (H3 headers)
+    const issueMatches = activeSection.matchAll(
+      /### ([^\n]+)\n[\s\S]*?\*\*Priority:\*\*\s*(high|medium|low)/gi
+    );
+    const issues: Array<{ slug: string; priority: string }> = [];
+
+    for (const match of issueMatches) {
+      issues.push({
+        slug: match[1].trim(),
+        priority: match[2].toLowerCase(),
+      });
+    }
+
+    if (issues.length === 0) {
+      return '';
+    }
+
+    let result = `## Active Persistent Issues (${issues.length})\n\n`;
+    for (const issue of issues) {
+      result += `- **${issue.slug}** (${issue.priority})\n`;
+    }
+    result += `\nUse \`/issue <slug>\` to load issue context and link this session.`;
+
+    return result;
+  } catch {
+    // File doesn't exist or can't be read
+    return '';
+  }
+}
+
+/**
  * Load recent entries from an accumulator file
  * Returns last N entries (most recent first) with timestamps
  */
@@ -284,6 +334,9 @@ export async function getMemoryBase(
     crossSessionKnowledge = `## Recent Corrections\n\n${corrections}`;
   }
 
+  // Load active persistent issues (Decision 048)
+  const persistentIssues = await loadActivePersistentIssues(vaultPath);
+
   // Build layered context: Session start -> System directives -> User reference -> Handoffs -> Corrections
   const sections = [];
 
@@ -310,6 +363,9 @@ export async function getMemoryBase(
   }
   if (crossSessionKnowledge) {
     sections.push(crossSessionKnowledge);
+  }
+  if (persistentIssues) {
+    sections.push(persistentIssues);
   }
 
   const fullContent = sections.join('\n\n---\n\n');

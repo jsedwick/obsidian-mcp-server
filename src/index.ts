@@ -272,6 +272,8 @@ class ObsidianMCPServer {
   private config: ServerConfig;
   private currentSessionId: string | null = null;
   private currentSessionFile: string | null = null;
+  // Track linked persistent issue for current session (Decision 048)
+  private linkedIssueSlug: string | null = null;
   // Limit file access tracking to prevent unbounded memory growth
   // 5000 entries is sufficient for session tracking while keeping memory bounded
   private static readonly MAX_FILES_ACCESSED = 5000;
@@ -682,6 +684,7 @@ class ObsidianMCPServer {
               getMostRecentSessionDate: this.getMostRecentSessionDate.bind(this),
               getSessionStartTime: this.getSessionStartTime.bind(this),
               searchVault: this.searchVaultWrapper.bind(this),
+              linkedIssueSlug: this.linkedIssueSlug,
             });
 
           case 'find_stale_topics':
@@ -901,6 +904,36 @@ class ObsidianMCPServer {
               content: [{ type: 'text', text: responseText }],
             };
           }
+
+          case 'issue': {
+            const result = await tools.issue(validatedArgs as tools.IssueArgs, {
+              vaultPath: this.config.primaryVault.path,
+              linkIssueToSession: (slug: string) => {
+                this.linkedIssueSlug = slug;
+              },
+              trackFileAccess: this.trackFileAccess.bind(this),
+            });
+            // If issue was loaded, track the link
+            if (result.linkedIssue) {
+              this.linkedIssueSlug = result.linkedIssue.slug;
+            }
+            return result;
+          }
+
+          case 'get_persistent_issues':
+            return await tools.getPersistentIssues(validatedArgs as tools.GetPersistentIssuesArgs, {
+              vaultPath: this.config.primaryVault.path,
+            });
+
+          case 'update_persistent_issue':
+            return await tools.updatePersistentIssue(
+              validatedArgs as tools.UpdatePersistentIssueArgs,
+              {
+                vaultPath: this.config.primaryVault.path,
+                currentSessionId: this.currentSessionId || undefined,
+                trackFileAccess: this.trackFileAccess.bind(this),
+              }
+            );
 
           default:
             throw new Error(`Unknown tool: ${name}`);
@@ -2106,6 +2139,80 @@ SCOPE: Decisions can be vault-level (affecting the MCP system itself) or project
         inputSchema: {
           type: 'object',
           properties: {},
+        },
+      },
+      // Issues tools
+      {
+        name: 'issue',
+        description:
+          'Manage persistent issues across sessions. Modes: list (show active issues), load (load issue and link session), create (new issue), resolve (archive - human only via /issue resolve). ONLY callable via /issue slash command for resolve mode.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            mode: {
+              type: 'string',
+              enum: ['list', 'load', 'create', 'resolve'],
+              description: 'Operation mode (default: list)',
+            },
+            slug: {
+              type: 'string',
+              description: 'Issue slug for load/resolve modes',
+            },
+            name: {
+              type: 'string',
+              description: 'Issue name for create mode (will be slugified)',
+            },
+            priority: {
+              type: 'string',
+              enum: ['high', 'medium', 'low'],
+              description: 'Issue priority for create mode (default: medium)',
+              default: 'medium',
+            },
+            _invoked_by_slash_command: {
+              type: 'boolean',
+              description:
+                'Required for resolve mode - ensures human-only resolution. Only set by slash commands.',
+              default: false,
+            },
+          },
+        },
+      },
+      {
+        name: 'get_persistent_issues',
+        description:
+          'Read-only helper to list persistent issues. Returns only active issues by default (skips Archived section). Used by /mb integration.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            include_archived: {
+              type: 'boolean',
+              description: 'Include archived issues (default: false)',
+              default: false,
+            },
+          },
+        },
+      },
+      {
+        name: 'update_persistent_issue',
+        description:
+          'Append investigation entries to a persistent issue. Append-only - can only add to Investigation Log. NOTE: This tool has NO status parameter - issues can only be resolved via /issue resolve (human action).',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            slug: {
+              type: 'string',
+              description: 'Issue slug to update',
+            },
+            entry: {
+              type: 'string',
+              description: 'Investigation entry text to append',
+            },
+            session_id: {
+              type: 'string',
+              description: 'Session ID (auto-detected if not provided)',
+            },
+          },
+          required: ['slug', 'entry'],
         },
       },
     ];

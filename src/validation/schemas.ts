@@ -592,6 +592,53 @@ export const WorkflowArgsSchema = z.object({
 });
 
 /**
+ * ISSUES TOOLS (3 tools)
+ */
+
+// Issue priority enum
+const IssuePrioritySchema = z.enum(['high', 'medium', 'low'], {
+  errorMap: () => ({ message: 'priority must be one of: high, medium, low' }),
+});
+
+// Issue mode enum
+const IssueModeSchema = z.enum(['list', 'load', 'create', 'resolve'], {
+  errorMap: () => ({ message: 'mode must be one of: list, load, create, resolve' }),
+});
+
+// issue - slash command handler
+export const IssueArgsSchema = z.object({
+  mode: IssueModeSchema.optional().describe(
+    'Operation mode: list, load, create, resolve (default: list)'
+  ),
+  slug: z.string().optional().describe('Issue slug for load/resolve modes'),
+  name: z.string().optional().describe('Issue name for create mode (will be slugified)'),
+  priority: IssuePrioritySchema.optional()
+    .default('medium')
+    .describe('Issue priority for create mode'),
+  _invoked_by_slash_command: z
+    .boolean()
+    .optional()
+    .describe('Required for resolve mode - ensures human-only resolution'),
+});
+
+// get_persistent_issues - read-only helper
+export const GetPersistentIssuesArgsSchema = z.object({
+  include_archived: z
+    .boolean()
+    .optional()
+    .default(false)
+    .describe('Include archived issues (default: false - only shows active)'),
+});
+
+// update_persistent_issue - append investigation entries
+export const UpdatePersistentIssueArgsSchema = z.object({
+  slug: NonEmptyString.describe('Issue slug to update'),
+  entry: NonEmptyString.describe('Investigation entry text to append'),
+  session_id: z.string().optional().describe('Session ID (auto-detected if not provided)'),
+  // NOTE: Intentionally NO status parameter - resolution is human-only via /issue resolve
+});
+
+/**
  * Validation schemas registry
  * Maps tool names to their Zod schemas
  */
@@ -653,6 +700,11 @@ export const ValidationSchemas = {
 
   // Workflow tools
   workflow: WorkflowArgsSchema,
+
+  // Issues tools
+  issue: IssueArgsSchema,
+  get_persistent_issues: GetPersistentIssuesArgsSchema,
+  update_persistent_issue: UpdatePersistentIssueArgsSchema,
 } as const;
 
 /**

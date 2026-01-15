@@ -1,5 +1,5 @@
 /**
- * Tool Registry - Exports all 26 MCP tools
+ * Tool Registry - Exports all 32 MCP tools
  *
  * This module serves as the central registry for all Obsidian MCP Server tools.
  * Tools are organized by category for better maintainability.
@@ -40,6 +40,9 @@ export * from './code/index.js';
 
 // Workflow tools (1)
 export * from './workflows/index.js';
+
+// Issues tools (3)
+export * from './issues/index.js';
 
 /**
  * Tool Summary:
@@ -94,5 +97,10 @@ export * from './workflows/index.js';
  * WORKFLOWS (1 tool):
  * - workflow
  *
- * Total: 26 tools
+ * ISSUES (3 tools):
+ * - issue
+ * - get_persistent_issues
+ * - update_persistent_issue
+ *
+ * Total: 32 tools
  */

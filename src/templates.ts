@@ -392,6 +392,7 @@ export interface SessionTemplateArgs {
   relatedDecisions: Array<{ link: string; title: string }>;
   relatedProjects: Array<{ link: string; name: string }>;
   tags?: string[]; // Auto-extracted tags for categorization
+  linkedIssue?: string; // Persistent issue linked to this session (Decision 048)
 }
 
 export function generateSessionTemplate(args: SessionTemplateArgs): string {
@@ -408,6 +409,9 @@ export function generateSessionTemplate(args: SessionTemplateArgs): string {
   // Strip any leading H1 header from summary to prevent duplicates
   const cleanedSummary = stripLeadingH1Header(args.summary);
 
+  // Build frontmatter string, conditionally including issue if present
+  const issueField = args.linkedIssue ? `\nissue: "${args.linkedIssue}"` : '';
+
   return `---
 date: "${frontmatter.date}"
 category: ${frontmatter.category}
@@ -415,7 +419,7 @@ session_id: "${frontmatter.session_id}"
 topics: ${JSON.stringify(frontmatter.topics)}
 decisions: ${JSON.stringify(frontmatter.decisions)}
 status: "${frontmatter.status}"
-tags: ${JSON.stringify(frontmatter.tags)}
+tags: ${JSON.stringify(frontmatter.tags)}${issueField}
 ---
 
 # Session: ${args.topic || 'Work session'}

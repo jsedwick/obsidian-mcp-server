@@ -1587,6 +1587,43 @@ export async function runPhase2Finalization(
     }
   }
 
+  // Update persistent-issues.md if session is linked to an issue (Decision 048)
+  if (context.linkedIssueSlug) {
+    const persistentIssuesPath = path.join(context.vaultPath, 'persistent-issues.md');
+    try {
+      const issuesContent = await fs.readFile(persistentIssuesPath, 'utf-8');
+
+      // Find the issue section and add session link
+      const issuePattern = new RegExp(
+        `(### ${context.linkedIssueSlug}[\\s\\S]*?\\*\\*Sessions:\\*\\*)([^\\n]*)`,
+        'i'
+      );
+      const match = issuesContent.match(issuePattern);
+
+      if (match) {
+        // Get the session link format - use relative path from vault root
+        const sessionRelativePath = data.sessionFile.replace(context.vaultPath + '/', '');
+        const sessionLink = `[[${sessionRelativePath.replace('.md', '')}]]`;
+
+        // Check if this session is already linked
+        const existingSessions = match[2];
+        if (!existingSessions.includes(data.sessionId)) {
+          // Add the new session link
+          const newSessions = existingSessions.trim()
+            ? `${existingSessions.trim()}, ${sessionLink}`
+            : ` ${sessionLink}`;
+
+          const newIssuesContent = issuesContent.replace(issuePattern, `$1${newSessions}`);
+
+          await fs.writeFile(persistentIssuesPath, newIssuesContent, 'utf-8');
+        }
+      }
+    } catch (_error) {
+      // Silent failure - persistent issues update is non-critical
+      // The session still has the issue field in frontmatter
+    }
+  }
+
   // Dynamic filesToCheck: merge Phase 1 files with any files modified between Phase 1 and Phase 2
   // This catches documentation updates made during commit analysis review
   const phase2EditedFiles = context.filesAccessed
@@ -1949,6 +1986,8 @@ interface CloseSessionContext {
     category?: 'topic' | 'task-list' | 'decision' | 'session' | 'project' | 'commit';
     directories?: string[];
   }) => Promise<{ content: Array<{ text: string }> }>;
+  // Persistent issue linked to this session (Decision 048)
+  linkedIssueSlug: string | null;
 }
 
 export async function closeSession(
@@ -2322,6 +2361,7 @@ export async function closeSession(
     relatedDecisions: relatedContent.decisions,
     relatedProjects: relatedContent.projects,
     tags: sessionTags,
+    linkedIssue: context.linkedIssueSlug || undefined,
   });
 
   // PHASE 1: Analyze commits and return suggestions (Decision 022)
