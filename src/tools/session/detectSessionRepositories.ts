@@ -9,9 +9,8 @@ import * as path from 'path';
 import type { FileAccess } from '../../models/Session.js';
 import type { RepoCandidate } from '../../models/Git.js';
 
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export interface DetectSessionRepositoriesArgs {
-  // No arguments
+  working_directories?: string[];
 }
 
 export interface DetectSessionRepositoriesResult {
@@ -31,17 +30,31 @@ interface DetectSessionRepositoriesContext {
 }
 
 export async function detectSessionRepositories(
-  _args: DetectSessionRepositoriesArgs,
+  args: DetectSessionRepositoriesArgs,
   context: DetectSessionRepositoriesContext
 ): Promise<DetectSessionRepositoriesResult> {
   // Can be called before or after session creation
   // If before, it helps inform user. If after, it can update session metadata.
 
-  // Get current working directory from environment or use vault path
-  const cwd = process.env.PWD || process.cwd();
+  // Determine search directories:
+  // 1. Use working_directories if provided (Claude Code passes its CWD and additional dirs)
+  // 2. Fall back to process.env.PWD or process.cwd() (MCP server's CWD - usually not useful)
+  const searchDirs: string[] =
+    args.working_directories && args.working_directories.length > 0
+      ? args.working_directories
+      : [process.env.PWD || process.cwd()];
 
-  // Find all git repositories
-  const repoPaths = await context.findGitRepos(cwd);
+  // Find all git repositories from all search directories
+  const allRepoPaths = new Set<string>();
+  for (const dir of searchDirs) {
+    try {
+      const repos = await context.findGitRepos(dir);
+      repos.forEach(r => allRepoPaths.add(r));
+    } catch {
+      // Skip directories that don't exist or can't be searched
+    }
+  }
+  const repoPaths = Array.from(allRepoPaths);
 
   if (repoPaths.length === 0) {
     return {
@@ -101,16 +114,21 @@ export async function detectSessionRepositories(
       }
     }
 
-    // Score based on proximity to CWD
-    if (repoPath === cwd) {
-      score += 15;
-      reasons.push('Repo is current working directory');
-    } else if (cwd.startsWith(repoPath)) {
-      score += 8;
-      reasons.push('CWD is within this repo');
-    } else if (repoPath.startsWith(cwd)) {
-      score += 5;
-      reasons.push('Repo is subdirectory of CWD');
+    // Score based on proximity to any working directory
+    for (const workDir of searchDirs) {
+      if (repoPath === workDir) {
+        score += 15;
+        reasons.push('Repo is a working directory');
+        break;
+      } else if (workDir.startsWith(repoPath)) {
+        score += 8;
+        reasons.push('Working directory is within this repo');
+        break;
+      } else if (repoPath.startsWith(workDir)) {
+        score += 5;
+        reasons.push('Repo is subdirectory of working directory');
+        break;
+      }
     }
 
     if (score > 0 || repoPaths.length === 1) {

@@ -1750,7 +1750,15 @@ SCOPE: Decisions can be vault-level (affecting the MCP system itself) or project
           'Analyze the current session to detect relevant Git repositories based on files accessed and session context.',
         inputSchema: {
           type: 'object',
-          properties: {},
+          properties: {
+            working_directories: {
+              type: 'array',
+              items: { type: 'string' },
+              description:
+                "Claude Code's working directories. The MCP server runs as a separate process with a different cwd, " +
+                'so passing working directories enables correct Git repository detection.',
+            },
+          },
         },
       },
       {

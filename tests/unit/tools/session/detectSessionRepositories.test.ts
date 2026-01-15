@@ -4,10 +4,7 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { detectSessionRepositories } from '../../../../src/tools/session/detectSessionRepositories.js';
-import {
-  createSessionToolsContext,
-  type SessionToolsContext,
-} from '../../../helpers/index.js';
+import { createSessionToolsContext, type SessionToolsContext } from '../../../helpers/index.js';
 
 describe('detectSessionRepositories', () => {
   let context: SessionToolsContext;
@@ -172,7 +169,7 @@ describe('detectSessionRepositories', () => {
       const result = await detectSessionRepositories({}, context);
 
       const text = result.content[0].text;
-      expect(text).toContain('Repo is current working directory');
+      expect(text).toContain('Repo is a working directory');
     });
 
     it('should boost score for repo containing CWD', async () => {
@@ -189,7 +186,7 @@ describe('detectSessionRepositories', () => {
       const result = await detectSessionRepositories({}, context);
 
       const text = result.content[0].text;
-      expect(text).toContain('CWD is within this repo');
+      expect(text).toContain('Working directory is within this repo');
     });
 
     it('should boost score for repo as subdirectory of CWD', async () => {
@@ -206,7 +203,7 @@ describe('detectSessionRepositories', () => {
       const result = await detectSessionRepositories({}, context);
 
       const text = result.content[0].text;
-      expect(text).toContain('Repo is subdirectory of CWD');
+      expect(text).toContain('Repo is subdirectory of working directory');
     });
   });
 

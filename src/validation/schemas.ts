@@ -193,7 +193,15 @@ export const CloseSessionArgsSchema = z.object({
 });
 
 // detect_session_repositories
-export const DetectSessionRepositoriesArgsSchema = z.object({}).describe('No arguments required');
+export const DetectSessionRepositoriesArgsSchema = z.object({
+  working_directories: z
+    .array(z.string())
+    .optional()
+    .describe(
+      "Claude Code's working directories. The MCP server runs as a separate process with a different cwd, " +
+        'so passing working directories enables correct Git repository detection.'
+    ),
+});
 
 /**
  * SEARCH TOOLS (4 tools)
