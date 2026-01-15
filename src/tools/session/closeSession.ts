@@ -2086,24 +2086,49 @@ export async function closeSession(
       }
     }
 
+    // DEBUG: Log repo detection inputs
+    console.error('[DEBUG close_session] searchDirs:', JSON.stringify(searchDirs));
+    console.error(
+      '[DEBUG close_session] filesAccessed:',
+      JSON.stringify(context.filesAccessed.map(f => ({ path: f.path, action: f.action })))
+    );
+
     // Search all working directories for Git repos
     const allRepoPaths = new Set<string>();
     for (const dir of searchDirs) {
       try {
         const repos = await context.findGitRepos(dir);
+        console.error(
+          `[DEBUG close_session] findGitRepos(${dir}) returned:`,
+          JSON.stringify(repos)
+        );
         repos.forEach(r => allRepoPaths.add(r));
-      } catch {
+      } catch (err) {
+        console.error(`[DEBUG close_session] findGitRepos(${dir}) error:`, err);
         // Skip directories that can't be searched
       }
     }
     let repoPaths = Array.from(allRepoPaths);
+    console.error(
+      '[DEBUG close_session] allRepoPaths (before vault filter):',
+      JSON.stringify(repoPaths)
+    );
+    console.error('[DEBUG close_session] allVaultPaths:', JSON.stringify(context.allVaultPaths));
 
     // Filter out repositories inside vault directories (they're just for syncing markdown)
     repoPaths = repoPaths.filter(repoPath => {
-      return !context.allVaultPaths.some(
+      const isInVault = context.allVaultPaths.some(
         vaultPath => repoPath === vaultPath || repoPath.startsWith(vaultPath + path.sep)
       );
+      if (isInVault) {
+        console.error(`[DEBUG close_session] Filtering out repo in vault: ${repoPath}`);
+      }
+      return !isInVault;
     });
+    console.error(
+      '[DEBUG close_session] repoPaths (after vault filter):',
+      JSON.stringify(repoPaths)
+    );
 
     if (repoPaths.length > 0) {
       const candidates: RepoCandidate[] = [];
@@ -2113,6 +2138,15 @@ export async function closeSession(
         const reasons: string[] = [];
 
         const filesInRepo = context.filesAccessed.filter(f => f.path.startsWith(repoPath));
+        console.error(
+          `[DEBUG close_session] Scoring repo ${repoPath}: filesInRepo count = ${filesInRepo.length}`
+        );
+        if (filesInRepo.length === 0) {
+          console.error(
+            `[DEBUG close_session] No files match. Sample file paths:`,
+            context.filesAccessed.slice(0, 3).map(f => f.path)
+          );
+        }
         const editedFiles = filesInRepo.filter(f => f.action === 'edit' || f.action === 'create');
         const readFiles = filesInRepo.filter(f => f.action === 'read');
 
@@ -2151,6 +2185,10 @@ export async function closeSession(
           }
         }
 
+        console.error(
+          `[DEBUG close_session] Repo ${repoPath} final score: ${score}, reasons: ${reasons.join(', ')}`
+        );
+
         if (score > 0 || repoPaths.length === 1) {
           const info = await context.getRepoInfo(repoPath);
           candidates.push({
@@ -2165,6 +2203,10 @@ export async function closeSession(
       }
 
       candidates.sort((a, b) => b.score - a.score);
+      console.error(
+        '[DEBUG close_session] Final candidates:',
+        JSON.stringify(candidates.map(c => ({ name: c.name, score: c.score, reasons: c.reasons })))
+      );
 
       if (candidates.length > 0) {
         const topCandidate = candidates[0];
