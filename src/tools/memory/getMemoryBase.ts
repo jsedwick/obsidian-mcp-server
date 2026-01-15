@@ -272,11 +272,11 @@ export async function getMemoryBase(
   // Extract recent handoffs from session files (scan filesystem directly)
   const recentHandoffs = await extractRecentHandoffs(vaultPath, 3);
 
-  // Load recent corrections (most recent 2 entries)
+  // Load all corrections (no truncation - reinforcement value outweighs context cost)
   const corrections = await loadRecentAccumulatorEntries(
     vaultPath,
     'accumulator-corrections.md',
-    2
+    Infinity
   );
 
   let crossSessionKnowledge = '';
