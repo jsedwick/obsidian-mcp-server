@@ -390,7 +390,7 @@ export async function runPhase1Analysis(
     filesToCheck: uniqueFilesToCheck,
     repoDetectionMessage,
     autoCommitMessage,
-    handoff, // Required handoff (auto-generated if not provided by user)
+    handoff, // Handoff from Phase 1 (placeholder, updated by Phase 2 with AI-generated content)
     sessionCommits, // Pass commit hashes to Phase 2 for recording
     semanticTopicsPresented: semanticTopicsForReview.map(t => ({ path: t.path, title: t.title })),
     // Commit-related topics for enforcement (Decision 041)
@@ -1557,6 +1557,20 @@ export async function runPhase2Finalization(
   // Batch all content updates in memory before writing to disk
   let updatedContent = data.sessionContent;
 
+  // Decision 052 FIX: Update handoff section with AI-generated handoff from Phase 2 args
+  // Phase 1 builds sessionContent with empty handoff; Phase 2 args contains the AI-generated handoff
+  if (_args.handoff && _args.handoff.trim()) {
+    // Replace the ## Handoff section with the new handoff from Phase 2
+    // Pattern matches: ## Handoff\n\n[content]\n\n## (next section) or end
+    const handoffPattern = /## Handoff\n\n(?:_No handoff notes_|.+?)(?=\n\n## |\n\n---|\n*$)/s;
+    if (handoffPattern.test(updatedContent)) {
+      updatedContent = updatedContent.replace(
+        handoffPattern,
+        `## Handoff\n\n${_args.handoff.trim()}`
+      );
+    }
+  }
+
   // Add discovered topics
   if (discoveredTopics.length > 0) {
     updatedContent = addRelatedTopicsToSession(updatedContent, discoveredTopics);
@@ -1890,7 +1904,7 @@ export async function runSinglePhaseClose(
 export interface CloseSessionArgs {
   summary: string;
   topic?: string;
-  handoff?: string; // Optional - auto-generated if not provided (Decision 046)
+  handoff?: string; // Optional in Phase 1, REQUIRED in Phase 2 (AI-generated via prompt, Decision 052)
   _invoked_by_slash_command?: boolean;
   // Phase control for two-phase workflow (Decision 022)
   analyze_only?: boolean; // Phase 1: analyze commits, return suggestions
@@ -1927,7 +1941,7 @@ export interface SessionData {
   filesToCheck: string[];
   repoDetectionMessage: string;
   autoCommitMessage?: string;
-  handoff: string; // Required - auto-generated if not provided in args
+  handoff: string; // Placeholder from Phase 1, replaced by Phase 2 with AI-generated handoff
   sessionCommits?: string[]; // Commit hashes made during this session
   // Semantic topic review (Decision 036): Topics presented for review consideration
   semanticTopicsPresented?: Array<{ path: string; title: string }>;
