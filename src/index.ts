@@ -2062,6 +2062,11 @@ SCOPE: Decisions can be vault-level (affecting the MCP system itself) or project
               description:
                 'Why updating (required for topics per Decision 011, optional for others). Used for audit trail in review_history.',
             },
+            force: {
+              type: 'boolean',
+              description:
+                'If true, allow replacing files with corrupted YAML frontmatter by using frontmatter from new content. Only works with strategy: replace.',
+            },
           },
           required: ['file_path', 'content'],
         },

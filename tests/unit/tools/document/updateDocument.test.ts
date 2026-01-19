@@ -155,6 +155,83 @@ Original content`;
         )
       ).rejects.toThrow(/Failed to parse YAML frontmatter/);
     });
+
+    it('should recover from corrupted frontmatter with force: true', async () => {
+      // Create a file with corrupted YAML frontmatter
+      const filePath = path.join(vaultPath, 'topics/corrupted-frontmatter.md');
+      await fs.mkdir(path.dirname(filePath), { recursive: true });
+      const corruptedContent = `---
+title: Test Topic
+category: topic
+archived: 2026-01-19
+archive_reason: Topic appears obsolete: Some long reason
+---
+Original corrupted content`;
+      await fs.writeFile(filePath, corruptedContent, 'utf-8');
+
+      // New content with valid frontmatter
+      const newContent = `---
+title: "Fixed Topic"
+category: topic
+created: "2026-01-19"
+tags: ["topic", "fixed"]
+---
+# Fixed Topic
+
+This content has been fixed with valid frontmatter.`;
+
+      // Should succeed with force: true
+      const result = await updateDocument(
+        {
+          file_path: filePath,
+          content: newContent,
+          strategy: 'replace',
+          reason: 'Fixing corrupted frontmatter',
+          force: true,
+        },
+        context
+      );
+
+      expect(result.content[0].text).toContain('updated');
+      expect(result.content[0].text).toContain('Recovered from corrupted frontmatter');
+
+      // Verify the file was updated with new content
+      const savedContent = await fs.readFile(filePath, 'utf-8');
+      expect(savedContent).toContain('Fixed Topic');
+      expect(savedContent).toContain('This content has been fixed');
+    });
+
+    it('should fail with force: true if new content has no valid frontmatter', async () => {
+      // Create a file with corrupted YAML frontmatter
+      const filePath = path.join(vaultPath, 'topics/corrupted-no-recovery.md');
+      await fs.mkdir(path.dirname(filePath), { recursive: true });
+      const corruptedContent = `---
+title: Test Topic
+archived: 2026-01-19
+archive_reason: Some reason with: colons that break: yaml
+---
+Original content`;
+      await fs.writeFile(filePath, corruptedContent, 'utf-8');
+
+      // New content WITHOUT frontmatter
+      const newContent = `# No Frontmatter
+
+This content has no frontmatter at all.`;
+
+      // Should fail because new content has no frontmatter to use
+      await expect(
+        updateDocument(
+          {
+            file_path: filePath,
+            content: newContent,
+            strategy: 'replace',
+            reason: 'Attempting recovery without frontmatter',
+            force: true,
+          },
+          context
+        )
+      ).rejects.toThrow(/force: true requires new content to have YAML frontmatter/);
+    });
   });
 
   describe('Type Validation', () => {

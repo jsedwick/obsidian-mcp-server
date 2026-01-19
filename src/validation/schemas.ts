@@ -549,6 +549,12 @@ export const UpdateDocumentArgsSchema = z.object({
     .describe(
       'Why updating (required for topics per Decision 011, optional for others). Used for Git commit message audit trail.'
     ),
+  force: z
+    .boolean()
+    .optional()
+    .describe(
+      'If true, allow replacing files with corrupted YAML frontmatter by using frontmatter from new content. Only works with strategy: replace.'
+    ),
 });
 
 /**

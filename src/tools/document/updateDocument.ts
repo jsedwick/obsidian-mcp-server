@@ -26,6 +26,7 @@ export interface UpdateDocumentArgs {
   content: string;
   strategy?: 'append' | 'replace' | 'section-edit';
   reason?: string;
+  force?: boolean;
 }
 
 export interface UpdateDocumentResult {
@@ -307,6 +308,7 @@ export async function updateDocument(
   let existingContent = '';
   let frontmatter: Record<string, unknown> = {};
   let fileExists = false;
+  let frontmatterWasCorrupted = false;
 
   try {
     existingContent = await fs.readFile(filePath, 'utf-8');
@@ -317,12 +319,42 @@ export async function updateDocument(
       try {
         frontmatter = yaml.parse(fmMatch[1]) as Record<string, unknown>;
       } catch (parseError) {
-        // YAML parsing failed - preserve existing frontmatter string
-        throw new Error(
-          `Failed to parse YAML frontmatter in ${path.basename(filePath)}:\n` +
-            `${parseError instanceof Error ? parseError.message : String(parseError)}\n\n` +
-            `Frontmatter content:\n${fmMatch[1]}`
-        );
+        // YAML parsing failed - check if force mode allows recovery
+        if (args.force && strategy === 'replace') {
+          // Try to extract frontmatter from new content instead
+          const newFmMatch = args.content.match(/^---\n([\s\S]*?)\n---/);
+          if (newFmMatch) {
+            try {
+              frontmatter = yaml.parse(newFmMatch[1]) as Record<string, unknown>;
+              frontmatterWasCorrupted = true;
+              // Continue with replacement using new content's frontmatter
+            } catch (newParseError) {
+              throw new Error(
+                `force: true requires new content to have valid YAML frontmatter.\n` +
+                  `Existing frontmatter is corrupted:\n${fmMatch[1]}\n\n` +
+                  `New content frontmatter also failed to parse:\n` +
+                  `${newParseError instanceof Error ? newParseError.message : String(newParseError)}`
+              );
+            }
+          } else {
+            throw new Error(
+              `force: true requires new content to have YAML frontmatter (---\\n...\\n---).\n` +
+                `Existing frontmatter is corrupted and cannot be preserved.`
+            );
+          }
+        } else {
+          // Not in force mode - throw descriptive error
+          const forceHint =
+            strategy === 'replace'
+              ? `\n\nTip: Use force: true with strategy: 'replace' to fix corrupted frontmatter by providing new content with valid frontmatter.`
+              : `\n\nNote: To fix corrupted frontmatter, use strategy: 'replace' with force: true and provide new content with valid frontmatter.`;
+          throw new Error(
+            `Failed to parse YAML frontmatter in ${path.basename(filePath)}:\n` +
+              `${parseError instanceof Error ? parseError.message : String(parseError)}\n\n` +
+              `Frontmatter content:\n${fmMatch[1]}` +
+              forceHint
+          );
+        }
       }
     }
   } catch (error) {
@@ -466,6 +498,9 @@ export async function updateDocument(
 
   // 10. Return success
   const vaultType = isSecondaryVault ? `secondary vault file` : `${docType}`;
+  const corruptedNote = frontmatterWasCorrupted
+    ? `⚠️ Recovered from corrupted frontmatter (used frontmatter from new content)\n`
+    : '';
   return {
     content: [
       {
@@ -474,6 +509,7 @@ export async function updateDocument(
           `✅ ${vaultType} updated: ${path.basename(filePath)}\n` +
           `Strategy: ${strategy}\n` +
           `Action: ${action}\n` +
+          corruptedNote +
           (isSecondaryVault ? `Vault: ${secondaryVault?.name}\n` : '') +
           (reason ? `Reason: ${reason}` : ''),
       },
