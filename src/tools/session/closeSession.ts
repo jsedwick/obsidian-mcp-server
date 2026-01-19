@@ -21,79 +21,76 @@ const execAsync = promisify(exec);
 const logger = createLogger('closeSession');
 
 /**
- * Generate automatic handoff notes based on session activity (Decision 046).
- * Analyzes what was accomplished and suggests what might need follow-up.
- *
- * @param params Session analysis parameters
- * @returns Formatted handoff notes for next session
+ * Build context for handoff generation (Decision 052).
+ * Structures session data into markdown format for AI analysis.
  */
-function generateAutomaticHandoff(params: {
+function buildHandoffContext(params: {
+  summary: string;
+  filesEdited: Array<{ path: string; action: string }>;
   topicsCreated: Array<{ slug: string; title: string }>;
   decisionsCreated: Array<{ slug: string; title: string }>;
-  filesEdited: FileAccess[];
   detectedRepo: { name: string; path: string; branch?: string } | null;
-  summary: string;
 }): string {
-  const notes: string[] = [];
+  const sections: string[] = [];
 
-  // Extract possible next steps from summary
-  const hasNextSteps = /(?:next|todo|need to|should|will|plan to|consider)/i.test(params.summary);
-  const hasUnfinished = /(?:incomplete|partial|wip|work in progress|not yet|still need)/i.test(
-    params.summary
-  );
+  // Session summary
+  sections.push(`## Session Summary\n${params.summary}`);
 
-  // Check for created content that might need follow-up
-  if (params.topicsCreated.length > 0) {
-    const topicsList = params.topicsCreated.map(t => `[[topics/${t.slug}|${t.title}]]`).join(', ');
-    notes.push(
-      `📝 **Created topics:** ${topicsList} - Consider expanding with examples or related content.`
-    );
-  }
-
-  if (params.decisionsCreated.length > 0) {
-    const decisionsList = params.decisionsCreated
-      .map(d => `[[decisions/${d.slug}|${d.title}]]`)
-      .join(', ');
-    notes.push(
-      `⚖️  **Made decisions:** ${decisionsList} - May need documentation updates or implementation.`
-    );
-  }
-
-  // Check for code changes
+  // Files modified
   if (params.filesEdited.length > 0) {
-    const nonVaultFiles = params.filesEdited.filter(f => !f.path.includes('/Documents/Obsidian/'));
-    if (nonVaultFiles.length > 0) {
-      notes.push(
-        `💻 **Modified ${nonVaultFiles.length} code file(s)** - Consider adding tests or updating related documentation.`
-      );
-    }
+    sections.push(
+      '## Files Modified\n' + params.filesEdited.map(f => `- ${f.path} (${f.action})`).join('\n')
+    );
   }
 
-  // Repository context
+  // Topics created
+  if (params.topicsCreated.length > 0) {
+    sections.push('## Topics Created\n' + params.topicsCreated.map(t => `- ${t.title}`).join('\n'));
+  }
+
+  // Decisions created
+  if (params.decisionsCreated.length > 0) {
+    sections.push(
+      '## Decisions Created\n' + params.decisionsCreated.map(d => `- ${d.title}`).join('\n')
+    );
+  }
+
+  // Repository info
   if (params.detectedRepo) {
-    notes.push(
-      `🔧 **Working on:** ${params.detectedRepo.name}${params.detectedRepo.branch ? ` (${params.detectedRepo.branch})` : ''}`
+    sections.push(
+      `## Repository\n${params.detectedRepo.name}${params.detectedRepo.branch ? ` (${params.detectedRepo.branch})` : ''}`
     );
   }
 
-  // Explicit unfinished work indicators
-  if (hasUnfinished) {
-    notes.push(
-      `⏸️  **Incomplete work mentioned in summary** - Review session notes for specifics.`
-    );
-  }
+  return sections.join('\n\n');
+}
 
-  // If summary mentions next steps
-  if (hasNextSteps && !hasUnfinished) {
-    notes.push(`➡️  **Next steps mentioned in summary** - See above for continuation points.`);
-  }
+/**
+ * Generate handoff prompt for AI execution (Decision 052).
+ * Returns prompt text that AI will execute between Phase 1 and Phase 2.
+ */
+function generateHandoffPrompt(params: {
+  summary: string;
+  filesEdited: Array<{ path: string; action: string }>;
+  topicsCreated: Array<{ slug: string; title: string }>;
+  decisionsCreated: Array<{ slug: string; title: string }>;
+  detectedRepo: { name: string; path: string; branch?: string } | null;
+}): string {
+  const context = buildHandoffContext(params);
 
-  // If nothing specific was found, provide minimal context
-  if (notes.length === 0) {
-    return `Session completed. Review summary for details on work accomplished.`;
-  }
+  return `Analyze this session and generate actionable handoff notes for the next session.
 
-  return notes.join('\n\n');
+${context}
+
+Generate concise handoff notes (3-5 lines max) with emoji prefixes:
+✅ Completed: [1-line summary of what was accomplished]
+⏭️ Next: [Specific remaining tasks from this work, if any]
+💡 Consider: [Logical next steps or project improvements, if applicable]
+🔧 Working on: [Repository and branch if applicable]
+
+Be specific and actionable. Don't suggest tests/documentation unless the changes genuinely warrant them.
+
+Output only the handoff notes, no preamble.`;
 }
 
 /**
@@ -472,12 +469,25 @@ export async function runPhase1Analysis(
           '   - Create new topics with `create_topic_page` if concepts warrant documentation\n' +
           '   - Always provide `reason` parameter explaining why updating (for audit trail)\n' +
           '   - **Err on the side of updating** rather than leaving documentation outdated\n\n' +
-          `${sessionCommits.length > 0 ? '4' : '3'}. **FINALIZE SESSION** - Only when ALL documentation is current, call:\n\n` +
+          `${sessionCommits.length > 0 ? '4' : '3'}. **GENERATE HANDOFF NOTES** (Decision 052) - Use this prompt:\n\n` +
+          '```\n' +
+          generateHandoffPrompt({
+            summary: args.summary,
+            filesEdited: context.filesAccessed
+              .filter(f => f.action === 'edit' || f.action === 'create')
+              .map(f => ({ path: f.path, action: f.action })),
+            topicsCreated: context.topicsCreated,
+            decisionsCreated: context.decisionsCreated,
+            detectedRepo: detectedRepoInfo,
+          }) +
+          '\n```\n\n' +
+          `${sessionCommits.length > 0 ? '5' : '4'}. **FINALIZE SESSION** - Only when ALL documentation is current AND handoff is generated, call:\n\n` +
           '```typescript\n' +
           'close_session({\n' +
           `  summary: "${summary}",\n` +
           (topic ? `  ${topic}\n` : '') +
           '  finalize: true,\n' +
+          '  handoff: "[paste generated handoff notes here]",  // REQUIRED (Decision 052)\n' +
           `  session_data: ${JSON.stringify(sessionData, null, 2)}
 ` +
           '})\n' +
@@ -2333,16 +2343,10 @@ export async function closeSession(
         }).tags
       : [];
 
-  // Generate automatic handoff if not provided (Decision 046: Required Handoff with Auto-generation)
-  const handoffNotes =
-    args.handoff ||
-    generateAutomaticHandoff({
-      topicsCreated: context.topicsCreated,
-      decisionsCreated: context.decisionsCreated,
-      filesEdited: context.filesAccessed.filter(f => f.action === 'edit' || f.action === 'create'),
-      detectedRepo: detectedRepoInfo,
-      summary: args.summary,
-    });
+  // Decision 052: Handoff generation moved to AI-agnostic prompt return pattern
+  // Phase 1 returns handoff generation prompt; AI executes it between phases
+  // handoff parameter is REQUIRED in Phase 2 (enforced by schema)
+  const handoffNotes = args.handoff || '';
 
   // Build session content using template
   const sessionContent = generateSessionTemplate({

@@ -152,45 +152,60 @@ const SessionDataSchema = z.object({
     .optional(),
 });
 
-export const CloseSessionArgsSchema = z.object({
-  summary: NonEmptyString.describe('Summary of what was accomplished in this conversation'),
-  topic: z.string().optional().describe('Optional topic or title for this session'),
-  handoff: z
-    .string()
-    .optional()
-    .describe(
-      'Handoff notes for next session - unfinished business, queued questions, context needed. Auto-generated if not provided. Verbose encouraged.'
+export const CloseSessionArgsSchema = z
+  .object({
+    summary: NonEmptyString.describe('Summary of what was accomplished in this conversation'),
+    topic: z.string().optional().describe('Optional topic or title for this session'),
+    handoff: z
+      .string()
+      .optional()
+      .describe(
+        'Handoff notes for next session. REQUIRED in Phase 2 (finalize: true) - generate using prompt from Phase 1 (Decision 052).'
+      ),
+    _invoked_by_slash_command: z
+      .boolean()
+      .optional()
+      .describe('Internal flag - set by slash commands only'),
+    // Phase 2 parameters (Decision 022 - Two-phase close workflow)
+    finalize: z
+      .boolean()
+      .optional()
+      .default(false)
+      .describe('Phase 2 flag: Set to true to finalize session after documentation updates'),
+    session_data: SessionDataSchema.optional().describe(
+      'Session state from Phase 1. Required when finalize=true'
     ),
-  _invoked_by_slash_command: z
-    .boolean()
-    .optional()
-    .describe('Internal flag - set by slash commands only'),
-  // Phase 2 parameters (Decision 022 - Two-phase close workflow)
-  finalize: z
-    .boolean()
-    .optional()
-    .default(false)
-    .describe('Phase 2 flag: Set to true to finalize session after documentation updates'),
-  session_data: SessionDataSchema.optional().describe(
-    'Session state from Phase 1. Required when finalize=true'
-  ),
-  // Working directories from Claude Code (fixes repo detection gap)
-  working_directories: z
-    .array(z.string())
-    .optional()
-    .describe(
-      "Claude Code's working directories. The MCP server's process.cwd() differs from Claude Code's, " +
-        'so passing these enables correct repository detection.'
-    ),
-  // Session start time fallback - if MCP server state was lost mid-session
-  session_start_override: z
-    .string()
-    .optional()
-    .describe(
-      'ISO 8601 timestamp of session start. Extracted from context (SESSION_START_TIME: ...) ' +
-        'as fallback when MCP server state is lost.'
-    ),
-});
+    // Working directories from Claude Code (fixes repo detection gap)
+    working_directories: z
+      .array(z.string())
+      .optional()
+      .describe(
+        "Claude Code's working directories. The MCP server's process.cwd() differs from Claude Code's, " +
+          'so passing these enables correct repository detection.'
+      ),
+    // Session start time fallback - if MCP server state was lost mid-session
+    session_start_override: z
+      .string()
+      .optional()
+      .describe(
+        'ISO 8601 timestamp of session start. Extracted from context (SESSION_START_TIME: ...) ' +
+          'as fallback when MCP server state is lost.'
+      ),
+  })
+  .refine(
+    data => {
+      // Phase 2 requires handoff (Decision 052)
+      if (data.finalize === true) {
+        return data.handoff !== undefined && data.handoff !== null && data.handoff.trim() !== '';
+      }
+      return true;
+    },
+    {
+      message:
+        'handoff is REQUIRED when finalize: true (Decision 052). Generate using Phase 1 prompt.',
+      path: ['handoff'],
+    }
+  );
 
 // detect_session_repositories
 export const DetectSessionRepositoriesArgsSchema = z.object({
