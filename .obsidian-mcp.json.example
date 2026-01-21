@@ -1,16 +1,23 @@
 {
-  "primaryVault": {
-    "path": "/Users/yourusername/Documents/Obsidian/MainVault",
-    "name": "Main Vault"
-  },
+  "primaryVaults": [
+    {
+      "path": "/Users/yourusername/Documents/Obsidian/MainVault",
+      "name": "Main Vault",
+      "mode": "work"
+    }
+  ],
   "secondaryVaults": [
     {
-      "path": "/Users/yourusername/Documents/Obsidian/WorkVault",
-      "name": "Work Vault"
+      "path": "/Users/yourusername/Documents/Obsidian/WorkDocs",
+      "name": "Work Documentation",
+      "authority": "curated",
+      "mode": "work"
     },
     {
-      "path": "/Users/yourusername/Documents/Obsidian/PersonalVault",
-      "name": "Personal Vault"
+      "path": "/Users/yourusername/Documents/Obsidian/Personal",
+      "name": "Personal Notes",
+      "authority": "curated",
+      "mode": "personal"
     }
   ]
 }
