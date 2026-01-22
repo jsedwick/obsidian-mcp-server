@@ -2,7 +2,12 @@
  * Tool: add_task
  *
  * Description: Add a task to appropriate task list with automatic list selection.
- * Automatically creates task list if it doesn't exist (like update_user_reference).
+ * Automatically creates task list if it doesn't exist.
+ *
+ * Uses simplified task format:
+ * - ## Tasks - items with (due: ...) dates
+ * - ## Todo - items without due dates
+ * - ## Completed - finished items
  */
 
 import * as fs from 'fs/promises';
@@ -10,7 +15,7 @@ import * as path from 'path';
 
 export interface AddTaskArgs {
   task: string;
-  due?: string; // 'today' | 'tomorrow' | 'this-week' | YYYY-MM-DD format
+  due?: string; // 'today' | 'tomorrow' | 'this-week' | YYYY-MM-DD format | natural language
   priority?: 'high' | 'medium' | 'low';
   project?: string;
   context?: 'work' | 'personal';
@@ -22,30 +27,30 @@ export interface AddTaskResult {
 }
 
 /**
- * Parse date string to YYYY-MM-DD format
+ * Format due date for display
+ * Keeps natural language dates as-is, normalizes YYYY-MM-DD
  */
-function parseDate(dateStr?: string): string | null {
+function formatDueDate(dateStr?: string): string | null {
   if (!dateStr) return null;
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  if (dateStr === 'today') {
-    return today.toISOString().split('T')[0];
+  // Keep common natural language as-is for readability
+  const naturalDates = ['today', 'tomorrow', 'this-week', 'next week', 'end of month'];
+  if (naturalDates.includes(dateStr.toLowerCase())) {
+    return dateStr.toLowerCase();
   }
 
-  if (dateStr === 'tomorrow') {
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    return tomorrow.toISOString().split('T')[0];
+  // Day names - keep as-is
+  const dayNames = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+  if (dayNames.includes(dateStr.toLowerCase())) {
+    return dateStr.charAt(0).toUpperCase() + dateStr.slice(1).toLowerCase();
   }
 
-  if (dateStr === 'this-week') {
-    // For "this week", we'll add to backlog instead of specific date
-    return null;
+  // YYYY-MM-DD format - keep as-is
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+    return dateStr;
   }
 
-  // Assume YYYY-MM-DD format
+  // Other formats - keep as-is and let the parser handle it
   return dateStr;
 }
 
@@ -63,13 +68,6 @@ function selectTaskList(args: AddTaskArgs): string {
     return `${args.project}-tasks.md`;
   }
 
-  // Date-specific list for today's tasks
-  if (args.due === 'today') {
-    const today = new Date().toISOString().split('T')[0];
-    const suffix = args.context ? `-${args.context}-tasks` : '-tasks';
-    return `${today}${suffix}.md`;
-  }
-
   // Context-specific list
   if (args.context) {
     return `${args.context}-tasks.md`;
@@ -80,15 +78,17 @@ function selectTaskList(args: AddTaskArgs): string {
 }
 
 /**
- * Create task list template
+ * Create task list template with new simplified structure
  */
 function createTaskListTemplate(listName: string, args: AddTaskArgs): string {
   const timestamp = new Date().toISOString().split('T')[0];
-  const title = listName
-    .replace('.md', '')
-    .split('-')
-    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(' ');
+  const title =
+    listName
+      .replace('.md', '')
+      .replace(/-tasks$/, '')
+      .split('-')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ') + ' Tasks';
 
   const tags = ['tasks'];
   if (args.project) tags.push(args.project);
@@ -104,11 +104,9 @@ tags: [${tags.join(', ')}]
 
 # ${title}
 
-## Due Today (${timestamp})
+## Tasks
 
-## Due This Week
-
-## Backlog
+## Todo
 
 ## Completed
 
@@ -116,11 +114,18 @@ tags: [${tags.join(', ')}]
 }
 
 /**
- * Format task line with metadata
+ * Format task line with metadata and optional due date
  */
 function formatTask(args: AddTaskArgs): string {
   let taskLine = `- [ ] ${args.task}`;
 
+  // Add due date if provided
+  const dueDate = formatDueDate(args.due);
+  if (dueDate) {
+    taskLine += ` (due: ${dueDate})`;
+  }
+
+  // Add metadata
   const metadata: string[] = [];
   if (args.project) metadata.push(`@project:${args.project}`);
   if (args.context) metadata.push(`@context:${args.context}`);
@@ -136,24 +141,13 @@ function formatTask(args: AddTaskArgs): string {
 /**
  * Add task to existing task list
  */
-async function addTaskToList(
-  filePath: string,
-  args: AddTaskArgs,
-  dueDate: string | null
-): Promise<void> {
+async function addTaskToList(filePath: string, args: AddTaskArgs): Promise<void> {
   const content = await fs.readFile(filePath, 'utf-8');
   const lines = content.split('\n');
   const taskLine = formatTask(args);
 
-  // Determine which section to add to
-  let targetSection = '## Backlog';
-  if (dueDate) {
-    if (args.due === 'today' || args.due === dueDate) {
-      targetSection = `## Due Today (${dueDate})`;
-    } else if (args.due === 'tomorrow' || args.due === 'this-week') {
-      targetSection = '## Due This Week';
-    }
-  }
+  // Determine target section based on whether task has a due date
+  const targetSection = args.due ? '## Tasks' : '## Todo';
 
   // Find target section
   let sectionIndex = -1;
@@ -165,22 +159,37 @@ async function addTaskToList(
   }
 
   if (sectionIndex === -1) {
-    // Section not found, append at end before Completed section
+    // Section not found, create it before ## Completed
     const completedIndex = lines.findIndex(line => line.startsWith('## Completed'));
     if (completedIndex !== -1) {
       lines.splice(completedIndex, 0, targetSection, taskLine, '');
     } else {
+      // No Completed section, add at end
       lines.push('', targetSection, taskLine);
     }
   } else {
-    // Find next section or end of file
+    // Find next section header or end of content
     let insertIndex = sectionIndex + 1;
-    while (insertIndex < lines.length && !lines[insertIndex].startsWith('## ')) {
+
+    // Skip blank lines right after section header
+    while (insertIndex < lines.length && lines[insertIndex].trim() === '') {
       insertIndex++;
     }
 
-    // Insert before next section
-    lines.splice(insertIndex, 0, taskLine);
+    // Find end of section (next ## header or end of file)
+    let endOfSection = insertIndex;
+    while (endOfSection < lines.length && !lines[endOfSection].startsWith('## ')) {
+      endOfSection++;
+    }
+
+    // Insert task at the beginning of the section content (after header and blank lines)
+    // If section is empty, insert right after header
+    if (insertIndex === endOfSection) {
+      lines.splice(sectionIndex + 1, 0, taskLine);
+    } else {
+      // Insert at the position where content starts
+      lines.splice(insertIndex, 0, taskLine);
+    }
   }
 
   await fs.writeFile(filePath, lines.join('\n'), 'utf-8');
@@ -196,9 +205,6 @@ export async function addTask(args: AddTaskArgs, vaultPath: string): Promise<Add
   const listName = selectTaskList(args);
   const tasksDir = path.join(vaultPath, 'tasks');
   const filePath = path.join(tasksDir, listName);
-
-  // Parse due date
-  const dueDate = parseDate(args.due);
 
   // Check if file exists
   let fileExists = false;
@@ -221,24 +227,19 @@ export async function addTask(args: AddTaskArgs, vaultPath: string): Promise<Add
   }
 
   // Add task to list
-  await addTaskToList(filePath, args, dueDate);
+  await addTaskToList(filePath, args);
 
   // Format response
-  const section = dueDate
-    ? args.due === 'today'
-      ? `Due Today (${dueDate})`
-      : args.due === 'tomorrow' || args.due === 'this-week'
-        ? 'Due This Week'
-        : `Due ${dueDate}`
-    : 'Backlog';
+  const section = args.due ? 'Tasks' : 'Todo';
+  const dueInfo = args.due ? ` (due: ${formatDueDate(args.due)})` : '';
 
   return {
     content: [
       {
         type: 'text',
         text: fileExists
-          ? `✅ Added task to ${listName} (${section})\n\nTask: ${task}`
-          : `✅ Created ${listName} and added task (${section})\n\nTask: ${task}`,
+          ? `✅ Added to ${listName} → ${section}${dueInfo}\n\nTask: ${task}`
+          : `✅ Created ${listName} and added task → ${section}${dueInfo}\n\nTask: ${task}`,
       },
     ],
   };

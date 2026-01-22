@@ -2,7 +2,10 @@
  * Tool: get_tasks_by_date
  *
  * Description: Query and aggregate tasks across all task lists by date.
- * Automatically reads all task list files and aggregates tasks due on specified date.
+ * Supports the simplified task format with inline dates:
+ * - ## Tasks - items with (due: ...) dates
+ * - ## Todo - items without due dates
+ * - ## Completed - finished items with (completed: ...) dates
  */
 
 import * as fs from 'fs/promises';
@@ -10,7 +13,7 @@ import * as path from 'path';
 import matter from 'gray-matter';
 
 export interface GetTasksByDateArgs {
-  date: string; // 'today' | 'tomorrow' | 'this-week' | 'overdue' | YYYY-MM-DD format
+  date: string; // 'today' | 'tomorrow' | 'this-week' | 'overdue' | 'todo' | YYYY-MM-DD format
   status?: 'incomplete' | 'complete' | 'all';
   project?: string; // Optional filter by project
 }
@@ -22,6 +25,8 @@ export interface TaskResult {
   project?: string;
   context?: string;
   status: 'complete' | 'incomplete';
+  dueDate?: string; // YYYY-MM-DD or natural language
+  completedDate?: string; // YYYY-MM-DD
   metadata: Record<string, string>; // All @key:value metadata
 }
 
@@ -30,43 +35,171 @@ export interface GetTasksByDateResult {
 }
 
 /**
- * Parse date string to YYYY-MM-DD format
+ * Parse natural language date to YYYY-MM-DD format
  */
-function parseDate(dateStr: string): string {
+function parseNaturalDate(dateStr: string): string | null {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
+  const normalized = dateStr.toLowerCase().trim();
 
-  if (dateStr === 'today') {
+  if (normalized === 'today') {
     return today.toISOString().split('T')[0];
   }
 
-  if (dateStr === 'tomorrow') {
+  if (normalized === 'tomorrow') {
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
     return tomorrow.toISOString().split('T')[0];
   }
 
-  if (dateStr === 'this-week') {
-    // Return date range for this week (for now, just return today as placeholder)
-    return today.toISOString().split('T')[0];
+  // Check for day names (monday, tuesday, etc.)
+  const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+  const dayIndex = dayNames.indexOf(normalized);
+  if (dayIndex !== -1) {
+    const currentDay = today.getDay();
+    let daysUntil = dayIndex - currentDay;
+    if (daysUntil <= 0) daysUntil += 7; // Next week if today or past
+    const targetDate = new Date(today);
+    targetDate.setDate(today.getDate() + daysUntil);
+    return targetDate.toISOString().split('T')[0];
   }
 
-  // Assume YYYY-MM-DD format
-  return dateStr;
+  // Check for "end of month"
+  if (normalized.includes('end of month')) {
+    const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+    return lastDay.toISOString().split('T')[0];
+  }
+
+  // Check for "next week"
+  if (normalized === 'next week') {
+    const nextWeek = new Date(today);
+    nextWeek.setDate(today.getDate() + 7);
+    return nextWeek.toISOString().split('T')[0];
+  }
+
+  // Check for YYYY-MM-DD format
+  if (/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
+    return normalized;
+  }
+
+  // Month name mapping (used by multiple patterns)
+  const monthMap: Record<string, number> = {
+    jan: 0,
+    january: 0,
+    feb: 1,
+    february: 1,
+    mar: 2,
+    march: 2,
+    apr: 3,
+    april: 3,
+    may: 4,
+    jun: 5,
+    june: 5,
+    jul: 6,
+    july: 6,
+    aug: 7,
+    august: 7,
+    sep: 8,
+    september: 8,
+    oct: 9,
+    october: 9,
+    nov: 10,
+    november: 10,
+    dec: 11,
+    december: 11,
+  };
+
+  // Check for month day format (e.g., "January 31", "Jan 31")
+  const monthDayMatch = normalized.match(
+    /^(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+(\d{1,2})(?:st|nd|rd|th)?$/i
+  );
+  if (monthDayMatch) {
+    const month = monthMap[monthDayMatch[1].toLowerCase()];
+    const day = parseInt(monthDayMatch[2], 10);
+    let year = today.getFullYear();
+    const targetDate = new Date(year, month, day);
+    // If date is in the past by more than 6 months, assume next year
+    if (targetDate < today && today.getTime() - targetDate.getTime() > 180 * 24 * 60 * 60 * 1000) {
+      year++;
+    }
+    return new Date(year, month, day).toISOString().split('T')[0];
+  }
+
+  // Check for "week of [month] [day]" format (e.g., "week of March 5", "week of January 5th")
+  const weekOfMatch = normalized.match(
+    /^week\s+of\s+(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+(\d{1,2})(?:st|nd|rd|th)?$/i
+  );
+  if (weekOfMatch) {
+    const month = monthMap[weekOfMatch[1].toLowerCase()];
+    const day = parseInt(weekOfMatch[2], 10);
+    let year = today.getFullYear();
+    const targetDate = new Date(year, month, day);
+    // If date is in the past by more than 6 months, assume next year
+    if (targetDate < today && today.getTime() - targetDate.getTime() > 180 * 24 * 60 * 60 * 1000) {
+      year++;
+    }
+    // Return the Sunday of that week
+    const weekDate = new Date(year, month, day);
+    const sunday = new Date(weekDate);
+    sunday.setDate(weekDate.getDate() - weekDate.getDay());
+    return sunday.toISOString().split('T')[0];
+  }
+
+  // Check for ordinal week format (e.g., "first week of March", "2nd week of January")
+  const ordinalWeekMatch = normalized.match(
+    /^(first|1st|second|2nd|third|3rd|fourth|4th|fifth|5th|last)\s+week\s+of\s+(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)$/i
+  );
+  if (ordinalWeekMatch) {
+    const ordinalMap: Record<string, number> = {
+      first: 1,
+      '1st': 1,
+      second: 2,
+      '2nd': 2,
+      third: 3,
+      '3rd': 3,
+      fourth: 4,
+      '4th': 4,
+      fifth: 5,
+      '5th': 5,
+      last: -1,
+    };
+    const weekNum = ordinalMap[ordinalWeekMatch[1].toLowerCase()];
+    const month = monthMap[ordinalWeekMatch[2].toLowerCase()];
+    let year = today.getFullYear();
+
+    // If month is in the past, assume next year
+    const checkDate = new Date(year, month, 1);
+    if (checkDate < today && today.getTime() - checkDate.getTime() > 180 * 24 * 60 * 60 * 1000) {
+      year++;
+    }
+
+    if (weekNum === -1) {
+      // "last week of month" - find the last Sunday of the month
+      const lastDay = new Date(year, month + 1, 0); // Last day of month
+      const lastSunday = new Date(lastDay);
+      lastSunday.setDate(lastDay.getDate() - lastDay.getDay());
+      return lastSunday.toISOString().split('T')[0];
+    } else {
+      // Find the nth week: first Sunday of month + (weekNum-1) weeks
+      const firstOfMonth = new Date(year, month, 1);
+      const firstSunday = new Date(firstOfMonth);
+      // If 1st isn't Sunday, move to first Sunday
+      if (firstOfMonth.getDay() !== 0) {
+        firstSunday.setDate(firstOfMonth.getDate() + (7 - firstOfMonth.getDay()));
+      }
+      // Add (weekNum - 1) weeks
+      firstSunday.setDate(firstSunday.getDate() + (weekNum - 1) * 7);
+      return firstSunday.toISOString().split('T')[0];
+    }
+  }
+
+  return null;
 }
 
 /**
- * Date range for week-based queries
+ * Get date range for "this-week" query (Sunday-Saturday)
  */
-interface DateRange {
-  start: string; // YYYY-MM-DD
-  end: string; // YYYY-MM-DD
-}
-
-/**
- * Get the week date range for a given date (Sunday-Saturday)
- */
-function getWeekRange(date: Date): DateRange {
+function getWeekRange(date: Date): { start: string; end: string } {
   const sunday = new Date(date);
   sunday.setDate(date.getDate() - date.getDay());
   sunday.setHours(0, 0, 0, 0);
@@ -78,89 +211,6 @@ function getWeekRange(date: Date): DateRange {
     start: sunday.toISOString().split('T')[0],
     end: saturday.toISOString().split('T')[0],
   };
-}
-
-/**
- * Parse natural language date header into date or date range
- * Supports:
- * - "## Due Week of January 5th" → week range containing Jan 5
- * - "## Due Next Week" → next week's range
- * - "## Due This Week" → current week's range
- * - "## Due Monday (2025-12-23)" → extracts specific date
- * - "## Due Today (2025-12-23)" → extracts specific date
- */
-function parseNaturalLanguageHeader(header: string): string | DateRange | null {
-  // Pattern 1: "## Due [Day] (YYYY-MM-DD)" - extract explicit date
-  const explicitDateMatch = header.match(/## Due (?:\w+day) \((\d{4}-\d{2}-\d{2})\)/i);
-  if (explicitDateMatch) {
-    return explicitDateMatch[1];
-  }
-
-  // Pattern 2: "## Due Today (YYYY-MM-DD)" - already handled by original parser
-  const dueTodayMatch = header.match(/## Due Today \((\d{4}-\d{2}-\d{2})\)/i);
-  if (dueTodayMatch) {
-    return dueTodayMatch[1];
-  }
-
-  // Pattern 3: "## Due Next Week"
-  if (/## Due Next Week/i.test(header)) {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const nextWeekStart = new Date(today);
-    nextWeekStart.setDate(today.getDate() + (7 - today.getDay())); // Next Sunday
-    return getWeekRange(nextWeekStart);
-  }
-
-  // Pattern 4: "## Due This Week"
-  if (/## Due This Week/i.test(header)) {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    return getWeekRange(today);
-  }
-
-  // Pattern 5: "## Due Week of [Month] [Day]" or "## Due Week of [Month] [Day]th/st/nd/rd"
-  const weekOfMatch = header.match(/## Due Week of (\w+) (\d+)(?:st|nd|rd|th)?/i);
-  if (weekOfMatch) {
-    const monthName = weekOfMatch[1];
-    const day = parseInt(weekOfMatch[2], 10);
-
-    // Parse month name to month number (0-11)
-    const monthMap: Record<string, number> = {
-      january: 0,
-      february: 1,
-      march: 2,
-      april: 3,
-      may: 4,
-      june: 5,
-      july: 6,
-      august: 7,
-      september: 8,
-      october: 9,
-      november: 10,
-      december: 11,
-    };
-    const month = monthMap[monthName.toLowerCase()];
-
-    if (month !== undefined) {
-      // Determine year (use current year, or next year if month has passed)
-      const today = new Date();
-      let year = today.getFullYear();
-      const targetDate = new Date(year, month, day);
-
-      // If target date is more than 6 months in the past, assume next year
-      if (
-        targetDate < today &&
-        today.getTime() - targetDate.getTime() > 180 * 24 * 60 * 60 * 1000
-      ) {
-        year++;
-      }
-
-      const weekDate = new Date(year, month, day);
-      return getWeekRange(weekDate);
-    }
-  }
-
-  return null;
 }
 
 /**
@@ -180,231 +230,142 @@ function extractMetadata(taskText: string): Record<string, string> {
 }
 
 /**
- * Check if a date falls within a date range (inclusive)
+ * Extract due date from task line
+ * Looks for (due: ...) pattern
  */
-function isDateInRange(date: string, range: DateRange): boolean {
-  return date >= range.start && date <= range.end;
+function extractDueDate(taskLine: string): string | null {
+  const match = taskLine.match(/\(due:\s*([^)]+)\)/i);
+  return match ? match[1].trim() : null;
 }
 
 /**
- * Parse task list file and extract tasks for specified date
- * Now supports natural language date headers and completed section
+ * Extract completion date from task line
+ * Looks for (completed: ...) pattern
+ */
+function extractCompletedDate(taskLine: string): string | null {
+  const match = taskLine.match(/\(completed:\s*([^)]+)\)/i);
+  return match ? match[1].trim() : null;
+}
+
+/**
+ * Clean task text by removing checkbox, dates, and metadata
+ */
+function cleanTaskText(taskLine: string): string {
+  return taskLine
+    .replace(/^- \[[xX ]\]\s*/, '') // Remove checkbox
+    .replace(/\(due:\s*[^)]+\)/gi, '') // Remove due date
+    .replace(/\(completed:\s*[^)]+\)/gi, '') // Remove completed date
+    .replace(/@\w+:[^\s@]+/g, '') // Remove metadata
+    .trim();
+}
+
+/**
+ * Parse tasks from a task list file
  */
 async function parseTaskListFile(
   filePath: string,
-  targetDate: string,
-  statusFilter: 'incomplete' | 'complete' | 'all'
+  queryDate: string,
+  queryType: 'specific' | 'this-week' | 'overdue' | 'todo',
+  statusFilter: 'incomplete' | 'complete' | 'all',
+  weekRange?: { start: string; end: string }
 ): Promise<TaskResult[]> {
   const content = await fs.readFile(filePath, 'utf-8');
   const tasks: TaskResult[] = [];
-
-  // Split into lines
   const lines = content.split('\n');
 
-  // Find "Due Today (YYYY-MM-DD)" section (original strict format)
-  const dueTodayRegex = new RegExp(`## Due Today \\(${targetDate.replace(/-/g, '\\-')}\\)`, 'i');
-  let inTargetSection = false;
-  let inCompletedSection = false;
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-
-    // Check if this is a section header (## Due ...)
-    if (line.startsWith('## Due ')) {
-      // First check strict format
-      if (dueTodayRegex.test(line)) {
-        inTargetSection = true;
-        inCompletedSection = false;
-        continue;
-      }
-
-      // Try natural language parsing
-      const parsedDate = parseNaturalLanguageHeader(line);
-      if (parsedDate) {
-        // Check if target date matches
-        if (typeof parsedDate === 'string') {
-          // Exact date match
-          inTargetSection = parsedDate === targetDate;
-        } else {
-          // Date range match
-          inTargetSection = isDateInRange(targetDate, parsedDate);
-        }
-        inCompletedSection = false;
-        continue;
-      }
-
-      // If we hit a ## header that doesn't match, we're leaving any previous section
-      inTargetSection = false;
-      inCompletedSection = false;
-      continue;
-    }
-
-    // Check for Completed section
-    if (line.startsWith('## Completed')) {
-      inCompletedSection = true;
-      inTargetSection = false;
-      continue;
-    }
-
-    // Check if we've entered a different section (non-Due header)
-    if (line.startsWith('## ')) {
-      // We've left any previous section
-      inTargetSection = false;
-      inCompletedSection = false;
-      continue;
-    }
-
-    // Parse task line from due date sections
-    if (inTargetSection && line.trim().startsWith('- [')) {
-      const isComplete = line.includes('[x]') || line.includes('[X]');
-      const status: 'complete' | 'incomplete' = isComplete ? 'complete' : 'incomplete';
-
-      // Apply status filter
-      if (statusFilter !== 'all' && status !== statusFilter) {
-        continue;
-      }
-
-      // Extract task text (remove checkbox and completion date)
-      let taskText = line
-        .replace(/^- \[[xX ]\]\s*/, '')
-        .replace(/\(completed: \d{4}-\d{2}-\d{2}\)/, '')
-        .trim();
-
-      // Extract metadata
-      const metadata = extractMetadata(taskText);
-
-      // Remove metadata from task text for cleaner display
-      taskText = taskText.replace(/@\w+:[^\s@]+/g, '').trim();
-
-      tasks.push({
-        task: taskText,
-        source: filePath,
-        priority: metadata.priority,
-        project: metadata.project,
-        context: metadata.context,
-        status,
-        metadata,
-      });
-    }
-
-    // Parse completed tasks from Completed section
-    if (inCompletedSection && line.trim().startsWith('- [')) {
-      // Extract completion date from (completed: YYYY-MM-DD) pattern
-      const completionDateMatch = line.match(/\(completed: (\d{4}-\d{2}-\d{2})\)/);
-
-      // Only include if completion date matches target date and status filter allows completed tasks
-      if (
-        completionDateMatch &&
-        completionDateMatch[1] === targetDate &&
-        (statusFilter === 'complete' || statusFilter === 'all')
-      ) {
-        const isComplete = line.includes('[x]') || line.includes('[X]');
-        const status: 'complete' | 'incomplete' = isComplete ? 'complete' : 'incomplete';
-
-        // Extract task text (remove checkbox and completion date)
-        let taskText = line
-          .replace(/^- \[[xX ]\]\s*/, '')
-          .replace(/\(completed: \d{4}-\d{2}-\d{2}\)/, '')
-          .trim();
-
-        // Extract metadata
-        const metadata = extractMetadata(taskText);
-
-        // Remove metadata from task text for cleaner display
-        taskText = taskText.replace(/@\w+:[^\s@]+/g, '').trim();
-
-        tasks.push({
-          task: taskText,
-          source: filePath,
-          priority: metadata.priority,
-          project: metadata.project,
-          context: metadata.context,
-          status,
-          metadata,
-        });
-      }
-    }
-  }
-
-  return tasks;
-}
-
-/**
- * Parse task list file and extract overdue tasks (all dates before today)
- */
-async function parseOverdueTasksFromFile(
-  filePath: string,
-  statusFilter: 'incomplete' | 'complete' | 'all'
-): Promise<TaskResult[]> {
-  const content = await fs.readFile(filePath, 'utf-8');
-  const tasks: TaskResult[] = [];
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const todayStr = today.toISOString().split('T')[0];
 
-  // Split into lines
-  const lines = content.split('\n');
+  let currentSection: 'tasks' | 'todo' | 'completed' | 'other' = 'other';
 
-  // Find all "Due Today (YYYY-MM-DD)" sections
-  const dueTodayRegex = /## Due Today \((\d{4}-\d{2}-\d{2})\)/i;
-  let currentDate: string | null = null;
-  let inDateSection = false;
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-
-    // Check if we've entered a date section
-    const match = dueTodayRegex.exec(line);
-    if (match) {
-      currentDate = match[1];
-      // Check if this date is before today
-      inDateSection = currentDate < todayStr;
+  for (const line of lines) {
+    // Track which section we're in
+    if (line.startsWith('## Tasks')) {
+      currentSection = 'tasks';
+      continue;
+    } else if (line.startsWith('## Todo')) {
+      currentSection = 'todo';
+      continue;
+    } else if (line.startsWith('## Completed')) {
+      currentSection = 'completed';
+      continue;
+    } else if (line.startsWith('## ')) {
+      currentSection = 'other';
       continue;
     }
 
-    // Check if we've entered a different section
-    if (line.startsWith('## ') && inDateSection) {
-      // We've left the date section
-      inDateSection = false;
-      currentDate = null;
-      continue;
-    }
+    // Only process task lines
+    if (!line.trim().startsWith('- [')) continue;
 
-    // Parse task line from overdue sections
-    if (inDateSection && currentDate && line.trim().startsWith('- [')) {
-      const isComplete = line.includes('[x]') || line.includes('[X]');
-      const status: 'complete' | 'incomplete' = isComplete ? 'complete' : 'incomplete';
+    const isComplete = line.includes('[x]') || line.includes('[X]');
+    const status: 'complete' | 'incomplete' = isComplete ? 'complete' : 'incomplete';
 
-      // Apply status filter
-      if (statusFilter !== 'all' && status !== statusFilter) {
+    // Apply status filter
+    if (statusFilter !== 'all' && status !== statusFilter) continue;
+
+    const dueDate = extractDueDate(line);
+    const completedDate = extractCompletedDate(line);
+    const metadata = extractMetadata(line);
+    const taskText = cleanTaskText(line);
+
+    // Handle different query types
+    if (queryType === 'todo') {
+      // Return tasks from ## Todo section (no due date)
+      if (currentSection !== 'todo') continue;
+    } else if (queryType === 'overdue') {
+      // Only tasks from ## Tasks section with past due dates
+      if (currentSection !== 'tasks') continue;
+      if (!dueDate) continue;
+      const parsedDue = parseNaturalDate(dueDate);
+      if (!parsedDue || parsedDue >= todayStr) continue;
+    } else if (queryType === 'this-week' && weekRange) {
+      // Tasks due within the week range
+      if (currentSection === 'completed') {
+        // For completed tasks, check completion date
+        if (!completedDate) continue;
+        const parsedCompleted = parseNaturalDate(completedDate);
+        if (
+          !parsedCompleted ||
+          parsedCompleted < weekRange.start ||
+          parsedCompleted > weekRange.end
+        )
+          continue;
+      } else if (currentSection === 'tasks') {
+        if (!dueDate) continue;
+        const parsedDue = parseNaturalDate(dueDate);
+        if (!parsedDue || parsedDue < weekRange.start || parsedDue > weekRange.end) continue;
+      } else {
+        continue; // Skip todo items for this-week query
+      }
+    } else if (queryType === 'specific') {
+      // Tasks for specific date
+      if (currentSection === 'completed') {
+        // Match by completion date
+        if (!completedDate) continue;
+        const parsedCompleted = parseNaturalDate(completedDate);
+        if (parsedCompleted !== queryDate) continue;
+      } else if (currentSection === 'tasks') {
+        // Match by due date
+        if (!dueDate) continue;
+        const parsedDue = parseNaturalDate(dueDate);
+        if (parsedDue !== queryDate) continue;
+      } else {
         continue;
       }
-
-      // Extract task text (remove checkbox and completion date)
-      let taskText = line
-        .replace(/^- \[[xX ]\]\s*/, '')
-        .replace(/\(completed: \d{4}-\d{2}-\d{2}\)/, '')
-        .trim();
-
-      // Extract metadata
-      const metadata = extractMetadata(taskText);
-
-      // Add due date to metadata
-      metadata.due = currentDate;
-
-      // Remove metadata from task text for cleaner display
-      taskText = taskText.replace(/@\w+:[^\s@]+/g, '').trim();
-
-      tasks.push({
-        task: taskText,
-        source: filePath,
-        priority: metadata.priority,
-        project: metadata.project,
-        context: metadata.context,
-        status,
-        metadata,
-      });
     }
+
+    tasks.push({
+      task: taskText,
+      source: filePath,
+      priority: metadata.priority,
+      project: metadata.project,
+      context: metadata.context,
+      status,
+      dueDate: dueDate || undefined,
+      completedDate: completedDate || undefined,
+      metadata,
+    });
   }
 
   return tasks;
@@ -425,7 +386,7 @@ async function getTaskListFiles(vaultPath: string): Promise<string[]> {
         const filePath = path.join(tasksDir, file);
         const content = await fs.readFile(filePath, 'utf-8');
 
-        // Check if file has category: task-list
+        // Check if file has category: task-list and active tag
         const { data } = matter(content);
         if (
           data.category === 'task-list' &&
@@ -448,7 +409,6 @@ async function getTaskListFiles(vaultPath: string): Promise<string[]> {
 
 /**
  * Get tasks by date across all task lists
- * Supports natural language queries and week-based date ranges
  */
 export async function getTasksByDate(
   args: GetTasksByDateArgs,
@@ -470,39 +430,41 @@ export async function getTasksByDate(
     };
   }
 
-  // Parse all task lists based on whether we're querying overdue tasks
-  let taskArrays: TaskResult[][];
-  if (date === 'overdue') {
-    // Query all overdue tasks
-    taskArrays = await Promise.all(
-      taskListFiles.map(file => parseOverdueTasksFromFile(file, status))
-    );
+  // Determine query type and target date
+  let queryType: 'specific' | 'this-week' | 'overdue' | 'todo';
+  let queryDate: string;
+  let weekRange: { start: string; end: string } | undefined;
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  if (date === 'todo') {
+    queryType = 'todo';
+    queryDate = '';
+  } else if (date === 'overdue') {
+    queryType = 'overdue';
+    queryDate = '';
   } else if (date === 'this-week') {
-    // Query all tasks for current week (each day Sun-Sat)
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const weekRange = getWeekRange(today);
-
-    // Collect tasks for each day in the week
-    const daysInWeek: string[] = [];
-    const currentDate = new Date(weekRange.start);
-    while (currentDate <= new Date(weekRange.end)) {
-      daysInWeek.push(currentDate.toISOString().split('T')[0]);
-      currentDate.setDate(currentDate.getDate() + 1);
-    }
-
-    // Parse tasks for all days in the week
-    const weekTaskArrays = await Promise.all(
-      daysInWeek.flatMap(day => taskListFiles.map(file => parseTaskListFile(file, day, status)))
-    );
-    taskArrays = [weekTaskArrays.flat()];
+    queryType = 'this-week';
+    queryDate = '';
+    weekRange = getWeekRange(today);
+  } else if (date === 'today') {
+    queryType = 'specific';
+    queryDate = today.toISOString().split('T')[0];
+  } else if (date === 'tomorrow') {
+    queryType = 'specific';
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    queryDate = tomorrow.toISOString().split('T')[0];
   } else {
-    // Query tasks for specific date
-    const targetDate = parseDate(date);
-    taskArrays = await Promise.all(
-      taskListFiles.map(file => parseTaskListFile(file, targetDate, status))
-    );
+    queryType = 'specific';
+    queryDate = date; // Assume YYYY-MM-DD
   }
+
+  // Parse all task lists
+  const taskArrays = await Promise.all(
+    taskListFiles.map(file => parseTaskListFile(file, queryDate, queryType, status, weekRange))
+  );
 
   // Flatten and filter by project if specified
   let allTasks = taskArrays.flat();
@@ -511,14 +473,23 @@ export async function getTasksByDate(
   }
 
   // Format results
-  const dateDescription = date === 'overdue' ? 'overdue' : date === 'today' ? 'today' : date;
+  const dateDescription =
+    date === 'overdue'
+      ? 'overdue'
+      : date === 'todo'
+        ? 'todo (no due date)'
+        : date === 'today'
+          ? 'today'
+          : date === 'this-week'
+            ? 'this week'
+            : date;
 
   if (allTasks.length === 0) {
     return {
       content: [
         {
           type: 'text',
-          text: `No ${status} ${date === 'overdue' ? 'overdue tasks' : `tasks found for ${dateDescription}`}${project ? ` in project "${project}"` : ''}.`,
+          text: `No ${status} ${date === 'overdue' ? 'overdue tasks' : date === 'todo' ? 'todo items' : `tasks found for ${dateDescription}`}${project ? ` in project "${project}"` : ''}.`,
         },
       ],
     };
@@ -535,19 +506,21 @@ export async function getTasksByDate(
   }
 
   // Format output
-  let output = `Found ${allTasks.length} ${status} ${date === 'overdue' ? 'overdue task(s)' : `task(s) for ${dateDescription}`}:\n\n`;
+  let output = `Found ${allTasks.length} ${status} ${date === 'overdue' ? 'overdue task(s)' : date === 'todo' ? 'todo item(s)' : `task(s) for ${dateDescription}`}:\n\n`;
 
   for (const [fileName, tasks] of tasksByFile) {
     output += `**${fileName}**\n`;
     for (const task of tasks) {
+      const checkbox = task.status === 'complete' ? '[x]' : '[ ]';
+      let line = `- ${checkbox} ${task.task}`;
+      if (task.dueDate) line += ` (due: ${task.dueDate})`;
+      if (task.completedDate) line += ` (completed: ${task.completedDate})`;
       const metadataStr = Object.entries(task.metadata)
+        .filter(([key]) => !['due', 'completed'].includes(key))
         .map(([key, value]) => `@${key}:${value}`)
         .join(' ');
-      output += `- [${task.status === 'complete' ? 'x' : ' '}] ${task.task}`;
-      if (metadataStr) {
-        output += ` ${metadataStr}`;
-      }
-      output += '\n';
+      if (metadataStr) line += ` ${metadataStr}`;
+      output += line + '\n';
     }
     output += '\n';
   }
