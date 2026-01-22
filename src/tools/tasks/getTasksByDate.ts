@@ -373,6 +373,11 @@ async function parseTaskListFile(
 
 /**
  * Get all task list files from vault
+ *
+ * Inclusion logic:
+ * - Files with frontmatter: include if category=task-list AND has 'active' tag
+ * - Files without frontmatter or missing category: include by default (assume active)
+ * - Explicit exclusion: files with 'archived' or 'inactive' tag are excluded
  */
 async function getTaskListFiles(vaultPath: string): Promise<string[]> {
   const tasksDir = path.join(vaultPath, 'tasks');
@@ -385,14 +390,23 @@ async function getTaskListFiles(vaultPath: string): Promise<string[]> {
       if (file.endsWith('.md')) {
         const filePath = path.join(tasksDir, file);
         const content = await fs.readFile(filePath, 'utf-8');
-
-        // Check if file has category: task-list and active tag
         const { data } = matter(content);
-        if (
-          data.category === 'task-list' &&
-          Array.isArray(data.tags) &&
-          data.tags.includes('active')
-        ) {
+
+        // Check for explicit exclusion tags
+        const tags = Array.isArray(data.tags) ? data.tags : [];
+        if (tags.includes('archived') || tags.includes('inactive')) {
+          continue; // Explicitly excluded
+        }
+
+        // If file has category: task-list, require 'active' tag
+        // If no category or different category, include by default (assume active task list)
+        if (data.category === 'task-list') {
+          if (tags.includes('active')) {
+            taskListFiles.push(filePath);
+          }
+          // Has task-list category but no active tag - skip
+        } else {
+          // No category frontmatter - include by default
           taskListFiles.push(filePath);
         }
       }
