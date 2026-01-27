@@ -30,3 +30,6 @@ export type {
   DetectSessionRepositoriesArgs,
   DetectSessionRepositoriesResult,
 } from './detectSessionRepositories.js';
+
+export { restoreSessionData } from './restoreSessionData.js';
+export type { RestoreSessionDataArgs, RestoreSessionDataResult } from './restoreSessionData.js';

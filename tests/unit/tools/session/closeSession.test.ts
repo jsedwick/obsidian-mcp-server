@@ -734,9 +734,7 @@ describe('closeSession - Two-Phase Workflow', () => {
         // Missing session_data
       };
 
-      await expect(closeSession(args, context)).rejects.toThrow(
-        'finalize=true requires session_data from Phase 1'
-      );
+      await expect(closeSession(args, context)).rejects.toThrow('session_data is missing');
     });
 
     it('should create monthly session directory structure', async () => {

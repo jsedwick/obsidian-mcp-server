@@ -2002,6 +2002,8 @@ interface CloseSessionContext {
   markPhase1Complete: () => void;
   storePhase1SessionData: (data: SessionData) => void;
   getStoredPhase1SessionData: () => SessionData | null;
+  // Decision 054: File-based session state recovery
+  restoreSessionStateFromFile: () => Promise<{ phase1SessionData: unknown } | null>;
   getMostRecentSessionDate: (repoSlug: string) => Promise<Date | null>;
   getSessionStartTime: () => Date | null; // Get first file access timestamp
   searchVault: (args: {
@@ -2031,28 +2033,53 @@ export async function closeSession(
 
   await context.ensureVaultStructure();
 
-  // Validate session_data is present if finalizing
+  // Validate session_data is present and complete if finalizing
   // Decision 048: Fallback to stored session_data if context was truncated
-  if (args.finalize && !args.session_data) {
+  // Decision 054: Extended fallback to file-based recovery if memory also lost
+  //              Also handles malformed session_data (missing required fields)
+  const isSessionDataMissing = !args.session_data;
+  const isSessionDataMalformed =
+    args.session_data &&
+    (!args.session_data.sessionContent ||
+      !args.session_data.sessionId ||
+      !args.session_data.sessionFile);
+  const needsRecovery = args.finalize && (isSessionDataMissing || isSessionDataMalformed);
+
+  if (needsRecovery) {
+    const recoveryReason = isSessionDataMalformed
+      ? 'session_data is malformed (missing required fields)'
+      : 'session_data is missing';
+
+    // Try memory-based recovery first (Decision 048)
     const storedData = context.getStoredPhase1SessionData();
     if (storedData) {
       // Recovered from MCP server state after context truncation
       args.session_data = storedData;
     } else {
-      throw new Error(
-        '❌ Phase 2 Error: finalize=true requires session_data from Phase 1.\n\n' +
-          'The two-phase workflow requires calling close_session twice:\n' +
-          '1. First call (Phase 1): Run via /close command with _invoked_by_slash_command: true\n' +
-          '   Returns: commit analysis + session_data\n' +
-          '2. Second call (Phase 2): Claude calls directly with finalize: true\n' +
-          '   Does NOT need _invoked_by_slash_command (only Phase 1 does)\n\n' +
-          'Example Phase 2 call:\n' +
-          'close_session({\n' +
-          '  summary: "...",\n' +
-          '  finalize: true,\n' +
-          '  session_data: { ...data from Phase 1... }\n' +
-          '})'
-      );
+      // Decision 054: Try file-based recovery (handles MCP server restart)
+      const fileRestored = await context.restoreSessionStateFromFile();
+      if (fileRestored?.phase1SessionData) {
+        args.session_data = fileRestored.phase1SessionData as SessionData;
+      } else {
+        throw new Error(
+          `❌ Phase 2 Error: ${recoveryReason}\n\n` +
+            'The two-phase workflow requires calling close_session twice:\n' +
+            '1. First call (Phase 1): Run via /close command with _invoked_by_slash_command: true\n' +
+            '   Returns: commit analysis + session_data\n' +
+            '2. Second call (Phase 2): Claude calls directly with finalize: true\n' +
+            '   Does NOT need _invoked_by_slash_command (only Phase 1 does)\n\n' +
+            'Recovery attempted:\n' +
+            '- Memory state: not available\n' +
+            '- File-based (session-state.md): not available or Phase 1 incomplete\n\n' +
+            'Try running restore_session_data first, or re-run /close to start fresh.\n\n' +
+            'Example Phase 2 call:\n' +
+            'close_session({\n' +
+            '  summary: "...",\n' +
+            '  finalize: true,\n' +
+            '  session_data: { ...data from Phase 1... }\n' +
+            '})'
+        );
+      }
     }
   }
 

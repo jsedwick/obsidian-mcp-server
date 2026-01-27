@@ -139,6 +139,8 @@ export function createSessionToolsContext(
       };
     }),
     getStoredPhase1SessionData: vi.fn().mockImplementation(() => storedPhase1Data),
+    // Decision 054: File-based session state recovery
+    restoreSessionStateFromFile: vi.fn().mockResolvedValue(null),
     // Helper to simulate file access tracking after Phase 1 (for testing enforcement fix)
     accumulateFilesAccessedAfterPhase1: vi
       .fn()

@@ -218,6 +218,11 @@ export const DetectSessionRepositoriesArgsSchema = z.object({
     ),
 });
 
+// restore_session_data (Decision 054)
+export const RestoreSessionDataArgsSchema = z.object({
+  // No arguments needed - reads from known vault location
+});
+
 /**
  * SEARCH TOOLS (4 tools)
  */
@@ -670,6 +675,7 @@ export const ValidationSchemas = {
   list_recent_sessions: ListRecentSessionsArgsSchema,
   close_session: CloseSessionArgsSchema,
   detect_session_repositories: DetectSessionRepositoriesArgsSchema,
+  restore_session_data: RestoreSessionDataArgsSchema,
 
   // Search tools
   search_vault: SearchVaultArgsSchema,

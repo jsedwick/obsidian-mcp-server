@@ -20,6 +20,8 @@ import cors from 'cors';
 import bodyParser from 'body-parser';
 import * as tools from './tools/index.js';
 import { GitService } from './services/git/GitService.js';
+import { SessionStateFile } from './services/session/SessionStateFile.js';
+import type { RestoredSessionState } from './services/session/SessionStateFile.js';
 import { validateToolArgs, ValidationError } from './validation/index.js';
 import { IndexBuilder } from './services/search/index/IndexBuilder.js';
 import { IndexedSearch } from './services/search/IndexedSearch.js';
@@ -303,6 +305,7 @@ class ObsidianMCPServer {
   private embeddingInitPromise: Promise<void> | null = null;
   private embeddingToggleFile: string = '';
   private gitService: GitService;
+  private sessionStateFile: SessionStateFile;
   private indexBuilders: Map<string, IndexBuilder> = new Map(); // Per-vault index builders
   private indexedSearches: Map<string, IndexedSearch> = new Map(); // Per-vault indexed searches
 
@@ -347,6 +350,9 @@ class ObsidianMCPServer {
 
     // Initialize GitService
     this.gitService = new GitService();
+
+    // Initialize SessionStateFile for persistent session state (Decision 054)
+    this.sessionStateFile = new SessionStateFile(this.config.primaryVault.path);
 
     // Initialize IndexBuilder and IndexedSearch for each vault if enabled
     if (DEFAULT_INDEX_CONFIG.enabled) {
@@ -681,6 +687,7 @@ class ObsidianMCPServer {
               markPhase1Complete: this.markPhase1Complete.bind(this),
               storePhase1SessionData: this.storePhase1SessionData.bind(this),
               getStoredPhase1SessionData: this.getStoredPhase1SessionData.bind(this),
+              restoreSessionStateFromFile: this.restoreSessionStateFromFile.bind(this),
               getMostRecentSessionDate: this.getMostRecentSessionDate.bind(this),
               getSessionStartTime: this.getSessionStartTime.bind(this),
               searchVault: this.searchVaultWrapper.bind(this),
@@ -739,6 +746,11 @@ class ObsidianMCPServer {
                 getRepoInfo: this.getRepoInfo.bind(this),
               }
             );
+
+          case 'restore_session_data':
+            return await tools.restoreSessionData(validatedArgs as tools.RestoreSessionDataArgs, {
+              restoreSessionStateFromFile: this.restoreSessionStateFromFile.bind(this),
+            });
 
           case 'link_session_to_repository':
             return await tools.linkSessionToRepository(
@@ -1795,6 +1807,17 @@ SCOPE: Decisions can be vault-level (affecting the MCP system itself) or project
         },
       },
       {
+        name: 'restore_session_data',
+        description:
+          'Recover session state from session-state.md when MCP server state is lost (restart, crash). ' +
+          'Restores session start time, files accessed, and Phase 1 session data if available. ' +
+          'Use this to recover from server restarts between Phase 1 and Phase 2 of the /close workflow.',
+        inputSchema: {
+          type: 'object',
+          properties: {},
+        },
+      },
+      {
         name: 'link_session_to_repository',
         description: 'Link the current session to a specific Git repository.',
         inputSchema: {
@@ -2437,6 +2460,11 @@ Check the sessions/ directory for recent conversations.
       ...data,
       filesAccessed: [...(data.filesAccessed || [])],
     };
+
+    // Persist to session state file (Decision 054) - fire-and-forget
+    this.sessionStateFile.storePhase1Data(this.phase1SessionData).catch(error => {
+      logger.warn('Failed to persist Phase 1 data to session state file', { error });
+    });
   }
 
   /**
@@ -2469,6 +2497,33 @@ Check the sessions/ directory for recent conversations.
     return this.phase1SessionData;
   }
 
+  /**
+   * Restore session state from session-state.md file (Decision 054)
+   * Used when MCP server state is lost (restart, crash) but file persists.
+   * Returns the Phase 1 session data if available and restores memory state.
+   */
+  private async restoreSessionStateFromFile(): Promise<RestoredSessionState | null> {
+    const restored = await this.sessionStateFile.restore();
+    if (restored) {
+      // Restore memory state
+      this.filesAccessed = restored.filesAccessed.map(f => ({
+        path: f.path,
+        action: f.action as 'read' | 'edit' | 'create',
+        timestamp: f.timestamp,
+      }));
+      this.sessionStartTime = new Date(restored.sessionStart);
+      if (restored.phase1Completed && restored.phase1SessionData) {
+        this.phase1SessionData = restored.phase1SessionData;
+        this.phase1Completed = true;
+      }
+      logger.info('Session state restored from file', {
+        filesAccessedCount: restored.filesAccessed.length,
+        phase1Completed: restored.phase1Completed,
+      });
+    }
+    return restored;
+  }
+
   private clearSessionState(): void {
     this.filesAccessed = [];
     this.topicsCreated = [];
@@ -2477,6 +2532,12 @@ Check the sessions/ directory for recent conversations.
     this.sessionStartTime = null;
     this.phase1Completed = false;
     this.phase1SessionData = null;
+
+    // Initialize session state file for new session (Decision 054)
+    // Fire-and-forget - don't block on file I/O
+    this.sessionStateFile.initialize(new Date()).catch(error => {
+      logger.warn('Failed to initialize session state file', { error });
+    });
   }
 
   /**
@@ -2511,11 +2572,15 @@ Check the sessions/ directory for recent conversations.
     if (this.filesAccessed.length >= ObsidianMCPServer.MAX_FILES_ACCESSED) {
       this.filesAccessed.shift();
     }
+    const timestamp = new Date().toISOString();
     this.filesAccessed.push({
       path: normalizedPath,
       action,
-      timestamp: new Date().toISOString(),
+      timestamp,
     });
+
+    // Persist to session state file (Decision 054) - fire-and-forget (synchronous debounced call)
+    this.sessionStateFile.trackFileAccess({ path: normalizedPath, action, timestamp });
 
     // Accumulate into Phase 1 data for enforcement (fixes filesAccessed context loss bug)
     if (this.phase1Completed) {
