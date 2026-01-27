@@ -13,6 +13,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { createLogger } from '../../utils/logger.js';
 import { VaultError } from '../../utils/errors.js';
+import { formatLocalDate } from '../../utils/dateFormat.js';
 import { SessionTracker } from './SessionTracker.js';
 import { RepositoryDetector } from '../git/RepositoryDetector.js';
 import type {
@@ -134,7 +135,7 @@ export class SessionManager {
    */
   private generateSessionId(topic?: string): string {
     const now = new Date();
-    const dateStr = now.toISOString().split('T')[0];
+    const dateStr = formatLocalDate(now);
     const timeStr = now.toTimeString().split(' ')[0].replace(/:/g, '-');
     const topicSlug = topic ? `_${this.slugify(topic)}` : '';
     const sessionId = `${dateStr}_${timeStr}${topicSlug}`;

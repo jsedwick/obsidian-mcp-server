@@ -18,6 +18,7 @@
 
 import fs from 'fs/promises';
 import path from 'path';
+import { getTodayLocal } from '../../utils/dateFormat.js';
 import { isProtectedFile } from '../../utils/protectedFiles.js';
 
 export interface AppendToAccumulatorArgs {
@@ -113,7 +114,7 @@ export async function appendToAccumulator(
     const template = generateAccumulatorTemplate(title);
 
     // Add first entry
-    const timestamp = addTimestamp ? `\n**${new Date().toISOString().split('T')[0]}**\n\n` : '\n';
+    const timestamp = addTimestamp ? `\n**${getTodayLocal()}**\n\n` : '\n';
     const newContent = template + timestamp + args.content + '\n';
 
     await fs.writeFile(filePath, newContent, 'utf-8');
@@ -130,7 +131,7 @@ export async function appendToAccumulator(
     // Append to existing accumulator
     const existingContent = await fs.readFile(filePath, 'utf-8');
 
-    const timestamp = addTimestamp ? `\n**${new Date().toISOString().split('T')[0]}**\n\n` : '\n';
+    const timestamp = addTimestamp ? `\n**${getTodayLocal()}**\n\n` : '\n';
     const newContent = existingContent + timestamp + args.content + '\n';
 
     await fs.writeFile(filePath, newContent, 'utf-8');

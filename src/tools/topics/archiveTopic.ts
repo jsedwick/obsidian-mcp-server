@@ -6,6 +6,7 @@
 
 import fs from 'fs/promises';
 import path from 'path';
+import { getTodayLocal } from '../../utils/dateFormat.js';
 
 export interface ArchiveTopicArgs {
   topic: string;
@@ -43,7 +44,7 @@ export async function archiveTopic(
 
   // Read current content
   const content = await fs.readFile(topicFile, 'utf-8');
-  const today = new Date().toISOString().split('T')[0];
+  const today = getTodayLocal();
 
   // Update frontmatter to mark as archived
   const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);

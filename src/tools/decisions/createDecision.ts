@@ -21,6 +21,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { generateDecisionTemplate } from '../../templates.js';
 import { generateProjectSlug } from '../../utils/projectSlug.js';
+import { getTodayLocal } from '../../utils/dateFormat.js';
 
 export interface CreateDecisionArgs {
   title: string;
@@ -170,7 +171,7 @@ To proceed anyway, call create_decision again with force: true.`,
   const numberStr = String(nextNumber).padStart(3, '0');
   const slug = context.slugify(args.title);
   const decisionFile = path.join(decisionsDir, `${numberStr}-${slug}.md`);
-  const today = new Date().toISOString().split('T')[0];
+  const today = getTodayLocal();
 
   const content = generateDecisionTemplate({
     number: numberStr,

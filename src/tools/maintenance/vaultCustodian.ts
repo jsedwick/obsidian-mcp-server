@@ -8,6 +8,7 @@
 
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import { getTodayLocal } from '../../utils/dateFormat.js';
 
 export interface VaultCustodianArgs {
   files_to_check?: string[];
@@ -1339,7 +1340,7 @@ async function archiveSupersededDecisions(
           await fs.mkdir(archiveDir, { recursive: true });
 
           // Update frontmatter with archived date
-          const today = new Date().toISOString().split('T')[0];
+          const today = getTodayLocal();
           let updatedFrontmatter = frontmatter;
 
           // Add archived date if not already present
@@ -1457,7 +1458,7 @@ export async function vaultCustodian(
 
         // Add basic frontmatter
         const title = path.basename(file, '.md');
-        const today = new Date().toISOString().split('T')[0];
+        const today = getTodayLocal();
         const newContent = `---
 title: ${title}
 created: ${today}

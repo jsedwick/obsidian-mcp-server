@@ -20,6 +20,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import yaml from 'yaml';
 import { archiveTopic } from '../topics/archiveTopic.js';
+import { getTodayLocal } from '../../utils/dateFormat.js';
 
 export interface UpdateDocumentArgs {
   file_path: string;
@@ -114,7 +115,7 @@ const TYPE_RULES: Record<DocumentType, TypeRules> = {
     readonly: false,
     appendOnly: false,
     frontmatterUpdates: (fm, _reason): Record<string, unknown> => {
-      const today = new Date().toISOString().split('T')[0];
+      const today = getTodayLocal();
       const reviewCount = typeof fm.review_count === 'number' ? fm.review_count : 0;
 
       // Decision 043: review_history deprecated, use Git commit history instead
@@ -166,7 +167,7 @@ const TYPE_RULES: Record<DocumentType, TypeRules> = {
     appendOnly: false,
     frontmatterUpdates: (fm): Record<string, unknown> => ({
       ...fm,
-      last_updated: new Date().toISOString().split('T')[0],
+      last_updated: getTodayLocal(),
     }),
     validate: () => {}, // No special validation
   },

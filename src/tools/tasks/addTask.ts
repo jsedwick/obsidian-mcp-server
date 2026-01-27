@@ -12,6 +12,7 @@
 
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import { getTodayLocal } from '../../utils/dateFormat.js';
 
 export interface AddTaskArgs {
   task: string;
@@ -81,7 +82,7 @@ function selectTaskList(args: AddTaskArgs): string {
  * Create task list template with new simplified structure
  */
 function createTaskListTemplate(listName: string, args: AddTaskArgs): string {
-  const timestamp = new Date().toISOString().split('T')[0];
+  const timestamp = getTodayLocal();
   const title =
     listName
       .replace('.md', '')

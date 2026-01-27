@@ -8,6 +8,7 @@ import * as path from 'path';
 import { GitService } from '../../services/git/GitService.js';
 import { generateProjectTemplate } from '../../templates.js';
 import { getOrGenerateProjectSlug } from '../../utils/projectSlug.js';
+import { getTodayLocal } from '../../utils/dateFormat.js';
 
 /**
  * Extract repository slug from various URL formats
@@ -189,7 +190,7 @@ export async function createProjectPage(
   await fs.mkdir(projectDir, { recursive: true });
   await fs.mkdir(path.join(projectDir, 'commits'), { recursive: true });
 
-  const today = new Date().toISOString().split('T')[0];
+  const today = getTodayLocal();
 
   // Track project creation for lazy session creation
   if (context.trackProjectCreation) {

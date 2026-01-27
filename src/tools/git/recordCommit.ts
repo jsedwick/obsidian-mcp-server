@@ -10,6 +10,7 @@ import { promisify } from 'util';
 import { GitService } from '../../services/git/GitService.js';
 import { generateCommitTemplate } from '../../templates.js';
 import { getOrGenerateProjectSlug } from '../../utils/projectSlug.js';
+import { getTodayLocal } from '../../utils/dateFormat.js';
 
 const execAsync = promisify(exec);
 
@@ -99,7 +100,7 @@ export async function recordCommit(
   }
 
   const commitFile = path.join(commitsDir, `${shortHash}.md`);
-  const today = new Date().toISOString().split('T')[0];
+  const today = getTodayLocal();
 
   const content = generateCommitTemplate({
     commitHash: fullHash,

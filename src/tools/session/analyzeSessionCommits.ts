@@ -12,6 +12,7 @@
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import { GitError } from '../../utils/errors.js';
+import { formatLocalDateTime } from '../../utils/dateFormat.js';
 
 const execAsync = promisify(exec);
 
@@ -206,7 +207,7 @@ export async function analyzeSessionCommits(
           text:
             (commitDetectionError || '') +
             '**No Commits Detected**\n\n' +
-            `Session started: ${sessionStartTime.toISOString()}\n` +
+            `Session started: ${formatLocalDateTime(sessionStartTime)}\n` +
             `Repository: ${detectedRepoInfo.name}\n` +
             `Path: ${detectedRepoInfo.path}\n\n` +
             'No commits were made during this session, so there are no code changes to analyze for documentation impact.',
@@ -222,7 +223,7 @@ export async function analyzeSessionCommits(
 
 Repository: ${detectedRepoInfo.path}
 Branch: ${detectedRepoInfo.branch || 'unknown'}
-Session started: ${sessionStartTime.toISOString()}
+Session started: ${formatLocalDateTime(sessionStartTime)}
 Commits detected: ${sessionCommits.length}
 
 ---

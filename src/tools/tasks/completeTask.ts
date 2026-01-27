@@ -9,6 +9,7 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import matter from 'gray-matter';
+import { getTodayLocal } from '../../utils/dateFormat.js';
 
 export interface CompleteTaskArgs {
   task: string; // Full or partial task description for fuzzy matching
@@ -189,7 +190,7 @@ export async function completeTask(
   const { task, date } = args;
 
   // Default completion date to today
-  const completionDate = date || new Date().toISOString().split('T')[0];
+  const completionDate = date || getTodayLocal();
 
   // Get all task list files
   const taskListFiles = await getTaskListFiles(vaultPath);

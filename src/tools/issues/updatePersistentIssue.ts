@@ -11,6 +11,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { getPersistentIssues } from './getPersistentIssues.js';
+import { getTodayLocal } from '../../utils/dateFormat.js';
 
 export interface UpdatePersistentIssueArgs {
   slug: string;
@@ -90,7 +91,7 @@ export async function updatePersistentIssue(
   }
 
   // Build the new entry
-  const date = new Date().toISOString().split('T')[0];
+  const date = getTodayLocal();
   const sessionId = args.session_id || context.currentSessionId || 'unknown-session';
   const newEntry = `\n\n**${date} (${sessionId}):**\n${args.entry}`;
 

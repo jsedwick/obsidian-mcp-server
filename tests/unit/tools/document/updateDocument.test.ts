@@ -15,6 +15,7 @@ import {
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import yaml from 'yaml';
+import { getTodayLocal } from '../../../../src/utils/dateFormat.js';
 
 describe('updateDocument', () => {
   let vaultPath: string;
@@ -355,7 +356,7 @@ Original content`;
 
       const frontmatter = yaml.parse(fmMatch![1]);
       expect(frontmatter.review_count).toBe(6); // Incremented
-      expect(frontmatter.last_reviewed).toBe(new Date().toISOString().split('T')[0]); // Today
+      expect(frontmatter.last_reviewed).toBe(getTodayLocal()); // Today in local timezone
     });
 
     it('should update last_updated for project files', async () => {
@@ -381,7 +382,7 @@ Project details`;
       const updated = await fs.readFile(projectPath, 'utf-8');
       const fmMatch = updated.match(/^---\n([\s\S]*?)\n---/);
       const frontmatter = yaml.parse(fmMatch![1]);
-      expect(frontmatter.last_updated).toBe(new Date().toISOString().split('T')[0]);
+      expect(frontmatter.last_updated).toBe(getTodayLocal());
     });
 
     it('should maintain category for task lists', async () => {

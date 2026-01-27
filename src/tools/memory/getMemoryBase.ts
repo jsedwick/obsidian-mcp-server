@@ -16,6 +16,7 @@
 
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import { formatLocalDateTime, getTodayLocal } from '../../utils/dateFormat.js';
 
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export interface GetMemoryBaseArgs {
@@ -32,7 +33,7 @@ export interface GetMemoryBaseContext {
  */
 const MCP_DIRECTIVES_TEMPLATE = `# MCP System Directives
 
-*Last updated: ${new Date().toISOString().split('T')[0]}*
+*Last updated: ${getTodayLocal()}*
 
 ## Persona
 
@@ -341,8 +342,9 @@ export async function getMemoryBase(
   const sections = [];
 
   // Add session start time for context recovery (fallback if MCP server state is lost)
+  // Use local timezone format for user-friendly display
   if (context?.sessionStartTime) {
-    sections.push(`SESSION_START_TIME: ${context.sessionStartTime.toISOString()}`);
+    sections.push(`SESSION_START_TIME: ${formatLocalDateTime(context.sessionStartTime)}`);
   }
 
   // Add creation notice if mcp-directives was just created

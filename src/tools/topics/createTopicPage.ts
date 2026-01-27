@@ -18,6 +18,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { generateTopicTemplate } from '../../templates.js';
+import { getTodayLocal } from '../../utils/dateFormat.js';
 
 export interface CreateTopicPageArgs {
   topic: string;
@@ -205,7 +206,7 @@ export async function createTopicPage(
 
   const slug = context.slugify(args.topic);
   const topicFile = path.join(context.vaultPath, 'topics', `${slug}.md`);
-  const today = new Date().toISOString().split('T')[0];
+  const today = getTodayLocal();
 
   // Determine if we should analyze content
   let shouldAnalyze = false;

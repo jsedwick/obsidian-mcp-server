@@ -14,6 +14,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { getPersistentIssues } from './getPersistentIssues.js';
+import { getTodayLocal } from '../../utils/dateFormat.js';
 
 export interface IssueArgs {
   mode?: 'list' | 'load' | 'create' | 'resolve';
@@ -49,7 +50,7 @@ function generateInitialTemplate(): string {
   return `---
 title: Persistent Issues
 category: persistent-issues
-created: "${new Date().toISOString().split('T')[0]}"
+created: "${getTodayLocal()}"
 ---
 
 # Persistent Issues
@@ -71,7 +72,7 @@ function generateIssueTemplate(
   name: string,
   priority: 'high' | 'medium' | 'low'
 ): string {
-  const date = new Date().toISOString().split('T')[0];
+  const date = getTodayLocal();
   return `
 ### ${slug}
 
@@ -347,7 +348,7 @@ async function handleResolve(
   }
 
   const issueContent = issueMatch[1];
-  const resolvedDate = new Date().toISOString().split('T')[0];
+  const resolvedDate = getTodayLocal();
 
   // Add resolved date to the issue
   const resolvedIssue = issueContent.replace(

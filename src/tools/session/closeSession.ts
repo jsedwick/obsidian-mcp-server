@@ -16,6 +16,7 @@ import type { RepoCandidate } from '../../models/Git.js';
 import type { RelatedTopic } from '../git/analyzeCommitImpact.js';
 import { GitError } from '../../utils/errors.js';
 import { createLogger } from '../../utils/logger.js';
+import { formatLocalDate } from '../../utils/dateFormat.js';
 
 const execAsync = promisify(exec);
 const logger = createLogger('closeSession');
@@ -162,7 +163,7 @@ export async function findUnrecordedCommits(
 
     // Get most recent session date for this repo
     const lastSessionDate = await getMostRecentSessionDate(repoSlug);
-    const sinceDate = lastSessionDate ? lastSessionDate.toISOString().split('T')[0] : null;
+    const sinceDate = lastSessionDate ? formatLocalDate(lastSessionDate) : null;
 
     // Get commits on current branch but not on main
     let commitCommand = `git log main..HEAD --format=%H --date=short --no-merges`;

@@ -11,6 +11,7 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import matter from 'gray-matter';
+import { formatLocalDate } from '../../utils/dateFormat.js';
 
 export interface GetTasksByDateArgs {
   date: string; // 'today' | 'tomorrow' | 'this-week' | 'overdue' | 'todo' | YYYY-MM-DD format
@@ -43,13 +44,13 @@ function parseNaturalDate(dateStr: string): string | null {
   const normalized = dateStr.toLowerCase().trim();
 
   if (normalized === 'today') {
-    return today.toISOString().split('T')[0];
+    return formatLocalDate(today);
   }
 
   if (normalized === 'tomorrow') {
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
-    return tomorrow.toISOString().split('T')[0];
+    return formatLocalDate(tomorrow);
   }
 
   // Check for day names (monday, tuesday, etc.)
@@ -61,20 +62,20 @@ function parseNaturalDate(dateStr: string): string | null {
     if (daysUntil <= 0) daysUntil += 7; // Next week if today or past
     const targetDate = new Date(today);
     targetDate.setDate(today.getDate() + daysUntil);
-    return targetDate.toISOString().split('T')[0];
+    return formatLocalDate(targetDate);
   }
 
   // Check for "end of month"
   if (normalized.includes('end of month')) {
     const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-    return lastDay.toISOString().split('T')[0];
+    return formatLocalDate(lastDay);
   }
 
   // Check for "next week"
   if (normalized === 'next week') {
     const nextWeek = new Date(today);
     nextWeek.setDate(today.getDate() + 7);
-    return nextWeek.toISOString().split('T')[0];
+    return formatLocalDate(nextWeek);
   }
 
   // Check for YYYY-MM-DD format
@@ -122,7 +123,7 @@ function parseNaturalDate(dateStr: string): string | null {
     if (targetDate < today && today.getTime() - targetDate.getTime() > 180 * 24 * 60 * 60 * 1000) {
       year++;
     }
-    return new Date(year, month, day).toISOString().split('T')[0];
+    return formatLocalDate(new Date(year, month, day));
   }
 
   // Check for "week of [month] [day]" format (e.g., "week of March 5", "week of January 5th")
@@ -142,7 +143,7 @@ function parseNaturalDate(dateStr: string): string | null {
     const weekDate = new Date(year, month, day);
     const sunday = new Date(weekDate);
     sunday.setDate(weekDate.getDate() - weekDate.getDay());
-    return sunday.toISOString().split('T')[0];
+    return formatLocalDate(sunday);
   }
 
   // Check for ordinal week format (e.g., "first week of March", "2nd week of January")
@@ -178,7 +179,7 @@ function parseNaturalDate(dateStr: string): string | null {
       const lastDay = new Date(year, month + 1, 0); // Last day of month
       const lastSunday = new Date(lastDay);
       lastSunday.setDate(lastDay.getDate() - lastDay.getDay());
-      return lastSunday.toISOString().split('T')[0];
+      return formatLocalDate(lastSunday);
     } else {
       // Find the nth week: first Sunday of month + (weekNum-1) weeks
       const firstOfMonth = new Date(year, month, 1);
@@ -189,7 +190,7 @@ function parseNaturalDate(dateStr: string): string | null {
       }
       // Add (weekNum - 1) weeks
       firstSunday.setDate(firstSunday.getDate() + (weekNum - 1) * 7);
-      return firstSunday.toISOString().split('T')[0];
+      return formatLocalDate(firstSunday);
     }
   }
 
@@ -208,8 +209,8 @@ function getWeekRange(date: Date): { start: string; end: string } {
   saturday.setDate(sunday.getDate() + 6);
 
   return {
-    start: sunday.toISOString().split('T')[0],
-    end: saturday.toISOString().split('T')[0],
+    start: formatLocalDate(sunday),
+    end: formatLocalDate(saturday),
   };
 }
 
@@ -275,7 +276,7 @@ async function parseTaskListFile(
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const todayStr = today.toISOString().split('T')[0];
+  const todayStr = formatLocalDate(today);
 
   let currentSection: 'tasks' | 'todo' | 'completed' | 'other' = 'other';
 
@@ -464,12 +465,12 @@ export async function getTasksByDate(
     weekRange = getWeekRange(today);
   } else if (date === 'today') {
     queryType = 'specific';
-    queryDate = today.toISOString().split('T')[0];
+    queryDate = formatLocalDate(today);
   } else if (date === 'tomorrow') {
     queryType = 'specific';
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
-    queryDate = tomorrow.toISOString().split('T')[0];
+    queryDate = formatLocalDate(tomorrow);
   } else {
     queryType = 'specific';
     queryDate = date; // Assume YYYY-MM-DD
