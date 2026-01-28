@@ -373,7 +373,13 @@ export async function runPhase1Analysis(
   const uniqueFilesToCheck = Array.from(new Set(filesToCheck));
 
   // Semantic topic discovery for review (Decision 036)
-  const semanticTopicsForReview = await discoverTopicsForReview(args.summary, context);
+  const rawSemanticTopics = await discoverTopicsForReview(args.summary, context);
+
+  // Deduplicate: exclude topics already identified via commit analysis
+  // Prevents same topic being listed twice and evaluated twice during Phase 2
+  const commitRelatedPaths = new Set(commitRelatedTopics.map(t => t.path));
+  const semanticTopicsForReview = rawSemanticTopics.filter(t => !commitRelatedPaths.has(t.path));
+
   const semanticTopicReviewSection = buildSemanticTopicReviewSection(semanticTopicsForReview);
 
   const sessionData: SessionData = {
