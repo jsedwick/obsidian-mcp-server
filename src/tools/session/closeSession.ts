@@ -376,25 +376,21 @@ export async function runPhase1Analysis(
   const rawSemanticTopics = await discoverTopicsForReview(args.summary, context);
 
   // DEBUG: Log semantic discovery results before deduplication
-  console.log('=== SEMANTIC TOPIC DISCOVERY DEBUG ===');
-  console.log('rawSemanticTopics count:', rawSemanticTopics.length);
-  console.log(
-    'rawSemanticTopics:',
-    rawSemanticTopics.map(t => t.path)
-  );
-  console.log('commitRelatedTopics count:', commitRelatedTopics.length);
-  console.log(
-    'commitRelatedTopics:',
-    commitRelatedTopics.map(t => t.path)
-  );
+  logger.info('=== SEMANTIC TOPIC DISCOVERY DEBUG ===');
+  logger.info('rawSemanticTopics count:', { count: rawSemanticTopics.length });
+  logger.info('rawSemanticTopics:', { paths: rawSemanticTopics.map(t => t.path) });
+  logger.info('commitRelatedTopics count:', { count: commitRelatedTopics.length });
+  logger.info('commitRelatedTopics:', { paths: commitRelatedTopics.map(t => t.path) });
 
   // Deduplicate: exclude topics already identified via commit analysis
   // Prevents same topic being listed twice and evaluated twice during Phase 2
   const commitRelatedPaths = new Set(commitRelatedTopics.map(t => t.path));
   const semanticTopicsForReview = rawSemanticTopics.filter(t => !commitRelatedPaths.has(t.path));
 
-  console.log('semanticTopicsForReview count (after dedupe):', semanticTopicsForReview.length);
-  console.log('=== END SEMANTIC TOPIC DISCOVERY DEBUG ===');
+  logger.info('semanticTopicsForReview count (after dedupe):', {
+    count: semanticTopicsForReview.length,
+  });
+  logger.info('=== END SEMANTIC TOPIC DISCOVERY DEBUG ===');
 
   const semanticTopicReviewSection = buildSemanticTopicReviewSection(semanticTopicsForReview);
 
@@ -861,9 +857,7 @@ async function discoverRelatedTopics(
     // Calculate adaptive threshold based on vault size
     const { threshold, topicCount, tier } = await calculateAdaptiveThreshold(context.vaultPath);
 
-    console.log(
-      `Semantic discovery: ${topicCount} topics (${tier} vault) → threshold ${threshold}`
-    );
+    logger.info('Semantic discovery threshold:', { topicCount, tier, threshold });
 
     // Search vault with keywords, filtering to topics only
     // Embeddings provide semantic understanding to distinguish contexts
@@ -1044,9 +1038,7 @@ async function discoverRelatedDecisions(
       context.vaultPath
     );
 
-    console.log(
-      `Decision discovery: ${decisionCount} decisions (${tier} vault) → threshold ${threshold}`
-    );
+    logger.info('Decision discovery threshold:', { decisionCount, tier, threshold });
 
     // Search vault with keywords, filtering to decisions only
     const searchResult = await context.searchVault({
