@@ -375,10 +375,26 @@ export async function runPhase1Analysis(
   // Semantic topic discovery for review (Decision 036)
   const rawSemanticTopics = await discoverTopicsForReview(args.summary, context);
 
+  // DEBUG: Log semantic discovery results before deduplication
+  console.log('=== SEMANTIC TOPIC DISCOVERY DEBUG ===');
+  console.log('rawSemanticTopics count:', rawSemanticTopics.length);
+  console.log(
+    'rawSemanticTopics:',
+    rawSemanticTopics.map(t => t.path)
+  );
+  console.log('commitRelatedTopics count:', commitRelatedTopics.length);
+  console.log(
+    'commitRelatedTopics:',
+    commitRelatedTopics.map(t => t.path)
+  );
+
   // Deduplicate: exclude topics already identified via commit analysis
   // Prevents same topic being listed twice and evaluated twice during Phase 2
   const commitRelatedPaths = new Set(commitRelatedTopics.map(t => t.path));
   const semanticTopicsForReview = rawSemanticTopics.filter(t => !commitRelatedPaths.has(t.path));
+
+  console.log('semanticTopicsForReview count (after dedupe):', semanticTopicsForReview.length);
+  console.log('=== END SEMANTIC TOPIC DISCOVERY DEBUG ===');
 
   const semanticTopicReviewSection = buildSemanticTopicReviewSection(semanticTopicsForReview);
 
