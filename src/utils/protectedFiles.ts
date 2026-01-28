@@ -17,7 +17,6 @@ import path from 'path';
  */
 export const PROTECTED_FILE_PATTERNS = [
   'user-reference.md', // User identity and configuration - use update_user_reference tool
-  'mcp-directives.md', // System philosophy and directives - manual edit only
   /^accumulator-.+\.md$/, // Accumulators - use append_to_accumulator tool
 ] as const;
 
@@ -50,10 +49,6 @@ export function getProtectionReason(filePath: string): string | null {
 
   if (fileName === 'user-reference.md') {
     return 'user-reference.md is protected. Use the update_user_reference tool to modify this file.';
-  }
-
-  if (fileName === 'mcp-directives.md') {
-    return 'mcp-directives.md is protected. This file contains system philosophy and should only be edited manually with careful consideration.';
   }
 
   if (/^accumulator-.+\.md$/.test(fileName)) {

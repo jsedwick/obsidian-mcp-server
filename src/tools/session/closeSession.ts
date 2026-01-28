@@ -431,6 +431,24 @@ export async function runPhase1Analysis(
       '\n';
   }
 
+  // Build new topic consideration section (Decision 055)
+  const newTopicConsiderationSection =
+    '\n\n---\n\n' +
+    '📝 **New Topic Consideration**\n\n' +
+    'Does this session introduce concepts that warrant **NEW** documentation?\n\n' +
+    '**Consider creating a new topic when:**\n' +
+    '- A new pattern, architecture, or approach was implemented\n' +
+    '- A solution to a recurring problem was established\n' +
+    '- A significant feature was added with non-obvious usage\n' +
+    '- Knowledge was captured that would benefit future sessions\n' +
+    '- The session summary describes work not covered by existing topics\n\n' +
+    '**Do NOT create a topic for:**\n' +
+    '- Trivial bug fixes or one-line changes\n' +
+    '- Work already documented in existing topics (update instead)\n' +
+    '- Temporary debugging or investigation notes\n\n' +
+    'If creating: Use `create_topic_page` with comprehensive content.\n' +
+    'If not: No action required (existing topics sufficient).';
+
   return {
     content: [
       {
@@ -439,6 +457,7 @@ export async function runPhase1Analysis(
           commitAnalysisReport +
           commitTopicsEnforcementSection +
           semanticTopicReviewSection +
+          newTopicConsiderationSection +
           '\n\n---\n\n**Session Analysis Complete**\n\n' +
           (sessionCommits.length === 0
             ? 'No commits were made during this session.'
@@ -473,10 +492,15 @@ export async function runPhase1Analysis(
           '   - Use `search_vault` to find related files that need updates\n' +
           '   - Use `update_document` to update ANY file type (topics, decisions, user reference, etc.)\n' +
           "   - **NEVER use Edit/Write directly** - they don't track file access for vault_custodian\n" +
-          '   - Create new topics with `create_topic_page` if concepts warrant documentation\n' +
           '   - Always provide `reason` parameter explaining why updating (for audit trail)\n' +
           '   - **Err on the side of updating** rather than leaving documentation outdated\n\n' +
-          `${sessionCommits.length > 0 ? '4' : '3'}. **GENERATE HANDOFF NOTES** (Decision 052) - Use this prompt:\n\n` +
+          `${sessionCommits.length > 0 ? '4' : '3'}. **CONSIDER NEW TOPIC CREATION** (Decision 055):\n` +
+          '   - Review the "New Topic Consideration" section above\n' +
+          '   - Does this session introduce concepts NOT covered by existing topics?\n' +
+          '   - New patterns, architectures, or significant features deserve their own topics\n' +
+          '   - Use `create_topic_page` for substantial new concepts\n' +
+          '   - If no new topic warranted, proceed to next step (this is fine)\n\n' +
+          `${sessionCommits.length > 0 ? '5' : '4'}. **GENERATE HANDOFF NOTES** (Decision 052) - Use this prompt:\n\n` +
           '```\n' +
           generateHandoffPrompt({
             summary: args.summary,
@@ -488,7 +512,7 @@ export async function runPhase1Analysis(
             detectedRepo: detectedRepoInfo,
           }) +
           '\n```\n\n' +
-          `${sessionCommits.length > 0 ? '5' : '4'}. **FINALIZE SESSION** - Only when ALL documentation is current AND handoff is generated, call:\n\n` +
+          `${sessionCommits.length > 0 ? '6' : '5'}. **FINALIZE SESSION** - Only when ALL documentation is current AND handoff is generated, call:\n\n` +
           '```typescript\n' +
           'close_session({\n' +
           `  summary: "${summary}",\n` +
