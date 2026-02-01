@@ -6,6 +6,7 @@
  */
 
 import * as fs from 'fs/promises';
+import fssync from 'fs';
 import * as path from 'path';
 import { exec } from 'child_process';
 import { promisify } from 'util';
@@ -20,6 +21,20 @@ import { formatLocalDate } from '../../utils/dateFormat.js';
 
 const execAsync = promisify(exec);
 const logger = createLogger('closeSession');
+
+/**
+ * Normalize a file path for consistent comparison.
+ * Resolves symlinks and normalizes path format.
+ * Falls back to original path if normalization fails (e.g., file doesn't exist).
+ */
+function normalizePath(filePath: string): string {
+  try {
+    return fssync.realpathSync(filePath);
+  } catch {
+    // File might not exist or path might be invalid - return normalized form
+    return path.normalize(filePath);
+  }
+}
 
 /**
  * Build context for handoff generation (Decision 052).
@@ -1487,18 +1502,35 @@ export async function runPhase2Finalization(
     logger.info('context.filesAccessed count:', { count: context.filesAccessed?.length || 0 });
     logger.info('allFilesAccessed count:', { count: allFilesAccessed.length });
     logger.info('commitRelatedTopics count:', { count: data.commitRelatedTopics.length });
-    logger.info('Topic paths being checked:', {
+    logger.info('Topic paths being checked (raw):', {
       topics: data.commitRelatedTopics.map(t => t.path),
     });
-    logger.info('All accessed file paths:', {
+    logger.info('Topic paths being checked (normalized):', {
+      topics: data.commitRelatedTopics.map(t => normalizePath(t.path)),
+    });
+    logger.info('All accessed file paths (raw):', {
       files: allFilesAccessed.map(f => `${f.path} (${f.action})`),
+    });
+    logger.info('All accessed file paths (normalized):', {
+      files: allFilesAccessed.map(f => `${normalizePath(f.path)} (${f.action})`),
     });
     logger.info('=== END ENFORCEMENT DEBUG ===');
 
+    // Normalize all paths for consistent comparison (fixes path format mismatch bug)
+    // Topic paths from search results may not be normalized, but filesAccessed paths are
+    const normalizedFilesAccessed = allFilesAccessed.map(f => ({
+      ...f,
+      normalizedPath: normalizePath(f.path),
+    }));
+
     const unreviewedTopics = data.commitRelatedTopics.filter(topic => {
+      // Normalize topic path for comparison
+      const normalizedTopicPath = normalizePath(topic.path);
       // Check if topic was accessed (read, edit, or create all count as review)
-      return !allFilesAccessed.some(
-        f => f.path === topic.path && ['read', 'edit', 'create'].includes(f.action)
+      // Use normalized paths to handle format differences (symlinks, trailing slashes, etc.)
+      return !normalizedFilesAccessed.some(
+        f =>
+          f.normalizedPath === normalizedTopicPath && ['read', 'edit', 'create'].includes(f.action)
       );
     });
 
@@ -1554,18 +1586,35 @@ export async function runPhase2Finalization(
     logger.info('semanticTopicsPresented count:', {
       count: data.semanticTopicsPresented.length,
     });
-    logger.info('Semantic topic paths being checked:', {
+    logger.info('Semantic topic paths being checked (raw):', {
       topics: data.semanticTopicsPresented.map(t => t.path),
     });
-    logger.info('All accessed file paths:', {
+    logger.info('Semantic topic paths being checked (normalized):', {
+      topics: data.semanticTopicsPresented.map(t => normalizePath(t.path)),
+    });
+    logger.info('All accessed file paths (raw):', {
       files: allFilesAccessed.map(f => `${f.path} (${f.action})`),
+    });
+    logger.info('All accessed file paths (normalized):', {
+      files: allFilesAccessed.map(f => `${normalizePath(f.path)} (${f.action})`),
     });
     logger.info('=== END ENFORCEMENT DEBUG ===');
 
+    // Normalize all paths for consistent comparison (fixes path format mismatch bug)
+    // Topic paths from search results may not be normalized, but filesAccessed paths are
+    const normalizedFilesAccessed = allFilesAccessed.map(f => ({
+      ...f,
+      normalizedPath: normalizePath(f.path),
+    }));
+
     const unreviewedSemanticTopics = data.semanticTopicsPresented.filter(topic => {
+      // Normalize topic path for comparison
+      const normalizedTopicPath = normalizePath(topic.path);
       // Check if topic was accessed (read, edit, or create all count as review)
-      return !allFilesAccessed.some(
-        f => f.path === topic.path && ['read', 'edit', 'create'].includes(f.action)
+      // Use normalized paths to handle format differences (symlinks, trailing slashes, etc.)
+      return !normalizedFilesAccessed.some(
+        f =>
+          f.normalizedPath === normalizedTopicPath && ['read', 'edit', 'create'].includes(f.action)
       );
     });
 
@@ -2151,17 +2200,32 @@ export async function closeSession(
       // File doesn't exist - proceed with finalization
     }
 
-    // Run Phase 2 finalization (this does NOT clear session state anymore)
-    // Wrap in try-finally to ensure state is always cleared, even if Phase 2 fails
-    // This allows multiple /close operations in the same Claude Code session
+    // Run Phase 2 finalization
+    // Only clear state on SUCCESS - on enforcement failure, preserve state so topic reads
+    // can accumulate between retries (fixes session-close-topic-read-loop issue)
     try {
       const phase2Result = await runPhase2Finalization(args, context, args.session_data!);
-      return phase2Result;
-    } finally {
-      // Clear session state now that Phase 2 is complete (or failed)
-      // This allows record_commit() and other post-finalization operations to work if needed
-      // AND allows subsequent /close operations in the same session
+      // SUCCESS: Clear session state to allow subsequent /close operations
       context.clearSessionState();
+      return phase2Result;
+    } catch (error) {
+      // Check if this is an enforcement error (Decision 041 or 042)
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const isEnforcementError =
+        errorMessage.includes('Topics Not Reviewed') ||
+        errorMessage.includes('Decision 041') ||
+        errorMessage.includes('Decision 042');
+
+      if (isEnforcementError) {
+        // ENFORCEMENT FAILURE: Do NOT clear state - allow topic reads to accumulate
+        // The user will read the required topics and retry, and those reads need to persist
+        throw error;
+      }
+
+      // OTHER FAILURE: Clear state and re-throw
+      // This allows fresh /close attempts after non-enforcement errors
+      context.clearSessionState();
+      throw error;
     }
   }
 
