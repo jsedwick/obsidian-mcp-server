@@ -19,6 +19,12 @@
       "mode": "work"
     },
     {
+      "path": "/Users/jsedwick/Documents/Obsidian/TDX/",
+      "name": "TDX Vault",
+      "authority": "conversational",
+      "mode": "work"
+    },
+    {
       "path": "/Users/jsedwick/Documents/Obsidian/Home/Home",
       "name": "Home Vault",
       "authority": "curated",
