@@ -931,7 +931,7 @@ async function discoverRelatedTopics(
       // 2. "Semantic match (score: 0.850)" - from pure semantic search (decimal)
       const matchIndex = match.index;
       const remainingText = resultText.substring(matchIndex);
-      const nextFileMatch = remainingText.indexOf('**', 2); // Find next file
+      const nextFileMatch = remainingText.indexOf('**', match[0].length); // Find next file (skip past closing **)
       const sectionText =
         nextFileMatch > 0
           ? remainingText.substring(0, nextFileMatch)
@@ -1115,7 +1115,7 @@ async function discoverRelatedDecisions(
       // 2. "Semantic match (score: 0.850)" - from pure semantic search (decimal)
       const matchIndex = match.index;
       const remainingText = resultText.substring(matchIndex);
-      const nextFileMatch = remainingText.indexOf('**', 2); // Find next file
+      const nextFileMatch = remainingText.indexOf('**', match[0].length); // Find next file (skip past closing **)
       const sectionText =
         nextFileMatch > 0
           ? remainingText.substring(0, nextFileMatch)
