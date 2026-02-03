@@ -892,7 +892,11 @@ async function discoverRelatedTopics(
   try {
     // Extract keywords for search
     const keywords = extractKeywords(summary);
+    logger.info('=== SEMANTIC TOPIC DISCOVERY - discoverRelatedTopics ===');
+    logger.info('Keywords extracted:', { keywords, count: keywords.length });
+
     if (keywords.length === 0) {
+      logger.info('No keywords extracted - returning empty');
       return [];
     }
 
@@ -913,14 +917,22 @@ async function discoverRelatedTopics(
     });
 
     if (!searchResult.content || searchResult.content.length === 0) {
+      logger.info('Search returned no results');
       return [];
     }
 
     // Parse search results (format: "Search results for...")
     const resultText = (searchResult.content[0] as { text: string }).text;
-    const fileMatches = resultText.matchAll(/\*\*(.+?)\*\*/g);
+    const fileMatches = Array.from(resultText.matchAll(/\*\*(.+?)\*\*/g));
+    logger.info('Search returned file matches:', { count: fileMatches.length });
 
     const topics: Array<{ path: string; title: string; similarity: number }> = [];
+    const filterLog: Array<{
+      path: string;
+      reason: string;
+      similarity?: number;
+      matchCount?: number;
+    }> = [];
 
     for (const match of fileMatches) {
       const filePath = match[1];
@@ -954,6 +966,7 @@ async function discoverRelatedTopics(
       ) {
         // Apply adaptive threshold filter (Decision 049)
         if (similarity < threshold) {
+          filterLog.push({ path: filePath, reason: 'below_threshold', similarity });
           continue; // Skip topics below threshold
         }
 
@@ -972,10 +985,17 @@ async function discoverRelatedTopics(
           // Require at least 3 keyword matches OR very high similarity (≥0.75)
           // This prevents false positives from single generic term matches
           if (matchCount < 3 && similarity < 0.75) {
+            filterLog.push({
+              path: filePath,
+              reason: 'insufficient_keyword_matches',
+              similarity,
+              matchCount,
+            });
             continue; // Skip this topic
           }
-        } catch {
+        } catch (_error) {
           // If can't read file, skip it
+          filterLog.push({ path: filePath, reason: 'read_error' });
           continue;
         }
 
@@ -992,8 +1012,47 @@ async function discoverRelatedTopics(
         if (topics.length >= 5) {
           break;
         }
+      } else {
+        // Log why file was rejected
+        let reason = 'unknown';
+        if (!filePath.startsWith(context.vaultPath)) reason = 'not_in_primary_vault';
+        else if (!filePath.includes('/topics/')) reason = 'not_a_topic';
+        else if (filePath.includes('/archive/')) reason = 'archived';
+        filterLog.push({ path: filePath, reason });
       }
     }
+
+    // Log final results and filter summary
+    logger.info('Topics passed all filters:', {
+      count: topics.length,
+      topics: topics.map(t => ({ path: t.path, similarity: t.similarity })),
+    });
+    logger.info('Topics filtered out:', {
+      count: filterLog.length,
+      byReason: filterLog.reduce(
+        (acc, f) => {
+          acc[f.reason] = (acc[f.reason] || 0) + 1;
+          return acc;
+        },
+        {} as Record<string, number>
+      ),
+    });
+
+    // Log a few examples of each filter reason
+    const reasonGroups = filterLog.reduce(
+      (acc, f) => {
+        if (!acc[f.reason]) acc[f.reason] = [];
+        if (acc[f.reason].length < 3) {
+          // Only log first 3 of each reason
+          acc[f.reason].push({ path: f.path, similarity: f.similarity, matchCount: f.matchCount });
+        }
+        return acc;
+      },
+      {} as Record<string, Array<any>>
+    );
+
+    logger.info('Filter examples by reason:', reasonGroups);
+    logger.info('=== END SEMANTIC TOPIC DISCOVERY ===');
 
     // Attach metadata for Phase 1 output
     return topics.map(t => ({
@@ -1004,7 +1063,7 @@ async function discoverRelatedTopics(
     }));
   } catch (error) {
     // Silent failure - discovery is non-critical
-    console.error('Topic discovery failed:', error);
+    logger.error('Topic discovery failed:', error);
     return [];
   }
 }
@@ -1071,7 +1130,11 @@ async function discoverRelatedDecisions(
   try {
     // Extract keywords for search
     const keywords = extractKeywords(summary);
+    logger.info('=== SEMANTIC DECISION DISCOVERY - discoverRelatedDecisions ===');
+    logger.info('Keywords extracted:', { keywords, count: keywords.length });
+
     if (keywords.length === 0) {
+      logger.info('No keywords extracted - returning empty');
       return [];
     }
 
@@ -1092,18 +1155,26 @@ async function discoverRelatedDecisions(
     });
 
     if (!searchResult.content || searchResult.content.length === 0) {
+      logger.info('Search returned no results');
       return [];
     }
 
     // Parse search results (format: "Search results for...")
     const resultText = (searchResult.content[0] as { text: string }).text;
-    const fileMatches = resultText.matchAll(/\*\*(.+?)\*\*/g);
+    const fileMatches = Array.from(resultText.matchAll(/\*\*(.+?)\*\*/g));
+    logger.info('Search returned file matches:', { count: fileMatches.length });
 
     const decisions: Array<{
       path: string;
       title: string;
       projectSlug: string;
       similarity: number;
+    }> = [];
+    const filterLog: Array<{
+      path: string;
+      reason: string;
+      similarity?: number;
+      matchCount?: number;
     }> = [];
 
     for (const match of fileMatches) {
@@ -1139,6 +1210,7 @@ async function discoverRelatedDecisions(
       ) {
         // Apply adaptive threshold filter
         if (similarity < threshold) {
+          filterLog.push({ path: filePath, reason: 'below_threshold', similarity });
           continue; // Skip decisions below threshold
         }
 
@@ -1157,10 +1229,17 @@ async function discoverRelatedDecisions(
           // Require at least 3 keyword matches OR very high similarity (≥0.75)
           // This prevents false positives from single generic term matches
           if (matchCount < 3 && similarity < 0.75) {
+            filterLog.push({
+              path: filePath,
+              reason: 'insufficient_keyword_matches',
+              similarity,
+              matchCount,
+            });
             continue; // Skip this decision
           }
-        } catch {
+        } catch (_error) {
           // If can't read file, skip it
+          filterLog.push({ path: filePath, reason: 'read_error' });
           continue;
         }
 
@@ -1186,13 +1265,52 @@ async function discoverRelatedDecisions(
             break;
           }
         }
+      } else {
+        // Log why file was rejected
+        let reason = 'unknown';
+        if (!filePath.startsWith(context.vaultPath)) reason = 'not_in_primary_vault';
+        else if (!filePath.includes('/decisions/')) reason = 'not_a_decision';
+        else if (filePath.includes('/archive/')) reason = 'archived';
+        filterLog.push({ path: filePath, reason });
       }
     }
+
+    // Log final results and filter summary
+    logger.info('Decisions passed all filters:', {
+      count: decisions.length,
+      decisions: decisions.map(d => ({ path: d.path, similarity: d.similarity })),
+    });
+    logger.info('Decisions filtered out:', {
+      count: filterLog.length,
+      byReason: filterLog.reduce(
+        (acc, f) => {
+          acc[f.reason] = (acc[f.reason] || 0) + 1;
+          return acc;
+        },
+        {} as Record<string, number>
+      ),
+    });
+
+    // Log a few examples of each filter reason
+    const reasonGroups = filterLog.reduce(
+      (acc, f) => {
+        if (!acc[f.reason]) acc[f.reason] = [];
+        if (acc[f.reason].length < 3) {
+          // Only log first 3 of each reason
+          acc[f.reason].push({ path: f.path, similarity: f.similarity, matchCount: f.matchCount });
+        }
+        return acc;
+      },
+      {} as Record<string, Array<any>>
+    );
+
+    logger.info('Filter examples by reason:', reasonGroups);
+    logger.info('=== END SEMANTIC DECISION DISCOVERY ===');
 
     return decisions;
   } catch (error) {
     // Silent failure - discovery is non-critical
-    console.error('Decision discovery failed:', error);
+    logger.error('Decision discovery failed:', error);
     return [];
   }
 }
