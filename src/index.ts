@@ -551,6 +551,9 @@ class ObsidianMCPServer {
       }
     }
 
+    // Reinitialize SessionStateFile for new primary vault (Decision 054)
+    this.sessionStateFile = new SessionStateFile(this.config.primaryVault.path);
+
     logger.info('Mode switched', {
       previousMode,
       currentMode: mode,
