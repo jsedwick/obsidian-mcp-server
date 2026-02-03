@@ -476,6 +476,25 @@ export async function runPhase1Analysis(
     'If creating: Use `create_topic_page` with comprehensive content.\n' +
     'If not: No action required (existing topics sufficient).';
 
+  // Build new decision consideration section (Decision 056)
+  const newDecisionConsiderationSection =
+    '\n\n---\n\n' +
+    '⚖️ **New Decision Consideration**\n\n' +
+    'Did this session involve **strategic choices between alternatives**?\n\n' +
+    '**Create an ADR (Architectural Decision Record) when:**\n' +
+    '- You chose between 2+ libraries, frameworks, or tools\n' +
+    '- You selected an architecture pattern over alternatives\n' +
+    '- You made tradeoffs (cost vs. performance, simplicity vs. flexibility)\n' +
+    '- You decided on data models, API designs, or cloud services\n' +
+    '- The choice affects system structure or long-term maintainability\n\n' +
+    '**Do NOT create a decision for:**\n' +
+    '- Implementation details without alternatives considered\n' +
+    '- Bug fixes or refactoring (use topics instead)\n' +
+    '- Choices with only one viable option\n\n' +
+    "**Litmus test:** Can you list 2-3 alternatives that were considered? If not, it's a topic, not a decision.\n\n" +
+    'If creating: Use `create_decision` with context, alternatives, rationale, and consequences.\n' +
+    'If not: No action required (no strategic choices made).';
+
   return {
     content: [
       {
@@ -485,6 +504,7 @@ export async function runPhase1Analysis(
           commitTopicsEnforcementSection +
           semanticTopicReviewSection +
           newTopicConsiderationSection +
+          newDecisionConsiderationSection +
           '\n\n---\n\n**Session Analysis Complete**\n\n' +
           (sessionCommits.length === 0
             ? 'No commits were made during this session.'
@@ -527,7 +547,14 @@ export async function runPhase1Analysis(
           '   - New patterns, architectures, or significant features deserve their own topics\n' +
           '   - Use `create_topic_page` for substantial new concepts\n' +
           '   - If no new topic warranted, proceed to next step (this is fine)\n\n' +
-          `${sessionCommits.length > 0 ? '5' : '4'}. **GENERATE HANDOFF NOTES** (Decision 052) - Use this prompt:\n\n` +
+          `${sessionCommits.length > 0 ? '5' : '4'}. **CONSIDER NEW DECISION CREATION** (Decision 056):\n` +
+          '   - Review the "New Decision Consideration" section above\n' +
+          '   - Did this session involve strategic choices between alternatives?\n' +
+          '   - Library/framework selection, architecture patterns, and tradeoffs deserve ADRs\n' +
+          '   - Use `create_decision` with context, alternatives, rationale, and consequences\n' +
+          '   - **Litmus test:** Can you list 2-3 alternatives considered? If not, use a topic instead\n' +
+          '   - If no decision warranted, proceed to next step (this is fine)\n\n' +
+          `${sessionCommits.length > 0 ? '6' : '5'}. **GENERATE HANDOFF NOTES** (Decision 052) - Use this prompt:\n\n` +
           '```\n' +
           generateHandoffPrompt({
             summary: args.summary,
@@ -539,7 +566,7 @@ export async function runPhase1Analysis(
             detectedRepo: detectedRepoInfo,
           }) +
           '\n```\n\n' +
-          `${sessionCommits.length > 0 ? '6' : '5'}. **FINALIZE SESSION** - Only when ALL documentation is current AND handoff is generated, call:\n\n` +
+          `${sessionCommits.length > 0 ? '7' : '6'}. **FINALIZE SESSION** - Only when ALL documentation is current AND handoff is generated, call:\n\n` +
           '```typescript\n' +
           'close_session({\n' +
           `  summary: "${summary}",\n` +
