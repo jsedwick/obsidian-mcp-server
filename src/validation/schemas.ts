@@ -128,7 +128,6 @@ const SessionDataSchema = z.object({
   ),
   filesToCheck: z.array(z.string()),
   repoDetectionMessage: z.string(),
-  autoCommitMessage: z.string().optional(),
   handoff: z.string(), // Placeholder from Phase 1, replaced by Phase 2 with AI-generated handoff
   // Enforcement fields - CRITICAL: Must be included or Zod strips them (see bug fix 2026-01-05)
   sessionCommits: z.array(z.string()).optional(),

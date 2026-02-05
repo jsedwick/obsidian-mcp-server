@@ -137,8 +137,6 @@ describe('closeSession - Two-Phase Workflow', () => {
         branch: 'main',
         remote: 'origin',
       };
-      const autoCommitMessage = '';
-
       // Mock commit analysis
       context.analyzeCommitImpact = vi.fn().mockResolvedValue({
         content: [
@@ -170,8 +168,7 @@ describe('closeSession - Two-Phase Workflow', () => {
         sessionContent,
         dateStr,
         monthDir,
-        detectedRepoInfo,
-        autoCommitMessage
+        detectedRepoInfo
       );
 
       expect(result.content).toHaveLength(1);
@@ -370,7 +367,6 @@ describe('closeSession - Two-Phase Workflow', () => {
         filesAccessed: [],
         filesToCheck: [path.join(vaultPath, 'sessions/2025-01/2025-01-15_14-30-00.md')],
         repoDetectionMessage: '\nGit Repository Auto-Linked:\n  Name: test-repo',
-        autoCommitMessage: '',
       };
 
       const args: CloseSessionArgs = {
@@ -429,7 +425,6 @@ describe('closeSession - Two-Phase Workflow', () => {
         filesAccessed: [],
         filesToCheck: [sessionFile], // Must have files to check for custodian to be called
         repoDetectionMessage: '',
-        autoCommitMessage: '',
       };
 
       const args: CloseSessionArgs = {
@@ -469,7 +464,6 @@ describe('closeSession - Two-Phase Workflow', () => {
         ],
         filesToCheck: [],
         repoDetectionMessage: '',
-        autoCommitMessage: '',
       };
 
       const args: CloseSessionArgs = {
@@ -515,7 +509,6 @@ describe('closeSession - Two-Phase Workflow', () => {
         filesAccessed: [], // Empty at Phase 1 time
         filesToCheck: [],
         repoDetectionMessage: '',
-        autoCommitMessage: '',
         // Commit-related topic requiring enforcement (Decision 041)
         commitRelatedTopics: [
           {
@@ -569,7 +562,6 @@ describe('closeSession - Two-Phase Workflow', () => {
         filesAccessed: [], // Empty - topic never read
         filesToCheck: [],
         repoDetectionMessage: '',
-        autoCommitMessage: '',
         // Commit-related topic requiring enforcement (Decision 041)
         commitRelatedTopics: [
           {
@@ -615,7 +607,6 @@ describe('closeSession - Two-Phase Workflow', () => {
       const dateStr = '2025-01-15';
       const monthDir = path.join(vaultPath, 'sessions/2025-01');
       const detectedRepoInfo = null;
-      const autoCommitMessage = '';
 
       await fs.mkdir(monthDir, { recursive: true });
 
@@ -627,8 +618,7 @@ describe('closeSession - Two-Phase Workflow', () => {
         sessionContent,
         dateStr,
         monthDir,
-        detectedRepoInfo,
-        autoCommitMessage
+        detectedRepoInfo
       );
 
       // Verify file was written
@@ -683,35 +673,7 @@ describe('closeSession - Two-Phase Workflow', () => {
       expect(result.content[0].text).toContain('Branch: main');
     });
 
-    it('should include auto-commit message when provided', async () => {
-      const args: CloseSessionArgs = {
-        summary: 'Session',
-        _invoked_by_slash_command: true,
-      };
-
-      const sessionId = '2025-01-15_14-30-00';
-      const sessionFile = path.join(vaultPath, 'sessions/2025-01/2025-01-15_14-30-00.md');
-      const sessionContent = '# Content';
-      const dateStr = '2025-01-15';
-      const monthDir = path.join(vaultPath, 'sessions/2025-01');
-      const autoCommitMessage = '\n✅ Automatically committed uncommitted changes.';
-
-      await fs.mkdir(monthDir, { recursive: true });
-
-      const result = await runSinglePhaseClose(
-        args,
-        context,
-        sessionId,
-        sessionFile,
-        sessionContent,
-        dateStr,
-        monthDir,
-        null,
-        autoCommitMessage
-      );
-
-      expect(result.content[0].text).toContain('Automatically committed uncommitted changes');
-    });
+    // auto-commit test removed: auto-commit feature was removed from closeSession
   });
 
   describe('closeSession - main orchestration', () => {

@@ -2376,7 +2376,7 @@ Check the sessions/ directory for recent conversations.
   private async updateDocumentWrapper(args: {
     file_path: string;
     content: string;
-    strategy?: 'append' | 'replace' | 'section-edit';
+    strategy?: 'append' | 'replace' | 'section-edit' | 'edit';
     reason?: string;
   }): Promise<any> {
     return tools.updateDocument(args as unknown as tools.UpdateDocumentArgs, {
