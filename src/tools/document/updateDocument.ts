@@ -25,9 +25,10 @@ import { getTodayLocal } from '../../utils/dateFormat.js';
 export interface UpdateDocumentArgs {
   file_path: string;
   content: string;
-  strategy?: 'append' | 'replace' | 'section-edit';
+  strategy?: 'append' | 'replace' | 'section-edit' | 'edit';
   reason?: string;
   force?: boolean;
+  old_string?: string;
 }
 
 export interface UpdateDocumentResult {
@@ -417,6 +418,32 @@ export async function updateDocument(
     const existingWithoutFm = existingContent.replace(/^---\n[\s\S]*?\n---\n/, '');
     const contentWithoutFm = content.replace(/^---\n[\s\S]*?\n---\n/, '');
     newContent = existingWithoutFm.trim() + '\n\n' + contentWithoutFm.trim();
+  } else if (strategy === 'edit') {
+    // Search-and-replace: find old_string in existing content and replace with content
+    if (!args.old_string) {
+      throw new Error('edit strategy requires old_string parameter (text to find and replace)');
+    }
+    if (!fileExists) {
+      throw new Error(
+        'edit strategy requires an existing file. Use strategy: "replace" for new files.'
+      );
+    }
+
+    const existingWithoutFm = existingContent.replace(/^---\n[\s\S]*?\n---\n/, '');
+    const occurrences = existingWithoutFm.split(args.old_string).length - 1;
+
+    if (occurrences === 0) {
+      throw new Error(
+        `old_string not found in ${path.basename(filePath)}. Ensure the text matches exactly (including whitespace and newlines).`
+      );
+    }
+    if (occurrences > 1) {
+      throw new Error(
+        `old_string found ${occurrences} times in ${path.basename(filePath)}. Provide a larger string with more context to make it unique.`
+      );
+    }
+
+    newContent = existingWithoutFm.replace(args.old_string, content);
   } else if (strategy === 'replace') {
     // Full replacement (strip frontmatter from new content)
     newContent = content.replace(/^---\n[\s\S]*?\n---\n/, '');

@@ -2075,13 +2075,14 @@ SCOPE: Decisions can be vault-level (affecting the MCP system itself) or project
             },
             content: {
               type: 'string',
-              description: 'New content to write or append',
+              description:
+                'New content to write or append. For edit strategy: the replacement text (new_string)',
             },
             strategy: {
               type: 'string',
-              enum: ['append', 'replace', 'section-edit'],
+              enum: ['append', 'replace', 'section-edit', 'edit'],
               description:
-                'Update strategy: append (add to end), replace (full replacement), section-edit (user-reference sections). Default: replace',
+                'Update strategy: append (add to end), replace (full replacement), section-edit (header-based section replacement), edit (search-and-replace like native Edit tool - requires old_string). Default: replace',
             },
             reason: {
               type: 'string',
@@ -2092,6 +2093,11 @@ SCOPE: Decisions can be vault-level (affecting the MCP system itself) or project
               type: 'boolean',
               description:
                 'If true, allow replacing files with corrupted YAML frontmatter by using frontmatter from new content. Only works with strategy: replace.',
+            },
+            old_string: {
+              type: 'string',
+              description:
+                'Required for edit strategy: the text to find and replace. Must match exactly one occurrence in the file.',
             },
           },
           required: ['file_path', 'content'],

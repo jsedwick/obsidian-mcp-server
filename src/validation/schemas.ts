@@ -535,32 +535,42 @@ export const CompleteTaskArgsSchema = z.object({
  */
 
 // Document update strategy enum
-const UpdateStrategySchema = z.enum(['append', 'replace', 'section-edit'], {
+const UpdateStrategySchema = z.enum(['append', 'replace', 'section-edit', 'edit'], {
   errorMap: () => ({
-    message: 'strategy must be one of: append, replace, section-edit',
+    message: 'strategy must be one of: append, replace, section-edit, edit',
   }),
 });
 
 // update_document
-export const UpdateDocumentArgsSchema = z.object({
-  file_path: AbsolutePath.describe('Absolute path to the document to update'),
-  content: NonEmptyString.describe('New content to write or append'),
-  strategy: UpdateStrategySchema.optional().describe(
-    'Update strategy: append (add to end), replace (full replacement), section-edit (user-reference sections). Default: replace'
-  ),
-  reason: z
-    .string()
-    .optional()
-    .describe(
-      'Why updating (required for topics per Decision 011, optional for others). Used for Git commit message audit trail.'
+export const UpdateDocumentArgsSchema = z
+  .object({
+    file_path: AbsolutePath.describe('Absolute path to the document to update'),
+    content: NonEmptyString.describe(
+      'New content to write or append. For edit strategy: the replacement text (new_string)'
     ),
-  force: z
-    .boolean()
-    .optional()
-    .describe(
-      'If true, allow replacing files with corrupted YAML frontmatter by using frontmatter from new content. Only works with strategy: replace.'
+    strategy: UpdateStrategySchema.optional().describe(
+      'Update strategy: append (add to end), replace (full replacement), section-edit (header-based section replacement), edit (search-and-replace like native Edit). Default: replace'
     ),
-});
+    reason: z
+      .string()
+      .optional()
+      .describe(
+        'Why updating (required for topics per Decision 011, optional for others). Used for Git commit message audit trail.'
+      ),
+    force: z
+      .boolean()
+      .optional()
+      .describe(
+        'If true, allow replacing files with corrupted YAML frontmatter by using frontmatter from new content. Only works with strategy: replace.'
+      ),
+    old_string: z
+      .string()
+      .optional()
+      .describe('Required for edit strategy: the text to find and replace'),
+  })
+  .refine(data => !(data.strategy === 'edit' && !data.old_string), {
+    message: 'old_string is required when strategy is "edit"',
+  });
 
 /**
  * CODE TOOLS (1 tool)
