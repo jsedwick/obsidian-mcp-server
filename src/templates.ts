@@ -93,6 +93,21 @@ export interface CommitFrontmatter {
   project: string; // Project name
 }
 
+/**
+ * Persistent issue file frontmatter
+ * Location: persistent-issues/ (active) or archive/persistent-issues/ (resolved)
+ * Filename: {issue-slug}.md
+ */
+export interface PersistentIssueFrontmatter {
+  title: string; // Human-readable issue title
+  category: 'persistent-issue'; // Document type
+  status: 'active' | 'resolved'; // Issue status
+  created: string; // ISO 8601 date (YYYY-MM-DD)
+  priority: 'high' | 'medium' | 'low'; // Issue priority
+  resolved?: string; // ISO 8601 date when resolved (only present when status is 'resolved')
+  sessions: string[]; // Array of linked session IDs
+}
+
 // ============================================================================
 // Template Generator Functions
 // ============================================================================
@@ -458,6 +473,42 @@ ${args.relatedProjects.length > 0 ? args.relatedProjects.map(p => `- [[${p.link}
 `;
 }
 
+export interface PersistentIssueTemplateArgs {
+  slug: string;
+  title: string;
+  created: string;
+  priority: 'high' | 'medium' | 'low';
+  description?: string;
+}
+
+export function generatePersistentIssueTemplate(args: PersistentIssueTemplateArgs): string {
+  const frontmatter: PersistentIssueFrontmatter = {
+    title: args.title,
+    category: 'persistent-issue',
+    status: 'active',
+    created: args.created,
+    priority: args.priority,
+    sessions: [],
+  };
+
+  return `---
+title: "${frontmatter.title}"
+category: ${frontmatter.category}
+status: "${frontmatter.status}"
+created: "${frontmatter.created}"
+priority: "${frontmatter.priority}"
+sessions: ${JSON.stringify(frontmatter.sessions)}
+---
+
+# ${args.title}
+
+${args.description || '_No description provided_'}
+
+## Investigation Log
+
+`;
+}
+
 // ============================================================================
 // Helper Functions
 // ============================================================================
@@ -522,5 +573,16 @@ export function validateCommitFrontmatter(fm: any): fm is CommitFrontmatter {
     typeof fm.branch === 'string' &&
     typeof fm.session_id === 'string' &&
     typeof fm.project === 'string'
+  );
+}
+
+export function validatePersistentIssueFrontmatter(fm: any): fm is PersistentIssueFrontmatter {
+  return (
+    typeof fm.title === 'string' &&
+    fm.category === 'persistent-issue' &&
+    (fm.status === 'active' || fm.status === 'resolved') &&
+    typeof fm.created === 'string' &&
+    (fm.priority === 'high' || fm.priority === 'medium' || fm.priority === 'low') &&
+    Array.isArray(fm.sessions)
   );
 }

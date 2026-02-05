@@ -106,34 +106,47 @@ async function extractRecentHandoffs(vaultPath: string, maxSessions = 3): Promis
 /**
  * Load active persistent issues summary for /mb display
  * Returns formatted summary of active issues (Decision 048)
+ *
+ * Uses directory-based structure:
+ * - persistent-issues/*.md for active issues
+ * - Parses frontmatter for priority
  */
 async function loadActivePersistentIssues(vaultPath: string): Promise<string> {
   try {
-    const issuesPath = path.join(vaultPath, 'persistent-issues.md');
-    const content = await fs.readFile(issuesPath, 'utf-8');
+    const issuesDir = path.join(vaultPath, 'persistent-issues');
+    const files = await fs.readdir(issuesDir);
+    const mdFiles = files.filter(f => f.endsWith('.md'));
 
-    // Find Active Issues section
-    const activeStart = content.indexOf('## Active Issues');
-    const archivedStart = content.indexOf('## Archived');
-
-    if (activeStart === -1) {
+    if (mdFiles.length === 0) {
       return '';
     }
 
-    const activeEnd = archivedStart > -1 ? archivedStart : content.length;
-    const activeSection = content.slice(activeStart + '## Active Issues'.length, activeEnd);
-
-    // Parse individual issues (H3 headers)
-    const issueMatches = activeSection.matchAll(
-      /### ([^\n]+)\n[\s\S]*?\*\*Priority:\*\*\s*(high|medium|low)/gi
-    );
     const issues: Array<{ slug: string; priority: string }> = [];
 
-    for (const match of issueMatches) {
-      issues.push({
-        slug: match[1].trim(),
-        priority: match[2].toLowerCase(),
-      });
+    for (const file of mdFiles) {
+      try {
+        const filePath = path.join(issuesDir, file);
+        const content = await fs.readFile(filePath, 'utf-8');
+
+        // Parse frontmatter to extract priority
+        const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
+        if (frontmatterMatch) {
+          const frontmatter = frontmatterMatch[1];
+          const priorityMatch = frontmatter.match(/priority:\s*["']?(high|medium|low)["']?/i);
+          const statusMatch = frontmatter.match(/status:\s*["']?(active|resolved)["']?/i);
+
+          // Only include active issues
+          if (statusMatch && statusMatch[1].toLowerCase() === 'active') {
+            issues.push({
+              slug: path.basename(file, '.md'),
+              priority: priorityMatch ? priorityMatch[1].toLowerCase() : 'medium',
+            });
+          }
+        }
+      } catch {
+        // Skip files that can't be read
+        continue;
+      }
     }
 
     if (issues.length === 0) {
@@ -148,7 +161,7 @@ async function loadActivePersistentIssues(vaultPath: string): Promise<string> {
 
     return result;
   } catch {
-    // File doesn't exist or can't be read
+    // Directory doesn't exist or can't be read
     return '';
   }
 }

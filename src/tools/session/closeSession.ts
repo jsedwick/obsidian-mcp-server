@@ -1063,7 +1063,7 @@ async function discoverRelatedTopics(
     }));
   } catch (error) {
     // Silent failure - discovery is non-critical
-    logger.error('Topic discovery failed:', error);
+    logger.error('Topic discovery failed:', error as Error);
     return [];
   }
 }
@@ -1310,7 +1310,7 @@ async function discoverRelatedDecisions(
     return decisions;
   } catch (error) {
     // Silent failure - discovery is non-critical
-    logger.error('Decision discovery failed:', error);
+    logger.error('Decision discovery failed:', error as Error);
     return [];
   }
 }
@@ -1844,35 +1844,46 @@ export async function runPhase2Finalization(
     }
   }
 
-  // Update persistent-issues.md if session is linked to an issue (Decision 048)
+  // Update persistent issue file if session is linked to an issue (Decision 048)
+  // Uses directory-based structure: persistent-issues/{slug}.md
   if (context.linkedIssueSlug) {
-    const persistentIssuesPath = path.join(context.vaultPath, 'persistent-issues.md');
+    const issueFilePath = path.join(
+      context.vaultPath,
+      'persistent-issues',
+      `${context.linkedIssueSlug}.md`
+    );
     try {
-      const issuesContent = await fs.readFile(persistentIssuesPath, 'utf-8');
+      const issueContent = await fs.readFile(issueFilePath, 'utf-8');
 
-      // Find the issue section and add session link
-      const issuePattern = new RegExp(
-        `(### ${context.linkedIssueSlug}[\\s\\S]*?\\*\\*Sessions:\\*\\*)([^\\n]*)`,
-        'i'
-      );
-      const match = issuesContent.match(issuePattern);
+      // Parse frontmatter to update sessions array
+      const frontmatterMatch = issueContent.match(/^---\n([\s\S]*?)\n---/);
+      if (frontmatterMatch) {
+        const frontmatter = frontmatterMatch[1];
+        const body = issueContent.slice(frontmatterMatch[0].length);
 
-      if (match) {
-        // Get the session link format - use relative path from vault root
-        const sessionRelativePath = data.sessionFile.replace(context.vaultPath + '/', '');
-        const sessionLink = `[[${sessionRelativePath.replace('.md', '')}]]`;
+        // Extract current sessions array
+        const sessionsMatch = frontmatter.match(/sessions:\s*(\[[\s\S]*?\])/);
+        let sessions: string[] = [];
+        if (sessionsMatch) {
+          try {
+            sessions = JSON.parse(sessionsMatch[1]);
+          } catch {
+            sessions = [];
+          }
+        }
 
-        // Check if this session is already linked
-        const existingSessions = match[2];
-        if (!existingSessions.includes(data.sessionId)) {
-          // Add the new session link
-          const newSessions = existingSessions.trim()
-            ? `${existingSessions.trim()}, ${sessionLink}`
-            : ` ${sessionLink}`;
+        // Add session if not already present
+        if (!sessions.includes(data.sessionId)) {
+          sessions.push(data.sessionId);
 
-          const newIssuesContent = issuesContent.replace(issuePattern, `$1${newSessions}`);
+          // Update the sessions line in frontmatter
+          const updatedFrontmatter = frontmatter.replace(
+            /sessions:\s*\[[\s\S]*?\]/,
+            `sessions: ${JSON.stringify(sessions)}`
+          );
 
-          await fs.writeFile(persistentIssuesPath, newIssuesContent, 'utf-8');
+          const updatedContent = `---\n${updatedFrontmatter}\n---${body}`;
+          await fs.writeFile(issueFilePath, updatedContent, 'utf-8');
         }
       }
     } catch (_error) {

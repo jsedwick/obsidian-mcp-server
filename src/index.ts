@@ -2252,7 +2252,15 @@ SCOPE: Decisions can be vault-level (affecting the MCP system itself) or project
   private async ensureVaultStructure(): Promise<void> {
     // Only ensure structure for primary vault (write operations)
     const primaryPath = this.getPrimaryVaultPath();
-    const dirs = ['sessions', 'topics', 'decisions', 'archive/topics', 'projects'];
+    const dirs = [
+      'sessions',
+      'topics',
+      'decisions',
+      'archive/topics',
+      'archive/persistent-issues',
+      'projects',
+      'persistent-issues',
+    ];
 
     for (const dir of dirs) {
       const dirPath = path.join(primaryPath, dir);

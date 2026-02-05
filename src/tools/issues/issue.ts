@@ -9,11 +9,22 @@
  * - load: Load specific issue and link to current session
  * - create: Create a new persistent issue
  * - resolve: Archive an issue (requires _invoked_by_slash_command - human only)
+ *
+ * Uses directory-based structure:
+ * - persistent-issues/*.md for active issues
+ * - archive/persistent-issues/*.md for resolved issues
  */
 
 import fs from 'fs/promises';
 import path from 'path';
+import matter from 'gray-matter';
 import { getPersistentIssues } from './getPersistentIssues.js';
+import { migrateIfNeeded, slugify } from './migration.js';
+import {
+  generatePersistentIssueTemplate,
+  validatePersistentIssueFrontmatter,
+} from '../../templates.js';
+import type { PersistentIssueFrontmatter } from '../../templates.js';
 import { getTodayLocal } from '../../utils/dateFormat.js';
 
 export interface IssueArgs {
@@ -41,62 +52,8 @@ export interface IssueContext {
   trackFileAccess?: (path: string, action: 'read' | 'edit' | 'create') => void;
 }
 
-const PERSISTENT_ISSUES_FILE = 'persistent-issues.md';
-
-/**
- * Generate the initial persistent-issues.md file template
- */
-function generateInitialTemplate(): string {
-  return `---
-title: Persistent Issues
-category: persistent-issues
-created: "${getTodayLocal()}"
----
-
-# Persistent Issues
-
-Track long-running problems that span multiple sessions. Issues remain active until explicitly resolved.
-
-## Active Issues
-
-## Archived
-
-`;
-}
-
-/**
- * Generate template for a new issue
- */
-function generateIssueTemplate(
-  slug: string,
-  name: string,
-  priority: 'high' | 'medium' | 'low'
-): string {
-  const date = getTodayLocal();
-  return `
-### ${slug}
-
-**Created:** ${date}
-**Priority:** ${priority}
-**Sessions:** 
-
-${name}
-
-#### Investigation Log
-
----
-`;
-}
-
-/**
- * Slugify a name for use as issue identifier
- */
-function slugify(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '');
-}
+const ISSUES_DIR = 'persistent-issues';
+const ARCHIVE_DIR = 'archive/persistent-issues';
 
 /**
  * List all active issues
@@ -118,8 +75,25 @@ async function handleList(context: IssueContext): Promise<IssueResult> {
     };
   }
 
+  // Filter to only active issues
+  const activeIssues = result.issues.filter(i => i.status === 'active');
+
+  if (activeIssues.length === 0) {
+    return {
+      content: [
+        {
+          type: 'text',
+          text:
+            '**No active persistent issues.**\n\n' +
+            'Use `/issue create <name>` to create a new persistent issue for tracking ' +
+            'problems that span multiple sessions.',
+        },
+      ],
+    };
+  }
+
   let text = '**Active Persistent Issues:**\n\n';
-  for (const issue of result.issues) {
+  for (const issue of activeIssues) {
     const sessionCount = issue.sessions.length;
     text += `**${issue.slug}** (${issue.priority})\n`;
     text += `  Created: ${issue.created} | Sessions: ${sessionCount}\n`;
@@ -144,23 +118,49 @@ async function handleList(context: IssueContext): Promise<IssueResult> {
  * Load a specific issue and link session to it
  */
 async function handleLoad(slug: string, context: IssueContext): Promise<IssueResult> {
-  const result = await getPersistentIssues({}, context);
+  // Ensure migration has been performed
+  await migrateIfNeeded(context.vaultPath);
 
-  if (!result.hasFile) {
-    return {
-      content: [
-        {
-          type: 'text',
-          text: `❌ No persistent issues file found. Use \`/issue create <name>\` to create the first issue.`,
-        },
-      ],
-    };
+  const filePath = path.join(context.vaultPath, ISSUES_DIR, `${slug}.md`);
+
+  // Check if issue file exists
+  let fileExists = false;
+  try {
+    await fs.access(filePath);
+    fileExists = true;
+  } catch {
+    // File doesn't exist
   }
 
-  const issue = result.issues.find(i => i.slug === slug);
+  if (!fileExists) {
+    // Check if it might be in archive
+    const archivePath = path.join(context.vaultPath, ARCHIVE_DIR, `${slug}.md`);
+    let inArchive = false;
+    try {
+      await fs.access(archivePath);
+      inArchive = true;
+    } catch {
+      // Not in archive either
+    }
 
-  if (!issue) {
-    const availableSlugs = result.issues.map(i => i.slug).join(', ');
+    if (inArchive) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text:
+              `❌ Issue **${slug}** is resolved and archived.\n\n` +
+              'Resolved issues cannot be loaded. Create a new issue if needed.',
+          },
+        ],
+      };
+    }
+
+    // List available issues
+    const result = await getPersistentIssues({}, context);
+    const activeIssues = result.issues.filter(i => i.status === 'active');
+    const availableSlugs = activeIssues.map(i => i.slug).join(', ');
+
     return {
       content: [
         {
@@ -175,22 +175,61 @@ async function handleLoad(slug: string, context: IssueContext): Promise<IssueRes
     };
   }
 
+  // Read and parse issue file
+  const content = await fs.readFile(filePath, 'utf-8');
+  const { data: frontmatter, content: body } = matter(content);
+
+  if (!validatePersistentIssueFrontmatter(frontmatter)) {
+    return {
+      content: [
+        {
+          type: 'text',
+          text:
+            `❌ Invalid issue file format for **${slug}**.\n\n` +
+            'The issue file has invalid or missing frontmatter.',
+        },
+      ],
+    };
+  }
+
+  const fm = frontmatter;
+
+  // Extract description and investigation log
+  const investigationStart = body.indexOf('## Investigation Log');
+  let description = '';
+  let investigationLog = '';
+
+  if (investigationStart > -1) {
+    description = body
+      .slice(0, investigationStart)
+      .replace(/^#\s+[^\n]+\n*/, '')
+      .trim();
+    investigationLog = body.slice(investigationStart + '## Investigation Log'.length).trim();
+  } else {
+    description = body.replace(/^#\s+[^\n]+\n*/, '').trim();
+  }
+
   // Link session to issue
   if (context.linkIssueToSession) {
     context.linkIssueToSession(slug);
   }
 
-  // Format issue content for display
-  let text = `📋 **Loaded persistent issue: ${issue.slug}**\n\n`;
-  text += `**Status:** Active (${issue.sessions.length} sessions, started ${issue.created})\n`;
-  text += `**Priority:** ${issue.priority}\n\n`;
-
-  if (issue.description) {
-    text += `**Problem:**\n${issue.description}\n\n`;
+  // Track file read
+  if (context.trackFileAccess) {
+    context.trackFileAccess(filePath, 'read');
   }
 
-  if (issue.investigationLog) {
-    text += `**Investigation Log:**\n${issue.investigationLog}\n\n`;
+  // Format issue content for display
+  let text = `📋 **Loaded persistent issue: ${slug}**\n\n`;
+  text += `**Status:** Active (${fm.sessions.length} sessions, started ${fm.created})\n`;
+  text += `**Priority:** ${fm.priority}\n\n`;
+
+  if (description && description !== '_No description provided_') {
+    text += `**Problem:**\n${description}\n\n`;
+  }
+
+  if (investigationLog) {
+    text += `**Investigation Log:**\n${investigationLog}\n\n`;
   }
 
   text += `---\n\n✅ Session linked to this issue. Investigation entries will be recorded.`;
@@ -198,8 +237,8 @@ async function handleLoad(slug: string, context: IssueContext): Promise<IssueRes
   return {
     content: [{ type: 'text', text }],
     linkedIssue: {
-      slug: issue.slug,
-      priority: issue.priority,
+      slug,
+      priority: fm.priority,
     },
   };
 }
@@ -212,53 +251,75 @@ async function handleCreate(
   priority: 'high' | 'medium' | 'low',
   context: IssueContext
 ): Promise<IssueResult> {
-  const filePath = path.join(context.vaultPath, PERSISTENT_ISSUES_FILE);
-  const slug = slugify(name);
+  // Ensure migration has been performed
+  await migrateIfNeeded(context.vaultPath);
 
-  // Check if file exists
-  let fileExists = false;
-  let content = '';
-  try {
-    content = await fs.readFile(filePath, 'utf-8');
-    fileExists = true;
-  } catch {
-    // File doesn't exist, will create it
-  }
+  const slug = slugify(name);
+  const issuesDirPath = path.join(context.vaultPath, ISSUES_DIR);
+  const filePath = path.join(issuesDirPath, `${slug}.md`);
 
   // Check if slug already exists
+  let fileExists = false;
+  try {
+    await fs.access(filePath);
+    fileExists = true;
+  } catch {
+    // File doesn't exist - good
+  }
+
   if (fileExists) {
-    const existingResult = await getPersistentIssues({}, context);
-    const existingIssue = existingResult.issues.find(i => i.slug === slug);
-    if (existingIssue) {
-      return {
-        content: [
-          {
-            type: 'text',
-            text:
-              `❌ Issue with slug **${slug}** already exists.\n\n` +
-              `Use \`/issue ${slug}\` to load it, or choose a different name.`,
-          },
-        ],
-      };
-    }
+    return {
+      content: [
+        {
+          type: 'text',
+          text:
+            `❌ Issue with slug **${slug}** already exists.\n\n` +
+            `Use \`/issue ${slug}\` to load it, or choose a different name.`,
+        },
+      ],
+    };
   }
 
-  // Create or update the file
-  if (!fileExists) {
-    content = generateInitialTemplate();
+  // Also check archive
+  const archivePath = path.join(context.vaultPath, ARCHIVE_DIR, `${slug}.md`);
+  let inArchive = false;
+  try {
+    await fs.access(archivePath);
+    inArchive = true;
+  } catch {
+    // Not in archive - good
   }
 
-  // Insert new issue into Active Issues section
-  const issueTemplate = generateIssueTemplate(slug, name, priority);
-  const activeMarker = '## Active Issues';
-  const insertPos = content.indexOf(activeMarker) + activeMarker.length;
+  if (inArchive) {
+    return {
+      content: [
+        {
+          type: 'text',
+          text:
+            `❌ A resolved issue with slug **${slug}** already exists in archive.\n\n` +
+            'Choose a different name for the new issue.',
+        },
+      ],
+    };
+  }
 
-  const newContent = content.slice(0, insertPos) + '\n' + issueTemplate + content.slice(insertPos);
+  // Create issues directory if needed
+  await fs.mkdir(issuesDirPath, { recursive: true });
 
-  await fs.writeFile(filePath, newContent, 'utf-8');
+  // Generate issue content
+  const date = getTodayLocal();
+  const content = generatePersistentIssueTemplate({
+    slug,
+    title: name,
+    created: date,
+    priority,
+    description: name,
+  });
+
+  await fs.writeFile(filePath, content, 'utf-8');
 
   if (context.trackFileAccess) {
-    context.trackFileAccess(filePath, fileExists ? 'edit' : 'create');
+    context.trackFileAccess(filePath, 'create');
   }
 
   return {
@@ -298,9 +359,13 @@ async function handleResolve(
     };
   }
 
-  const filePath = path.join(context.vaultPath, PERSISTENT_ISSUES_FILE);
+  // Ensure migration has been performed
+  await migrateIfNeeded(context.vaultPath);
 
-  // Read file
+  const filePath = path.join(context.vaultPath, ISSUES_DIR, `${slug}.md`);
+  const archivePath = path.join(context.vaultPath, ARCHIVE_DIR, `${slug}.md`);
+
+  // Check if issue file exists
   let content: string;
   try {
     content = await fs.readFile(filePath, 'utf-8');
@@ -309,71 +374,60 @@ async function handleResolve(
       content: [
         {
           type: 'text',
-          text: '❌ No persistent issues file found.',
-        },
-      ],
-    };
-  }
-
-  // Find issue in Active section
-  const activeStart = content.indexOf('## Active Issues');
-  const archivedStart = content.indexOf('## Archived');
-
-  if (activeStart === -1 || archivedStart === -1) {
-    return {
-      content: [
-        {
-          type: 'text',
-          text: '❌ Invalid persistent issues file format.',
-        },
-      ],
-    };
-  }
-
-  const activeSection = content.slice(activeStart, archivedStart);
-  const issuePattern = new RegExp(`(\\n### ${slug}\\n[\\s\\S]*?)(?=\\n---\\n|\\n## Archived)`, 'i');
-  const issueMatch = activeSection.match(issuePattern);
-
-  if (!issueMatch) {
-    return {
-      content: [
-        {
-          type: 'text',
           text:
-            `❌ Issue **${slug}** not found in Active Issues.\n\n` +
+            `❌ Issue **${slug}** not found in active issues.\n\n` +
             'Check the issue slug and try again.',
         },
       ],
     };
   }
 
-  const issueContent = issueMatch[1];
+  const { data: frontmatter, content: body } = matter(content);
+
+  if (!validatePersistentIssueFrontmatter(frontmatter)) {
+    return {
+      content: [
+        {
+          type: 'text',
+          text:
+            `❌ Invalid issue file format for **${slug}**.\n\n` +
+            'The issue file has invalid or missing frontmatter.',
+        },
+      ],
+    };
+  }
+
+  const fm = frontmatter;
   const resolvedDate = getTodayLocal();
 
-  // Add resolved date to the issue
-  const resolvedIssue = issueContent.replace(
-    /(\*\*Created:\*\* \d{4}-\d{2}-\d{2})/,
-    `$1\n**Resolved:** ${resolvedDate}`
-  );
+  // Update frontmatter
+  const updatedFrontmatter: PersistentIssueFrontmatter = {
+    ...fm,
+    status: 'resolved',
+    resolved: resolvedDate,
+  };
 
-  // Remove from Active, add to Archived
-  const newActiveSection = activeSection
-    .replace(issueContent, '')
-    .replace(/\n---\n\s*\n---\n/g, '\n---\n');
-  const archivedSection = content.slice(archivedStart);
-  const newArchivedSection = archivedSection.replace(
-    '## Archived',
-    '## Archived\n' + resolvedIssue + '\n---'
-  );
+  // Generate updated content
+  const updatedContent = `---
+title: "${updatedFrontmatter.title}"
+category: ${updatedFrontmatter.category}
+status: "${updatedFrontmatter.status}"
+created: "${updatedFrontmatter.created}"
+priority: "${updatedFrontmatter.priority}"
+resolved: "${updatedFrontmatter.resolved}"
+sessions: ${JSON.stringify(updatedFrontmatter.sessions)}
+---
+${body}`;
 
-  const newContent =
-    content.slice(0, activeStart) +
-    newActiveSection.replace(/\n\n\n+/g, '\n\n') +
-    newArchivedSection;
+  // Ensure archive directory exists
+  await fs.mkdir(path.dirname(archivePath), { recursive: true });
 
-  await fs.writeFile(filePath, newContent, 'utf-8');
+  // Move to archive
+  await fs.writeFile(archivePath, updatedContent, 'utf-8');
+  await fs.unlink(filePath);
 
   if (context.trackFileAccess) {
+    context.trackFileAccess(archivePath, 'create');
     context.trackFileAccess(filePath, 'edit');
   }
 
@@ -383,7 +437,7 @@ async function handleResolve(
         type: 'text',
         text:
           `✅ Resolved issue: **${slug}**\n\n` +
-          `The issue has been moved to the Archived section.\n` +
+          `The issue has been moved to the archive.\n` +
           `Resolved: ${resolvedDate}`,
       },
     ],

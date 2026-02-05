@@ -6,11 +6,18 @@
  *
  * CRITICAL: This tool has NO status parameter.
  * Issues can ONLY be resolved via /issue resolve command (human action).
+ *
+ * Uses directory-based structure:
+ * - Reads from persistent-issues/{slug}.md
+ * - Updates frontmatter sessions array
+ * - Appends to Investigation Log section
  */
 
 import fs from 'fs/promises';
 import path from 'path';
-import { getPersistentIssues } from './getPersistentIssues.js';
+import matter from 'gray-matter';
+import { migrateIfNeeded } from './migration.js';
+import { validatePersistentIssueFrontmatter } from '../../templates.js';
 import { getTodayLocal } from '../../utils/dateFormat.js';
 
 export interface UpdatePersistentIssueArgs {
@@ -33,100 +40,89 @@ export interface UpdatePersistentIssueContext {
   trackFileAccess?: (path: string, action: 'read' | 'edit' | 'create') => void;
 }
 
-const PERSISTENT_ISSUES_FILE = 'persistent-issues.md';
+const ISSUES_DIR = 'persistent-issues';
 
 export async function updatePersistentIssue(
   args: UpdatePersistentIssueArgs,
   context: UpdatePersistentIssueContext
 ): Promise<UpdatePersistentIssueResult> {
-  const filePath = path.join(context.vaultPath, PERSISTENT_ISSUES_FILE);
+  // Ensure migration has been performed
+  await migrateIfNeeded(context.vaultPath);
 
-  // Verify issue exists and is active
-  const issues = await getPersistentIssues({}, context);
+  const filePath = path.join(context.vaultPath, ISSUES_DIR, `${args.slug}.md`);
 
-  if (!issues.hasFile) {
-    return {
-      content: [
-        {
-          type: 'text',
-          text: '❌ No persistent issues file found. Create an issue first with `/issue create <name>`.',
-        },
-      ],
-    };
-  }
-
-  const issue = issues.issues.find(i => i.slug === args.slug);
-
-  if (!issue) {
+  // Read issue file
+  let content: string;
+  try {
+    content = await fs.readFile(filePath, 'utf-8');
+  } catch {
     return {
       content: [
         {
           type: 'text',
           text:
             `❌ Issue not found: **${args.slug}**\n\n` +
-            'Check the slug and ensure the issue is in the Active Issues section.',
+            'Check the slug and ensure the issue exists in the persistent-issues directory.',
         },
       ],
     };
   }
 
-  // Read file content
-  const content = await fs.readFile(filePath, 'utf-8');
+  const { data: frontmatter, content: body } = matter(content);
 
-  // Find the issue section
-  const issuePattern = new RegExp(`(### ${args.slug}[\\s\\S]*?#### Investigation Log)`, 'i');
-  const match = content.match(issuePattern);
-
-  if (!match) {
+  if (!validatePersistentIssueFrontmatter(frontmatter)) {
     return {
       content: [
         {
           type: 'text',
           text:
-            `❌ Could not find Investigation Log section for issue: **${args.slug}**\n\n` +
-            'The issue file may have an invalid format.',
+            `❌ Invalid issue file format for **${args.slug}**\n\n` +
+            'The issue file has invalid or missing frontmatter.',
         },
       ],
     };
   }
+
+  // frontmatter is now narrowed to PersistentIssueFrontmatter by the type guard
 
   // Build the new entry
   const date = getTodayLocal();
   const sessionId = args.session_id || context.currentSessionId || 'unknown-session';
-  const newEntry = `\n\n**${date} (${sessionId}):**\n${args.entry}`;
+  const newEntry = `\n\n**${date} ([[${sessionId}]]):**\n${args.entry}`;
 
-  // Find where to insert the entry (after Investigation Log header)
-  const investigationLogHeader = '#### Investigation Log';
-  const insertionPoint = content.indexOf(
-    investigationLogHeader,
-    content.indexOf(`### ${args.slug}`)
-  );
-
-  if (insertionPoint === -1) {
-    return {
-      content: [
-        {
-          type: 'text',
-          text: `❌ Could not locate Investigation Log for issue: **${args.slug}**`,
-        },
-      ],
-    };
+  // Update sessions array in frontmatter (add session if not already present)
+  const updatedSessions = [...frontmatter.sessions];
+  if (!updatedSessions.includes(sessionId)) {
+    updatedSessions.push(sessionId);
   }
 
-  // Find the end of the Investigation Log section (next --- or ## Archived)
-  const afterHeader = insertionPoint + investigationLogHeader.length;
-  let sectionEnd = content.indexOf('\n---\n', afterHeader);
-  if (sectionEnd === -1) {
-    sectionEnd = content.indexOf('\n## Archived', afterHeader);
-  }
-  if (sectionEnd === -1) {
-    sectionEnd = content.length;
+  // Find Investigation Log section and append entry
+  const investigationHeader = '## Investigation Log';
+  const investigationIndex = body.indexOf(investigationHeader);
+
+  let updatedBody: string;
+  if (investigationIndex > -1) {
+    // Append to existing Investigation Log section
+    const beforeSection = body.slice(0, investigationIndex + investigationHeader.length);
+    const afterSection = body.slice(investigationIndex + investigationHeader.length);
+    updatedBody = beforeSection + afterSection + newEntry;
+  } else {
+    // No Investigation Log section - add one
+    updatedBody = body + '\n\n## Investigation Log' + newEntry;
   }
 
-  // Insert entry at the end of the Investigation Log section
-  const newContent = content.slice(0, sectionEnd) + newEntry + content.slice(sectionEnd);
+  // Generate updated content with updated frontmatter
+  const updatedContent = `---
+title: "${frontmatter.title}"
+category: ${frontmatter.category}
+status: "${frontmatter.status}"
+created: "${frontmatter.created}"
+priority: "${frontmatter.priority}"${frontmatter.resolved ? `\nresolved: "${frontmatter.resolved}"` : ''}
+sessions: ${JSON.stringify(updatedSessions)}
+---
+${updatedBody}`;
 
-  await fs.writeFile(filePath, newContent, 'utf-8');
+  await fs.writeFile(filePath, updatedContent, 'utf-8');
 
   if (context.trackFileAccess) {
     context.trackFileAccess(filePath, 'edit');
