@@ -3,15 +3,15 @@
 <html lang="en">
 
 <head>
-    <title>Code coverage report for src/services/git/RepositoryDetector.ts</title>
+    <title>Code coverage report for src/services/search/index/TrieNode.ts</title>
     <meta charset="utf-8" />
-    <link rel="stylesheet" href="../../../prettify.css" />
-    <link rel="stylesheet" href="../../../base.css" />
-    <link rel="shortcut icon" type="image/x-icon" href="../../../favicon.png" />
+    <link rel="stylesheet" href="../../../../prettify.css" />
+    <link rel="stylesheet" href="../../../../base.css" />
+    <link rel="shortcut icon" type="image/x-icon" href="../../../../favicon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <style type='text/css'>
         .coverage-summary .sorter {
-            background-image: url(../../../sort-arrow-sprite.png);
+            background-image: url(../../../../sort-arrow-sprite.png);
         }
     </style>
 </head>
@@ -19,34 +19,34 @@
 <body>
 <div class='wrapper'>
     <div class='pad1'>
-        <h1><a href="../../../index.html">All files</a> / <a href="index.html">src/services/git</a> RepositoryDetector.ts</h1>
+        <h1><a href="../../../../index.html">All files</a> / <a href="index.html">src/services/search/index</a> TrieNode.ts</h1>
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">95.14% </span>
+                <span class="strong">100% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>98/103</span>
+                <span class='fraction'>49/49</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">92.72% </span>
+                <span class="strong">100% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>51/55</span>
+                <span class='fraction'>7/7</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">84.61% </span>
+                <span class="strong">100% </span>
                 <span class="quiet">Functions</span>
-                <span class='fraction'>11/13</span>
+                <span class='fraction'>18/18</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">96.73% </span>
+                <span class="strong">100% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>89/92</span>
+                <span class='fraction'>48/48</span>
             </div>
         
             
@@ -328,54 +328,7 @@
 <a name='L263'></a><a href='#L263'>263</a>
 <a name='L264'></a><a href='#L264'>264</a>
 <a name='L265'></a><a href='#L265'>265</a>
-<a name='L266'></a><a href='#L266'>266</a>
-<a name='L267'></a><a href='#L267'>267</a>
-<a name='L268'></a><a href='#L268'>268</a>
-<a name='L269'></a><a href='#L269'>269</a>
-<a name='L270'></a><a href='#L270'>270</a>
-<a name='L271'></a><a href='#L271'>271</a>
-<a name='L272'></a><a href='#L272'>272</a>
-<a name='L273'></a><a href='#L273'>273</a>
-<a name='L274'></a><a href='#L274'>274</a>
-<a name='L275'></a><a href='#L275'>275</a>
-<a name='L276'></a><a href='#L276'>276</a>
-<a name='L277'></a><a href='#L277'>277</a>
-<a name='L278'></a><a href='#L278'>278</a>
-<a name='L279'></a><a href='#L279'>279</a>
-<a name='L280'></a><a href='#L280'>280</a>
-<a name='L281'></a><a href='#L281'>281</a>
-<a name='L282'></a><a href='#L282'>282</a>
-<a name='L283'></a><a href='#L283'>283</a>
-<a name='L284'></a><a href='#L284'>284</a>
-<a name='L285'></a><a href='#L285'>285</a>
-<a name='L286'></a><a href='#L286'>286</a>
-<a name='L287'></a><a href='#L287'>287</a>
-<a name='L288'></a><a href='#L288'>288</a>
-<a name='L289'></a><a href='#L289'>289</a>
-<a name='L290'></a><a href='#L290'>290</a>
-<a name='L291'></a><a href='#L291'>291</a>
-<a name='L292'></a><a href='#L292'>292</a>
-<a name='L293'></a><a href='#L293'>293</a>
-<a name='L294'></a><a href='#L294'>294</a>
-<a name='L295'></a><a href='#L295'>295</a>
-<a name='L296'></a><a href='#L296'>296</a>
-<a name='L297'></a><a href='#L297'>297</a>
-<a name='L298'></a><a href='#L298'>298</a>
-<a name='L299'></a><a href='#L299'>299</a>
-<a name='L300'></a><a href='#L300'>300</a>
-<a name='L301'></a><a href='#L301'>301</a>
-<a name='L302'></a><a href='#L302'>302</a>
-<a name='L303'></a><a href='#L303'>303</a>
-<a name='L304'></a><a href='#L304'>304</a>
-<a name='L305'></a><a href='#L305'>305</a>
-<a name='L306'></a><a href='#L306'>306</a>
-<a name='L307'></a><a href='#L307'>307</a>
-<a name='L308'></a><a href='#L308'>308</a>
-<a name='L309'></a><a href='#L309'>309</a>
-<a name='L310'></a><a href='#L310'>310</a>
-<a name='L311'></a><a href='#L311'>311</a>
-<a name='L312'></a><a href='#L312'>312</a>
-<a name='L313'></a><a href='#L313'>313</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<a name='L266'></a><a href='#L266'>266</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -392,12 +345,6 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">2x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -413,8 +360,6 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">44x</span>
-<span class="cline-any cline-yes">44x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -427,576 +372,490 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">5x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">5x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">5x</span>
-<span class="cline-any cline-yes">13x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">11x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">11x</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-yes">2x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">11x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">3084x</span>
+<span class="cline-any cline-yes">3084x</span>
+<span class="cline-any cline-yes">3084x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">59647x</span>
+<span class="cline-any cline-yes">2903x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">59647x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">4315x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">10x</span>
-<span class="cline-any cline-yes">15x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1188x</span>
+<span class="cline-any cline-yes">1188x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">2880x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">534x</span>
+<span class="cline-any cline-yes">1040x</span>
+<span class="cline-any cline-yes">534x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">13430x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">45x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">29x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">9x</span>
+<span class="cline-any cline-yes">9x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">48x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">48x</span>
+<span class="cline-any cline-yes">42x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">48x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">32x</span>
+<span class="cline-any cline-yes">32x</span>
+<span class="cline-any cline-yes">32x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">32x</span>
+<span class="cline-any cline-yes">32x</span>
+<span class="cline-any cline-yes">29x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">32x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">119x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">119x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">119x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">119x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">119x</span>
+<span class="cline-any cline-yes">111x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">119x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">8x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">8x</span>
+<span class="cline-any cline-yes">5x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">8x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">3153x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">5x</span>
+<span class="cline-any cline-yes">3153x</span>
+<span class="cline-any cline-yes">2111x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">5x</span>
-<span class="cline-any cline-yes">5x</span>
-<span class="cline-any cline-yes">11x</span>
-<span class="cline-any cline-yes">11x</span>
+<span class="cline-any cline-yes">3153x</span>
+<span class="cline-any cline-yes">3060x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">7x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">7x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">5x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">5x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">11x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">11x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">11x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">11x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">10x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">10x</span>
-<span class="cline-any cline-yes">15x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">15x</span>
-<span class="cline-any cline-yes">13x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">10x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">10x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">10x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">11x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">15x</span>
-<span class="cline-any cline-yes">15x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">15x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">26x</span>
-<span class="cline-any cline-yes">15x</span>
-<span class="cline-any cline-yes">15x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">15x</span>
-<span class="cline-any cline-yes">7x</span>
-<span class="cline-any cline-yes">7x</span>
-<span class="cline-any cline-yes">7x</span>
-<span class="cline-any cline-yes">7x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">15x</span>
-<span class="cline-any cline-yes">4x</span>
-<span class="cline-any cline-yes">4x</span>
-<span class="cline-any cline-yes">4x</span>
-<span class="cline-any cline-yes">4x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">15x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">15x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">14x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">13x</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">15x</span>
-<span class="cline-any cline-yes">14x</span>
-<span class="cline-any cline-yes">14x</span>
-<span class="cline-any cline-yes">14x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">15x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">15x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">4x</span>
-<span class="cline-any cline-yes">3x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">3153x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">/**
- * RepositoryDetector - Repository detection from file access patterns
+ * TrieNode - Node in a Trie (prefix tree) data structure
  *
- * Responsible for:
- * - Discovering Git repositories in filesystem
- * - Scoring repositories based on file access patterns
- * - Detecting relevant repositories for sessions
- * - Providing ranked repository candidates
+ * Each node represents a character in a term, with children forming paths to complete terms.
+ * Leaf nodes (end of words) contain document postings.
+ *
+ * Example trie for terms "cat", "car", "card":
+ *
+ *        root
+ *         |
+ *         c
+ *         |
+ *         a
+ *        / \
+ *       t   r
+ *      [P]  |[P]
+ *           d
+ *          [P]
+ *
+ * Where [P] = postings (documents containing that term)
  */
 &nbsp;
-import * as fs from 'fs/promises';
-import * as path from 'path';
-import { createLogger } from '../../utils/logger.js';
-import { GitService } from './GitService.js';
-import type { RepoCandidate, RepositoryDetectionOptions } from '../../models/Git.js';
-import type { FileAccess } from '../../models/Session.js';
-&nbsp;
-const logger = createLogger('RepositoryDetector');
+import type { DocumentPosting } from '../../../models/IndexModels.js';
 &nbsp;
 /**
- * Default scoring weights
+ * A node in the Trie structure
  */
-const SCORING = {
-  EDITED_FILE: 10,
-  READ_FILE: 5,
-  SESSION_TOPIC_MATCH: 20,
-  IS_CWD: 15,
-  CWD_WITHIN_REPO: 8,
-  REPO_WITHIN_CWD: 5,
-} as const;
+export class TrieNode {
+  /**
+   * Child nodes, keyed by character
+   * Using Map for O(1) lookup performance
+   */
+  public children: Map&lt;string, TrieNode&gt;;
 &nbsp;
-/**
- * Service for detecting Git repositories from file access patterns
- */
-export class RepositoryDetector {
-  private gitService: GitService;
+  /**
+   * Whether this node marks the end of a complete term
+   */
+  public isEndOfWord: boolean;
 &nbsp;
-  constructor(gitService: GitService) {
-    this.gitService = gitService;
-    logger.info('RepositoryDetector initialized');
+  /**
+   * Document postings for this term (only populated if isEndOfWord is true)
+   * Contains list of documents that contain this term
+   */
+  public postings: DocumentPosting[];
+&nbsp;
+  /**
+   * Create a new TrieNode
+   */
+  constructor() {
+    this.children = new Map();
+    this.isEndOfWord = false;
+    this.postings = [];
   }
 &nbsp;
   /**
-   * Find all Git repositories starting from a directory
+   * Add a child node for the given character
+   * Returns the child node (either newly created or existing)
    *
-   * Searches subdirectories (up to maxDepth) and parent directories (up to 3 levels up)
-   *
-   * @param startPath - Starting directory path
-   * @param maxDepth - Maximum depth to search subdirectories (default: 2)
-   * @returns Array of repository paths
+   * @param char - The character for this edge
+   * @returns The child node
    */
-  async findRepositories(startPath: string, maxDepth: number = 2): Promise&lt;string[]&gt; {
-    logger.debug('Finding repositories', { startPath, maxDepth });
+  addChild(char: string): TrieNode {
+    if (!this.children.has(char)) {
+      this.children.set(char, new TrieNode());
+    }
+    return this.children.get(char)!;
+  }
 &nbsp;
-    const repos: string[] = [];
+  /**
+   * Get a child node for the given character
+   *
+   * @param char - The character to look up
+   * @returns The child node, or undefined if not found
+   */
+  getChild(char: string): TrieNode | undefined {
+    return this.children.get(char);
+  }
 &nbsp;
-    // Search subdirectories
-    const searchDir = async (dirPath: string, depth: number): Promise&lt;void&gt; =&gt; {
-      if (depth &gt; maxDepth) return;
+  /**
+   * Check if this node has a child for the given character
+   *
+   * @param char - The character to check
+   * @returns True if child exists
+   */
+  hasChild(char: string): boolean {
+    return this.children.has(char);
+  }
 &nbsp;
-      try {
-        // Check if this directory is a git repo
-        if (await this.gitService.isGitRepository(dirPath)) {
-          repos.push(dirPath);
-          logger.debug('Found repository in subdirectory', { path: dirPath, depth });
-        }
+  /**
+   * Mark this node as the end of a word and set postings
+   *
+   * @param postings - Document postings for this term
+   */
+  markAsEndOfWord(postings: DocumentPosting[]): void {
+    this.isEndOfWord = true;
+    this.postings = postings;
+  }
 &nbsp;
-        // Search subdirectories
-        const entries = await fs.readdir(dirPath, { withFileTypes: true });
-        for (const entry of entries) {
-          if (entry.isDirectory() &amp;&amp; entry.name !== 'node_modules' &amp;&amp; entry.name !== '.git') {
-            await searchDir(path.join(dirPath, entry.name), depth + 1);
-          }
-        }
-      } catch (error) {
-        // Skip directories we can't access
-        logger.debug('Skipping inaccessible directory', {
-          dirPath,
-          error: (error as Error).message,
-        });
-      }
+  /**
+   * Add a posting to this node's postings list
+   * Assumes this node is already marked as end of word
+   *
+   * @param posting - The posting to add
+   */
+  addPosting(posting: DocumentPosting): void {
+    this.postings.push(posting);
+  }
+&nbsp;
+  /**
+   * Remove a posting for a specific document
+   *
+   * @param docId - The document ID to remove
+   * @returns True if a posting was removed
+   */
+  removePosting(docId: string): boolean {
+    const initialLength = this.postings.length;
+    this.postings = this.postings.filter(p =&gt; p.docId !== docId);
+    return this.postings.length &lt; initialLength;
+  }
+&nbsp;
+  /**
+   * Get all postings for this term
+   *
+   * @returns Array of document postings
+   */
+  getPostings(): DocumentPosting[] {
+    return this.postings;
+  }
+&nbsp;
+  /**
+   * Check if this node has any children
+   *
+   * @returns True if node has children
+   */
+  hasChildren(): boolean {
+    return this.children.size &gt; 0;
+  }
+&nbsp;
+  /**
+   * Get number of children
+   *
+   * @returns Number of child nodes
+   */
+  getChildCount(): number {
+    return this.children.size;
+  }
+&nbsp;
+  /**
+   * Remove a child node
+   *
+   * @param char - The character whose child to remove
+   * @returns True if child was removed
+   */
+  removeChild(char: string): boolean {
+    return this.children.delete(char);
+  }
+&nbsp;
+  /**
+   * Clear all postings (but keep the node structure)
+   */
+  clearPostings(): void {
+    this.postings = [];
+    this.isEndOfWord = false;
+  }
+&nbsp;
+  /**
+   * Serialize this node to a plain object (for persistence)
+   *
+   * @returns Plain object representation
+   */
+  toJSON(): Record&lt;string, unknown&gt; {
+    const obj: Record&lt;string, unknown&gt; = {
+      isEndOfWord: this.isEndOfWord,
+      postings: this.postings,
+      children: {},
     };
 &nbsp;
-    await searchDir(startPath, 0);
-&nbsp;
-    // Also check parent directories (up to 3 levels)
-    let currentPath = startPath;
-    for (let i = 0; i &lt; 3; i++) {
-      const parentPath = path.dirname(currentPath);
-      if (parentPath === currentPath) break; // Reached root
-&nbsp;
-      if (await this.gitService.isGitRepository(parentPath)) {
-        <span class="missing-if-branch" title="else path not taken" >E</span>if (!repos.includes(parentPath)) {
-          repos.push(parentPath);
-          logger.debug('Found repository in parent directory', { path: parentPath, level: i + 1 });
-        }
-      }
-&nbsp;
-      currentPath = parentPath;
+    // Serialize children recursively
+    for (const [char, child] of this.children.entries()) {
+      (obj.children as Record&lt;string, unknown&gt;)[char] = child.toJSON();
     }
 &nbsp;
-    logger.info('Repository search complete', {
-      startPath,
-      repositoriesFound: repos.length,
-    });
-&nbsp;
-    return repos;
+    return obj;
   }
 &nbsp;
   /**
-   * Detect relevant repositories based on file access patterns
+   * Deserialize a plain object into a TrieNode (for loading from persistence)
    *
-   * @param filesAccessed - Array of file access records
-   * @param options - Detection options
-   * @returns Array of scored repository candidates
+   * @param obj - Plain object to deserialize
+   * @returns New TrieNode instance
    */
-  async detectFromFileAccess(
-    filesAccessed: FileAccess[],
-    options: RepositoryDetectionOptions &amp; {
-      cwd?: string;
-      sessionId?: string;
-    } = {}
-  ): Promise&lt;RepoCandidate[]&gt; {
-    const {
-      minScore = 0,
-      maxCandidates = 10,
-      includeMetadata = true,
-      cwd = process.env.PWD || <span class="branch-1 cbranch-no" title="branch not covered" >process.cwd(),</span>
-      sessionId,
-    } = options;
+  static fromJSON(obj: Record&lt;string, unknown&gt;): TrieNode {
+    const node = new TrieNode();
+    node.isEndOfWord = obj.isEndOfWord as boolean;
+    node.postings = obj.postings as DocumentPosting[];
 &nbsp;
-    logger.debug('Detecting repositories from file access', {
-      filesAccessedCount: filesAccessed.length,
-      cwd,
-      sessionId,
-    });
-&nbsp;
-    // Find all repositories
-    const repoPaths = await this.findRepositories(cwd);
-&nbsp;
-    if (repoPaths.length === 0) {
-      logger.info('No repositories found');
-      return [];
+    // Deserialize children recursively
+    const children = obj.children as Record&lt;string, Record&lt;string, unknown&gt;&gt;;
+    for (const [char, childObj] of Object.entries(children)) {
+      node.children.set(char, TrieNode.fromJSON(childObj));
     }
 &nbsp;
-    // Score each repository
-    const candidates: RepoCandidate[] = [];
-&nbsp;
-    for (const repoPath of repoPaths) {
-      const candidate = await this.scoreRepository(
-        repoPath,
-        filesAccessed,
-        cwd,
-        sessionId,
-        includeMetadata
-      );
-&nbsp;
-      // Include if score meets threshold or if it's the only repo
-      if (candidate.score &gt;= minScore || repoPaths.length === 1) {
-        candidates.push(candidate);
-      }
-    }
-&nbsp;
-    // Sort by score (descending)
-    candidates.sort((a, b) =&gt; b.score - a.score);
-&nbsp;
-    // Limit results
-    const limitedCandidates = candidates.slice(0, maxCandidates);
-&nbsp;
-    logger.info('Repository detection complete', {
-      candidatesFound: limitedCandidates.length,
-      topScore: limitedCandidates[0]?.score,
-    });
-&nbsp;
-    return limitedCandidates;
+    return node;
   }
 &nbsp;
   /**
-   * Score a repository based on file access patterns and session context
+   * Get memory usage estimate for this node and all descendants
    *
-   * @param repoPath - Repository path
-   * @param filesAccessed - File access records
-   * @param cwd - Current working directory
-   * @param sessionId - Session identifier
-   * @param includeMetadata - Whether to fetch branch/remote info
-   * @returns Scored repository candidate
+   * @returns Estimated memory in bytes
    */
-  private async scoreRepository(
-    repoPath: string,
-    filesAccessed: FileAccess[],
-    cwd: string,
-    sessionId?: string,
-    includeMetadata: boolean = true
-  ): Promise&lt;RepoCandidate&gt; {
-    let score = 0;
-    const reasons: string[] = [];
+  getMemoryUsage(): number {
+    let bytes = 0;
 &nbsp;
-    logger.debug('Scoring repository', { repoPath });
+    // Base object overhead (~100 bytes)
+    bytes += 100;
 &nbsp;
-    // Score based on files accessed in this repo
-    const filesInRepo = filesAccessed.filter(f =&gt; f.path.startsWith(repoPath));
-    const editedFiles = filesInRepo.filter(f =&gt; f.action === 'edit' || f.action === 'create');
-    const readFiles = filesInRepo.filter(f =&gt; f.action === 'read');
+    // Postings array
+    bytes += this.postings.length * 200; // Rough estimate per posting
 &nbsp;
-    if (editedFiles.length &gt; 0) {
-      const points = editedFiles.length * SCORING.EDITED_FILE;
-      score += points;
-      reasons.push(`${editedFiles.length} file(s) modified`);
-      logger.debug('Scored edited files', { repoPath, editedFiles: editedFiles.length, points });
+    // Children map overhead
+    bytes += this.children.size * 50;
+&nbsp;
+    // Recursively calculate children
+    for (const child of this.children.values()) {
+      bytes += child.getMemoryUsage();
     }
 &nbsp;
-    if (readFiles.length &gt; 0) {
-      const points = readFiles.length * SCORING.READ_FILE;
-      score += points;
-      reasons.push(`${readFiles.length} file(s) read`);
-      logger.debug('Scored read files', { repoPath, readFiles: readFiles.length, points });
-    }
-&nbsp;
-    // Score based on session topic matching repo name
-    if (sessionId) {
-      const repoName = path.basename(repoPath);
-      <span class="missing-if-branch" title="else path not taken" >E</span>if (sessionId.toLowerCase().includes(repoName.toLowerCase())) {
-        score += SCORING.SESSION_TOPIC_MATCH;
-        reasons.push('Session topic matches repo name');
-        logger.debug('Scored session topic match', { repoPath, repoName, sessionId });
-      }
-    }
-&nbsp;
-    // Score based on proximity to CWD
-    if (repoPath === cwd) {
-      score += SCORING.IS_CWD;
-      reasons.push('Repo is current working directory');
-      logger.debug('Scored CWD match', { repoPath });
-    } else if (cwd.startsWith(repoPath)) {
-      score += SCORING.CWD_WITHIN_REPO;
-      reasons.push('CWD is within this repo');
-      logger.debug('Scored CWD within repo', { repoPath, cwd });
-    <span class="missing-if-branch" title="if path not taken" >I</span>} else if (repoPath.startsWith(cwd)) {
-<span class="cstat-no" title="statement not covered" >      score += SCORING.REPO_WITHIN_CWD;</span>
-<span class="cstat-no" title="statement not covered" >      reasons.push('Repo is subdirectory of CWD');</span>
-<span class="cstat-no" title="statement not covered" >      logger.debug('Scored repo within CWD', { repoPath, cwd });</span>
-    }
-&nbsp;
-    // Get repository metadata if requested
-    let branch: string | undefined;
-    let remote: string | null | undefined;
-    let name: string;
-&nbsp;
-    if (includeMetadata) {
-      name = await this.gitService.getRepositoryName(repoPath);
-      branch = await this.gitService.getCurrentBranch(repoPath).catch(<span class="fstat-no" title="function not covered" >() =&gt; <span class="cstat-no" title="statement not covered" >u</span>ndefined)</span>;
-      remote = await this.gitService.getRemoteUrl(repoPath).catch(<span class="fstat-no" title="function not covered" >() =&gt; <span class="cstat-no" title="statement not covered" >u</span>ndefined)</span>;
-    } else {
-      name = path.basename(repoPath);
-    }
-&nbsp;
-    logger.debug('Repository scored', { repoPath, name, score, reasonsCount: reasons.length });
-&nbsp;
-    return {
-      path: repoPath,
-      name,
-      score,
-      reasons,
-      branch,
-      remote,
-    };
+    return bytes;
   }
 &nbsp;
   /**
-   * Get the top repository candidate from file access
+   * Get total number of terms in this subtree
    *
-   * Helper method for sessions that want a single "best guess" repository
-   *
-   * @param filesAccessed - File access records
-   * @param options - Detection options
-   * @returns Top repository candidate or null if none found
+   * @returns Number of complete terms
    */
-  async getTopCandidate(
-    filesAccessed: FileAccess[],
-    options: RepositoryDetectionOptions &amp; {
-      cwd?: string;
-      sessionId?: string;
-    } = {}
-  ): Promise&lt;RepoCandidate | null&gt; {
-    const candidates = await this.detectFromFileAccess(filesAccessed, {
-      ...options,
-      maxCandidates: 1,
-    });
+  countTerms(): number {
+    let count = this.isEndOfWord ? 1 : 0;
 &nbsp;
-    return candidates[0] || null;
+    for (const child of this.children.values()) {
+      count += child.countTerms();
+    }
+&nbsp;
+    return count;
   }
 &nbsp;
   /**
-   * Check if a candidate is a clear winner
+   * Get all terms in this subtree with their postings
    *
-   * A candidate is considered a clear winner if:
-   * - It's the only candidate, OR
-   * - Its score is more than 2x the next highest score
-   *
-   * @param candidates - Sorted array of candidates (highest score first)
-   * @returns true if first candidate is a clear winner
+   * @param prefix - The prefix leading to this node
+   * @returns Array of [term, postings] tuples
    */
-  isClearWinner(candidates: RepoCandidate[]): boolean {
-    if (candidates.length === 0) return false;
-    if (candidates.length === 1) return true;
+  getAllTerms(prefix = ''): Array&lt;[string, DocumentPosting[]]&gt; {
+    const terms: Array&lt;[string, DocumentPosting[]]&gt; = [];
 &nbsp;
-    const topScore = candidates[0].score;
-    const secondScore = candidates[1].score;
+    if (this.isEndOfWord) {
+      terms.push([prefix, this.postings]);
+    }
 &nbsp;
-    return topScore &gt; secondScore * 2;
+    for (const [char, child] of this.children.entries()) {
+      terms.push(...child.getAllTerms(prefix + char));
+    }
+&nbsp;
+    return terms;
   }
 }
 &nbsp;</pre></td></tr></table></pre>
@@ -1008,14 +867,14 @@ export class RepositoryDetector {
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
                 at 2026-02-16T06:45:15.172Z
             </div>
-        <script src="../../../prettify.js"></script>
+        <script src="../../../../prettify.js"></script>
         <script>
             window.onload = function () {
                 prettyPrint();
             };
         </script>
-        <script src="../../../sorter.js"></script>
-        <script src="../../../block-navigation.js"></script>
+        <script src="../../../../sorter.js"></script>
+        <script src="../../../../block-navigation.js"></script>
     </body>
 </html>
     

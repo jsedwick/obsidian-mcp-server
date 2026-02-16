@@ -3,15 +3,15 @@
 <html lang="en">
 
 <head>
-    <title>Code coverage report for src/services/git/GitService.ts</title>
+    <title>Code coverage report for src/services/search/index/CacheValidator.ts</title>
     <meta charset="utf-8" />
-    <link rel="stylesheet" href="../../../prettify.css" />
-    <link rel="stylesheet" href="../../../base.css" />
-    <link rel="shortcut icon" type="image/x-icon" href="../../../favicon.png" />
+    <link rel="stylesheet" href="../../../../prettify.css" />
+    <link rel="stylesheet" href="../../../../base.css" />
+    <link rel="shortcut icon" type="image/x-icon" href="../../../../favicon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <style type='text/css'>
         .coverage-summary .sorter {
-            background-image: url(../../../sort-arrow-sprite.png);
+            background-image: url(../../../../sort-arrow-sprite.png);
         }
     </style>
 </head>
@@ -19,34 +19,34 @@
 <body>
 <div class='wrapper'>
     <div class='pad1'>
-        <h1><a href="../../../index.html">All files</a> / <a href="index.html">src/services/git</a> GitService.ts</h1>
+        <h1><a href="../../../../index.html">All files</a> / <a href="index.html">src/services/search/index</a> CacheValidator.ts</h1>
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">99.03% </span>
+                <span class="strong">98.16% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>103/104</span>
+                <span class='fraction'>107/109</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">79.16% </span>
+                <span class="strong">88% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>19/24</span>
+                <span class='fraction'>44/50</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
                 <span class="strong">100% </span>
                 <span class="quiet">Functions</span>
-                <span class='fraction'>11/11</span>
+                <span class='fraction'>24/24</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">100% </span>
+                <span class="strong">98.11% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>103/103</span>
+                <span class='fraction'>104/106</span>
             </div>
         
             
@@ -422,7 +422,174 @@
 <a name='L357'></a><a href='#L357'>357</a>
 <a name='L358'></a><a href='#L358'>358</a>
 <a name='L359'></a><a href='#L359'>359</a>
-<a name='L360'></a><a href='#L360'>360</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<a name='L360'></a><a href='#L360'>360</a>
+<a name='L361'></a><a href='#L361'>361</a>
+<a name='L362'></a><a href='#L362'>362</a>
+<a name='L363'></a><a href='#L363'>363</a>
+<a name='L364'></a><a href='#L364'>364</a>
+<a name='L365'></a><a href='#L365'>365</a>
+<a name='L366'></a><a href='#L366'>366</a>
+<a name='L367'></a><a href='#L367'>367</a>
+<a name='L368'></a><a href='#L368'>368</a>
+<a name='L369'></a><a href='#L369'>369</a>
+<a name='L370'></a><a href='#L370'>370</a>
+<a name='L371'></a><a href='#L371'>371</a>
+<a name='L372'></a><a href='#L372'>372</a>
+<a name='L373'></a><a href='#L373'>373</a>
+<a name='L374'></a><a href='#L374'>374</a>
+<a name='L375'></a><a href='#L375'>375</a>
+<a name='L376'></a><a href='#L376'>376</a>
+<a name='L377'></a><a href='#L377'>377</a>
+<a name='L378'></a><a href='#L378'>378</a>
+<a name='L379'></a><a href='#L379'>379</a>
+<a name='L380'></a><a href='#L380'>380</a>
+<a name='L381'></a><a href='#L381'>381</a>
+<a name='L382'></a><a href='#L382'>382</a>
+<a name='L383'></a><a href='#L383'>383</a>
+<a name='L384'></a><a href='#L384'>384</a>
+<a name='L385'></a><a href='#L385'>385</a>
+<a name='L386'></a><a href='#L386'>386</a>
+<a name='L387'></a><a href='#L387'>387</a>
+<a name='L388'></a><a href='#L388'>388</a>
+<a name='L389'></a><a href='#L389'>389</a>
+<a name='L390'></a><a href='#L390'>390</a>
+<a name='L391'></a><a href='#L391'>391</a>
+<a name='L392'></a><a href='#L392'>392</a>
+<a name='L393'></a><a href='#L393'>393</a>
+<a name='L394'></a><a href='#L394'>394</a>
+<a name='L395'></a><a href='#L395'>395</a>
+<a name='L396'></a><a href='#L396'>396</a>
+<a name='L397'></a><a href='#L397'>397</a>
+<a name='L398'></a><a href='#L398'>398</a>
+<a name='L399'></a><a href='#L399'>399</a>
+<a name='L400'></a><a href='#L400'>400</a>
+<a name='L401'></a><a href='#L401'>401</a>
+<a name='L402'></a><a href='#L402'>402</a>
+<a name='L403'></a><a href='#L403'>403</a>
+<a name='L404'></a><a href='#L404'>404</a>
+<a name='L405'></a><a href='#L405'>405</a>
+<a name='L406'></a><a href='#L406'>406</a>
+<a name='L407'></a><a href='#L407'>407</a>
+<a name='L408'></a><a href='#L408'>408</a>
+<a name='L409'></a><a href='#L409'>409</a>
+<a name='L410'></a><a href='#L410'>410</a>
+<a name='L411'></a><a href='#L411'>411</a>
+<a name='L412'></a><a href='#L412'>412</a>
+<a name='L413'></a><a href='#L413'>413</a>
+<a name='L414'></a><a href='#L414'>414</a>
+<a name='L415'></a><a href='#L415'>415</a>
+<a name='L416'></a><a href='#L416'>416</a>
+<a name='L417'></a><a href='#L417'>417</a>
+<a name='L418'></a><a href='#L418'>418</a>
+<a name='L419'></a><a href='#L419'>419</a>
+<a name='L420'></a><a href='#L420'>420</a>
+<a name='L421'></a><a href='#L421'>421</a>
+<a name='L422'></a><a href='#L422'>422</a>
+<a name='L423'></a><a href='#L423'>423</a>
+<a name='L424'></a><a href='#L424'>424</a>
+<a name='L425'></a><a href='#L425'>425</a>
+<a name='L426'></a><a href='#L426'>426</a>
+<a name='L427'></a><a href='#L427'>427</a>
+<a name='L428'></a><a href='#L428'>428</a>
+<a name='L429'></a><a href='#L429'>429</a>
+<a name='L430'></a><a href='#L430'>430</a>
+<a name='L431'></a><a href='#L431'>431</a>
+<a name='L432'></a><a href='#L432'>432</a>
+<a name='L433'></a><a href='#L433'>433</a>
+<a name='L434'></a><a href='#L434'>434</a>
+<a name='L435'></a><a href='#L435'>435</a>
+<a name='L436'></a><a href='#L436'>436</a>
+<a name='L437'></a><a href='#L437'>437</a>
+<a name='L438'></a><a href='#L438'>438</a>
+<a name='L439'></a><a href='#L439'>439</a>
+<a name='L440'></a><a href='#L440'>440</a>
+<a name='L441'></a><a href='#L441'>441</a>
+<a name='L442'></a><a href='#L442'>442</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -441,8 +608,199 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">71x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">71x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">33x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">33x</span>
+<span class="cline-any cline-yes">33x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">33x</span>
+<span class="cline-any cline-yes">10638x</span>
+<span class="cline-any cline-yes">10638x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">10638x</span>
+<span class="cline-any cline-yes">160x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">33x</span>
+<span class="cline-any cline-yes">33x</span>
+<span class="cline-any cline-yes">10629x</span>
+<span class="cline-any cline-yes">10x</span>
+<span class="cline-any cline-yes">10x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">33x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">170x</span>
+<span class="cline-any cline-yes">170x</span>
+<span class="cline-any cline-yes">170x</span>
+<span class="cline-any cline-yes">170x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">33x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">33x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">10638x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">10638x</span>
+<span class="cline-any cline-yes">19x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">10619x</span>
+<span class="cline-any cline-yes">10618x</span>
+<span class="cline-any cline-yes">138x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">10481x</span>
+<span class="cline-any cline-yes">10481x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">10480x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">3x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">6x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">6x</span>
+<span class="cline-any cline-yes">11x</span>
+<span class="cline-any cline-yes">9x</span>
+<span class="cline-any cline-yes">9x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">6x</span>
+<span class="cline-any cline-yes">11x</span>
+<span class="cline-any cline-yes">3x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -455,59 +813,29 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">8x</span>
-<span class="cline-any cline-yes">8x</span>
-<span class="cline-any cline-yes">8x</span>
-<span class="cline-any cline-yes">3x</span>
-<span class="cline-any cline-yes">3x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">5x</span>
-<span class="cline-any cline-yes">5x</span>
+<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">7x</span>
+<span class="cline-any cline-yes">7x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">7x</span>
+<span class="cline-any cline-yes">4x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">3x</span>
-<span class="cline-any cline-yes">3x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">3x</span>
-<span class="cline-any cline-yes">6x</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-yes">2x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">4x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">3x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">3x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -520,153 +848,48 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">6x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">6x</span>
 <span class="cline-any cline-yes">6x</span>
+<span class="cline-any cline-yes">7x</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">4x</span>
-<span class="cline-any cline-yes">4x</span>
-<span class="cline-any cline-yes">4x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">3x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">3x</span>
-<span class="cline-any cline-yes">3x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">5x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">7x</span>
 <span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">7x</span>
+<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">7x</span>
+<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">7x</span>
 <span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">6x</span>
+<span class="cline-any cline-yes">6x</span>
+<span class="cline-any cline-yes">7x</span>
+<span class="cline-any cline-yes">7x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">6x</span>
+<span class="cline-any cline-yes">7x</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">3x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">3x</span>
-<span class="cline-any cline-yes">3x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">6x</span>
 <span class="cline-any cline-yes">4x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">4x</span>
-<span class="cline-any cline-yes">4x</span>
-<span class="cline-any cline-yes">4x</span>
-<span class="cline-any cline-yes">4x</span>
-<span class="cline-any cline-yes">4x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">4x</span>
-<span class="cline-any cline-yes">4x</span>
-<span class="cline-any cline-yes">4x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">4x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">2x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">6x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">2x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -674,75 +897,28 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">3x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">3x</span>
-<span class="cline-any cline-yes">3x</span>
-<span class="cline-any cline-yes">3x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">2x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -757,15 +933,9 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">2x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">3x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">3x</span>
-<span class="cline-any cline-yes">3x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">2x</span>
 <span class="cline-any cline-yes">2x</span>
@@ -773,371 +943,447 @@
 <span class="cline-any cline-yes">2x</span>
 <span class="cline-any cline-yes">2x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">/**
- * GitService - Git operations wrapper
+ * CacheValidator - Detect changes in vault files
  *
- * Responsible for:
- * - Executing Git commands with error handling
- * - Repository validation and detection
- * - Branch, commit, and remote operations
- * - Diff and log operations
+ * Responsibilities:
+ * - Compare current file state with cached metadata
+ * - Identify added, modified, and deleted files
+ * - Support incremental index updates
+ * - Validate cache consistency
+ * - Track change statistics
  */
 &nbsp;
-import { exec } from 'child_process';
-import { promisify } from 'util';
-import * as fs from 'fs/promises';
-import * as path from 'path';
-import { createLogger } from '../../utils/logger.js';
-import { GitError } from '../../utils/errors.js';
-import type { GitCommandResult, GitCommitInfo, GitDiffStats } from '../../models/Git.js';
+import type { ScannedFile } from './FileScanner.js';
+import type { DocumentMetadata } from '../../../models/IndexModels.js';
+import { DocumentStore } from './DocumentStore.js';
+import { createLogger } from '../../../utils/logger.js';
 &nbsp;
-const execAsync = promisify(exec);
-const logger = createLogger('GitService');
+const logger = createLogger('CacheValidator');
 &nbsp;
 /**
- * Service for Git operations
+ * Type of file change detected
  */
-export class GitService {
+export enum ChangeType {
+  ADDED = 'added',
+  MODIFIED = 'modified',
+  DELETED = 'deleted',
+  UNCHANGED = 'unchanged',
+}
+&nbsp;
+/**
+ * Information about a detected file change
+ */
+export interface FileChange {
+  /** Absolute file path */
+  path: string;
+&nbsp;
+  /** Type of change */
+  changeType: ChangeType;
+&nbsp;
+  /** Current file state (null if deleted) */
+  currentFile: ScannedFile | null;
+&nbsp;
+  /** Previous metadata (null if added) */
+  previousMetadata: DocumentMetadata | null;
+&nbsp;
+  /** Reason for change detection */
+  reason?: string;
+}
+&nbsp;
+/**
+ * Summary of validation results
+ */
+export interface ValidationResult {
+  /** Total files scanned */
+  totalScanned: number;
+&nbsp;
+  /** Total files in cache */
+  totalCached: number;
+&nbsp;
+  /** Files added since last build */
+  added: number;
+&nbsp;
+  /** Files modified since last build */
+  modified: number;
+&nbsp;
+  /** Files deleted since last build */
+  deleted: number;
+&nbsp;
+  /** Files unchanged */
+  unchanged: number;
+&nbsp;
+  /** Detailed change information */
+  changes: FileChange[];
+&nbsp;
+  /** Validation timestamp */
+  timestamp: number;
+}
+&nbsp;
+/**
+ * Options for cache validation
+ */
+export interface ValidationOptions {
   /**
-   * Check if a directory is a Git repository
-   *
-   * @param repoPath - Absolute path to check
-   * @returns true if directory contains a .git folder
+   * Use hash comparison for change detection
+   * If false, only use mtime (faster but less reliable)
    */
-  async isGitRepository(repoPath: string): Promise&lt;boolean&gt; {
-    try {
-      const gitDir = path.join(repoPath, '.git');
-      await fs.access(gitDir);
-      logger.debug('Git repository detected', { repoPath });
-      return true;
-    } catch {
-      logger.debug('Not a Git repository', { repoPath });
+  useHashComparison?: boolean;
+&nbsp;
+  /**
+   * Skip unchanged files in result
+   * Reduces memory usage for large vaults
+   */
+  skipUnchanged?: boolean;
+&nbsp;
+  /**
+   * Maximum mtime difference (ms) to consider files identical
+   * Accounts for filesystem timestamp precision
+   */
+  mtimeTolerance?: number;
+}
+&nbsp;
+/**
+ * Default validation options
+ */
+const DEFAULT_VALIDATION_OPTIONS: Required&lt;ValidationOptions&gt; = {
+  useHashComparison: true,
+  skipUnchanged: true,
+  mtimeTolerance: 1000, // 1 second
+};
+&nbsp;
+/**
+ * Validator for detecting file changes against cached index
+ */
+export class CacheValidator {
+  private options: Required&lt;ValidationOptions&gt;;
+&nbsp;
+  /**
+   * Create a new cache validator
+   *
+   * @param options - Validation options
+   */
+  constructor(options: ValidationOptions = {}) {
+    this.options = {
+      ...DEFAULT_VALIDATION_OPTIONS,
+      ...options,
+    };
+&nbsp;
+    logger.debug('CacheValidator initialized', {
+      useHashComparison: this.options.useHashComparison,
+      skipUnchanged: this.options.skipUnchanged,
+    });
+  }
+&nbsp;
+  /**
+   * Validate current file state against cached metadata
+   *
+   * @param scannedFiles - Current files from FileScanner
+   * @param documentStore - Cached document metadata
+   * @returns Validation result with detected changes
+   */
+  validate(scannedFiles: ScannedFile[], documentStore: DocumentStore): ValidationResult {
+    logger.info('Validating cache', {
+      scannedFiles: scannedFiles.length,
+      cachedDocuments: documentStore.getTotalDocuments(),
+    });
+&nbsp;
+    const changes: FileChange[] = [];
+    const scannedPaths = new Set&lt;string&gt;();
+&nbsp;
+    // 1. Check scanned files against cache (detect added/modified)
+    for (const file of scannedFiles) {
+      scannedPaths.add(file.absolutePath);
+      const change = this.detectChange(file, documentStore);
+&nbsp;
+      if (!this.options.skipUnchanged || change.changeType !== ChangeType.UNCHANGED) {
+        changes.push(change);
+      }
+    }
+&nbsp;
+    // 2. Check cached files for deletions
+    const allCachedPaths = documentStore.getAllPaths();
+    for (const cachedPath of allCachedPaths) {
+      if (!scannedPaths.has(cachedPath)) {
+        const metadata = documentStore.get(cachedPath);
+        changes.push({
+          path: cachedPath,
+          changeType: ChangeType.DELETED,
+          currentFile: null,
+          previousMetadata: metadata || <span class="branch-1 cbranch-no" title="branch not covered" >null,</span>
+          reason: 'File no longer exists',
+        });
+      }
+    }
+&nbsp;
+    // 3. Calculate statistics
+    const result: ValidationResult = {
+      totalScanned: scannedFiles.length,
+      totalCached: documentStore.getTotalDocuments(),
+      added: changes.filter(c =&gt; c.changeType === ChangeType.ADDED).length,
+      modified: changes.filter(c =&gt; c.changeType === ChangeType.MODIFIED).length,
+      deleted: changes.filter(c =&gt; c.changeType === ChangeType.DELETED).length,
+      unchanged: changes.filter(c =&gt; c.changeType === ChangeType.UNCHANGED).length,
+      changes,
+      timestamp: Date.now(),
+    };
+&nbsp;
+    logger.info('Cache validation complete', {
+      added: result.added,
+      modified: result.modified,
+      deleted: result.deleted,
+      unchanged: result.unchanged,
+    });
+&nbsp;
+    return result;
+  }
+&nbsp;
+  /**
+   * Detect change type for a single file
+   *
+   * @param file - Current file state
+   * @param documentStore - Cached metadata
+   * @returns File change information
+   */
+  private detectChange(file: ScannedFile, documentStore: DocumentStore): FileChange {
+    const cached = documentStore.get(file.absolutePath);
+&nbsp;
+    // File not in cache = added
+    if (!cached) {
+      return {
+        path: file.absolutePath,
+        changeType: ChangeType.ADDED,
+        currentFile: file,
+        previousMetadata: null,
+        reason: 'New file',
+      };
+    }
+&nbsp;
+    // Compare hash if enabled
+    if (this.options.useHashComparison) {
+      if (file.hash !== cached.hash) {
+        return {
+          path: file.absolutePath,
+          changeType: ChangeType.MODIFIED,
+          currentFile: file,
+          previousMetadata: cached,
+          reason: 'Content hash mismatch',
+        };
+      }
+    }
+&nbsp;
+    // Compare mtime (with tolerance)
+    const mtimeDiff = Math.abs(file.lastModified - cached.lastModified);
+    if (mtimeDiff &gt; this.options.mtimeTolerance) {
+      return {
+        path: file.absolutePath,
+        changeType: ChangeType.MODIFIED,
+        currentFile: file,
+        previousMetadata: cached,
+        reason: `Modified time changed (diff: ${mtimeDiff}ms)`,
+      };
+    }
+&nbsp;
+    // Note: We don't compare file size separately since hash comparison is more reliable
+    // If hash matches, content is identical regardless of encoding differences
+&nbsp;
+    // No changes detected
+    return {
+      path: file.absolutePath,
+      changeType: ChangeType.UNCHANGED,
+      currentFile: file,
+      previousMetadata: cached,
+    };
+  }
+&nbsp;
+  /**
+   * Filter validation result to only changed files
+   *
+   * @param result - Validation result
+   * @returns Changes excluding unchanged files
+   */
+  getChangedFiles(result: ValidationResult): FileChange[] {
+    return result.changes.filter(c =&gt; c.changeType !== ChangeType.UNCHANGED);
+  }
+&nbsp;
+  /**
+   * Filter validation result by change type
+   *
+   * @param result - Validation result
+   * @param changeType - Type of change to filter
+   * @returns Filtered changes
+   */
+  filterByType(result: ValidationResult, changeType: ChangeType): FileChange[] {
+    return result.changes.filter(c =&gt; c.changeType === changeType);
+  }
+&nbsp;
+  /**
+   * Get files that need reindexing (added + modified)
+   *
+   * @param result - Validation result
+   * @returns Files requiring index updates
+   */
+  getFilesNeedingReindex(result: ValidationResult): ScannedFile[] {
+    return result.changes
+      .filter(c =&gt; c.changeType === ChangeType.ADDED || c.changeType === ChangeType.MODIFIED)
+      .map(c =&gt; c.currentFile!)
+      .filter((file): file is ScannedFile =&gt; file !== null);
+  }
+&nbsp;
+  /**
+   * Get paths of deleted files
+   *
+   * @param result - Validation result
+   * @returns Paths of deleted files
+   */
+  getDeletedPaths(result: ValidationResult): string[] {
+    return result.changes
+      .filter(c =&gt; c.changeType === ChangeType.DELETED)
+      .map(c =&gt; c.path);
+  }
+&nbsp;
+  /**
+   * Check if incremental update is worthwhile
+   * Returns false if full rebuild would be more efficient
+   *
+   * @param result - Validation result
+   * @param threshold - Percentage threshold (0-1) for incremental vs full
+   * @returns True if incremental update recommended
+   */
+  shouldUseIncrementalUpdate(result: ValidationResult, threshold: number = 0.3): boolean {
+    if (result.totalCached === 0) {
+      // No cache exists, must do full build
       return false;
     }
+&nbsp;
+    const changedCount = result.added + result.modified + result.deleted;
+    const changeRatio = changedCount / result.totalScanned;
+&nbsp;
+    // If more than threshold% of files changed, full rebuild is more efficient
+    if (changeRatio &gt; threshold) {
+      logger.info('Recommending full rebuild', {
+        changeRatio: changeRatio.toFixed(2),
+        threshold,
+        changedFiles: changedCount,
+        totalFiles: result.totalScanned,
+      });
+      return false;
+    }
+&nbsp;
+    logger.info('Recommending incremental update', {
+      changeRatio: changeRatio.toFixed(2),
+      changedFiles: changedCount,
+    });
+    return true;
   }
 &nbsp;
   /**
-   * Find Git repository root from a file path
+   * Validate cache consistency
+   * Checks for potential issues in cached data
    *
-   * @param filePath - Absolute path to a file
-   * @returns Repository root path or null if not in a Git repo
+   * @param documentStore - Document store to validate
+   * @returns Array of consistency issues found
    */
-  async findGitRoot(filePath: string): Promise&lt;string | null&gt; {
-    let currentDir = path.dirname(filePath);
-    const rootDir = path.parse(currentDir).root;
+  validateConsistency(documentStore: DocumentStore): string[] {
+    const issues: string[] = [];
 &nbsp;
-    while (currentDir !== rootDir) {
-      if (await this.isGitRepository(currentDir)) {
-        logger.debug('Found Git root', { filePath, gitRoot: currentDir });
-        return currentDir;
+    // Check for missing required fields
+    const allDocs = documentStore.getAll();
+    for (const doc of allDocs) {
+      <span class="missing-if-branch" title="if path not taken" >I</span>if (!doc.id) {
+<span class="cstat-no" title="statement not covered" >        issues.push(`Document missing id`);</span>
       }
-      currentDir = path.dirname(currentDir);
-    }
-&nbsp;
-    logger.debug('No Git repository found', { filePath });
-    return null;
-  }
-&nbsp;
-  /**
-   * Get current branch name
-   *
-   * @param repoPath - Absolute path to repository
-   * @returns Branch name
-   */
-  async getCurrentBranch(repoPath: string): Promise&lt;string&gt; {
-    logger.debug('Getting current branch', { repoPath });
-&nbsp;
-    try {
-      const { stdout } = await execAsync('git rev-parse --abbrev-ref HEAD', { cwd: repoPath });
-      const branch = stdout.trim();
-      logger.debug('Current branch retrieved', { repoPath, branch });
-      return branch;
-    } catch (error) {
-      logger.error('Failed to get current branch', error as Error, { repoPath });
-      throw new GitError(`Failed to get current branch: ${repoPath}`, {
-        repoPath,
-        originalError: (error as Error).message,
-      });
-    }
-  }
-&nbsp;
-  /**
-   * Get remote URL for a repository
-   *
-   * @param repoPath - Absolute path to repository
-   * @param remoteName - Remote name (default: 'origin')
-   * @returns Remote URL or null if not found
-   */
-  async getRemoteUrl(repoPath: string, remoteName: string = 'origin'): Promise&lt;string | null&gt; {
-    logger.debug('Getting remote URL', { repoPath, remoteName });
-&nbsp;
-    try {
-      const { stdout } = await execAsync(`git config --get remote.${remoteName}.url`, {
-        cwd: repoPath,
-      });
-      const url = stdout.trim();
-      logger.debug('Remote URL retrieved', { repoPath, remoteName, url });
-      return url;
-    } catch {
-      logger.debug('No remote URL found', { repoPath, remoteName });
-      return null;
-    }
-  }
-&nbsp;
-  /**
-   * Get branches containing a specific commit
-   *
-   * @param repoPath - Absolute path to repository
-   * @param commitHash - Commit hash
-   * @returns Array of branch names
-   */
-  async getBranchesContainingCommit(repoPath: string, commitHash: string): Promise&lt;string[]&gt; {
-    logger.debug('Getting branches containing commit', { repoPath, commitHash });
-&nbsp;
-    try {
-      const { stdout } = await execAsync(
-        `git branch --contains ${commitHash} --format='%(refname:short)'`,
-        { cwd: repoPath }
-      );
-&nbsp;
-      const branches = stdout
-        .trim()
-        .split('\n')
-        .filter(b =&gt; b.length &gt; 0);
-&nbsp;
-      logger.debug('Branches retrieved', {
-        repoPath,
-        commitHash,
-        branchCount: branches.length,
-      });
-&nbsp;
-      return branches;
-    } catch (error) {
-      logger.error('Failed to get branches containing commit', error as Error, {
-        repoPath,
-        commitHash,
-      });
-      throw new GitError(`Failed to get branches for commit: ${commitHash}`, {
-        repoPath,
-        commitHash,
-        originalError: (error as Error).message,
-      });
-    }
-  }
-&nbsp;
-  /**
-   * Get commit information
-   *
-   * @param repoPath - Absolute path to repository
-   * @param commitHash - Commit hash
-   * @returns Commit information
-   */
-  async getCommitInfo(repoPath: string, commitHash: string): Promise&lt;GitCommitInfo&gt; {
-    logger.debug('Getting commit info', { repoPath, commitHash });
-&nbsp;
-    try {
-      const { stdout } = await execAsync(
-        `git log -1 --format='%H%n%h%n%s%n%an%n%ae%n%ai' ${commitHash}`,
-        { cwd: repoPath }
-      );
-&nbsp;
-      const lines = stdout.trim().split('\n');
-      const [hash, shortHash, message, author, email, dateStr] = lines;
-&nbsp;
-      const commitInfo: GitCommitInfo = {
-        hash,
-        shortHash,
-        message,
-        author,
-        email,
-        date: new Date(dateStr),
-      };
-&nbsp;
-      logger.debug('Commit info retrieved', { repoPath, commitHash, shortHash });
-&nbsp;
-      return commitInfo;
-    } catch (error) {
-      logger.error('Failed to get commit info', error as Error, { repoPath, commitHash });
-      throw new GitError(`Failed to get commit info: ${commitHash}`, {
-        repoPath,
-        commitHash,
-        originalError: (error as Error).message,
-      });
-    }
-  }
-&nbsp;
-  /**
-   * Get diff statistics for a commit
-   *
-   * @param repoPath - Absolute path to repository
-   * @param commitHash - Commit hash
-   * @returns Diff statistics
-   */
-  async getDiffStats(repoPath: string, commitHash: string): Promise&lt;GitDiffStats&gt; {
-    logger.debug('Getting diff stats', { repoPath, commitHash });
-&nbsp;
-    try {
-      const { stdout } = await execAsync(`git diff ${commitHash}^ ${commitHash} --stat --numstat`, {
-        cwd: repoPath,
-      });
-&nbsp;
-      // Parse numstat output
-      const lines = stdout.trim().split('\n');
-      let filesChanged = 0;
-      let insertions = 0;
-      let deletions = 0;
-      const files: Array&lt;{ path: string; insertions: number; deletions: number }&gt; = [];
-&nbsp;
-      for (const line of lines) {
-        <span class="missing-if-branch" title="if path not taken" >I</span>if (!line.trim()) <span class="cstat-no" title="statement not covered" >continue;</span>
-&nbsp;
-        const parts = line.split('\t');
-        <span class="missing-if-branch" title="else path not taken" >E</span>if (parts.length === 3) {
-          const ins = parseInt(parts[0], 10) || 0;
-          const del = parseInt(parts[1], 10) || 0;
-          const filePath = parts[2];
-&nbsp;
-          filesChanged++;
-          insertions += ins;
-          deletions += del;
-&nbsp;
-          files.push({
-            path: filePath,
-            insertions: ins,
-            deletions: del,
-          });
-        }
+      if (!doc.path) {
+        issues.push(`Document missing path: ${doc.id}`);
       }
-&nbsp;
-      logger.debug('Diff stats retrieved', {
-        repoPath,
-        commitHash,
-        filesChanged,
-        insertions,
-        deletions,
-      });
-&nbsp;
-      return {
-        filesChanged,
-        insertions,
-        deletions,
-        files,
-      };
-    } catch (error) {
-      logger.error('Failed to get diff stats', error as Error, { repoPath, commitHash });
-      throw new GitError(`Failed to get diff stats: ${commitHash}`, {
-        repoPath,
-        commitHash,
-        originalError: (error as Error).message,
-      });
-    }
-  }
-&nbsp;
-  /**
-   * Get full diff for a commit
-   *
-   * @param repoPath - Absolute path to repository
-   * @param commitHash - Commit hash
-   * @param statOnly - Whether to return only statistics
-   * @returns Diff output
-   */
-  async getDiff(repoPath: string, commitHash: string, statOnly: boolean = false): Promise&lt;string&gt; {
-    logger.debug('Getting diff', { repoPath, commitHash, statOnly });
-&nbsp;
-    try {
-      const statFlag = statOnly ? '--stat' : '';
-      const { stdout } = await execAsync(
-        `git diff ${commitHash}^ ${commitHash} ${statFlag}`.trim(),
-        { cwd: repoPath }
-      );
-&nbsp;
-      logger.debug('Diff retrieved', {
-        repoPath,
-        commitHash,
-        size: stdout.length,
-      });
-&nbsp;
-      return stdout;
-    } catch (error) {
-      logger.error('Failed to get diff', error as Error, { repoPath, commitHash });
-      throw new GitError(`Failed to get diff: ${commitHash}`, {
-        repoPath,
-        commitHash,
-        originalError: (error as Error).message,
-      });
-    }
-  }
-&nbsp;
-  /**
-   * Execute a Git command
-   *
-   * @param command - Git command to execute
-   * @param cwd - Working directory
-   * @returns Command result
-   */
-  async executeCommand(command: string, cwd: string): Promise&lt;GitCommandResult&gt; {
-    logger.debug('Executing Git command', { command, cwd });
-&nbsp;
-    try {
-      const { stdout, stderr } = await execAsync(command, { cwd });
-&nbsp;
-      logger.debug('Git command executed successfully', {
-        command,
-        stdoutLength: stdout.length,
-        stderrLength: stderr.length,
-      });
-&nbsp;
-      return {
-        stdout,
-        stderr,
-        exitCode: 0,
-      };
-    } catch (error) {
-      const execError = error as { stdout?: string; stderr?: string; code?: number };
-&nbsp;
-      logger.error('Git command failed', error as Error, { command, cwd });
-&nbsp;
-      return {
-        stdout: execError.stdout || '',
-        stderr: execError.stderr || <span class="branch-1 cbranch-no" title="branch not covered" >'',</span>
-        exitCode: execError.code || <span class="branch-1 cbranch-no" title="branch not covered" >1,</span>
-      };
-    }
-  }
-&nbsp;
-  /**
-   * Get repository name from path or remote
-   *
-   * @param repoPath - Absolute path to repository
-   * @returns Repository name
-   */
-  async getRepositoryName(repoPath: string): Promise&lt;string&gt; {
-    logger.debug('Getting repository name', { repoPath });
-&nbsp;
-    // Try to get from remote URL first
-    const remoteUrl = await this.getRemoteUrl(repoPath);
-    if (remoteUrl) {
-      // Extract repo name from URL
-      const match = remoteUrl.match(/\/([^/]+?)(\.git)?$/);
-      <span class="missing-if-branch" title="else path not taken" >E</span>if (match) {
-        const name = match[1];
-        logger.debug('Repository name from remote URL', { repoPath, name });
-        return name;
+      if (doc.contentLength &lt; 0) {
+        issues.push(`Document has negative content length: ${doc.id}`);
+      }
+      if (doc.lastModified &lt;= 0) {
+        issues.push(`Document has invalid lastModified: ${doc.id}`);
+      }
+      if (!doc.hash) {
+        issues.push(`Document missing hash: ${doc.id}`);
       }
     }
 &nbsp;
-    // Fallback to directory name
-    const name = path.basename(repoPath);
-    logger.debug('Repository name from directory', { repoPath, name });
-    return name;
+    // Check for duplicate IDs (shouldn't happen with Map, but validate)
+    const idCounts = new Map&lt;string, number&gt;();
+    for (const doc of allDocs) {
+      const count = idCounts.get(doc.id) || 0;
+      idCounts.set(doc.id, count + 1);
+    }
+    for (const [id, count] of idCounts.entries()) {
+      <span class="missing-if-branch" title="if path not taken" >I</span>if (count &gt; 1) {
+<span class="cstat-no" title="statement not covered" >        issues.push(`Duplicate document ID in store: ${id} (${count} occurrences)`);</span>
+      }
+    }
+&nbsp;
+    if (issues.length &gt; 0) {
+      logger.warn('Cache consistency issues found', { issueCount: issues.length });
+    } else {
+      logger.debug('Cache consistency validated successfully');
+    }
+&nbsp;
+    return issues;
+  }
+&nbsp;
+  /**
+   * Generate a detailed validation report
+   *
+   * @param result - Validation result
+   * @returns Formatted report string
+   */
+  generateReport(result: ValidationResult): string {
+    const lines: string[] = [];
+&nbsp;
+    lines.push('Cache Validation Report');
+    lines.push('======================');
+    lines.push('');
+    lines.push(`Timestamp: ${new Date(result.timestamp).toISOString()}`);
+    lines.push(`Total Files Scanned: ${result.totalScanned}`);
+    lines.push(`Total Files Cached: ${result.totalCached}`);
+    lines.push('');
+    lines.push('Changes Detected:');
+    lines.push(`  Added:     ${result.added}`);
+    lines.push(`  Modified:  ${result.modified}`);
+    lines.push(`  Deleted:   ${result.deleted}`);
+    lines.push(`  Unchanged: ${result.unchanged}`);
+    lines.push('');
+&nbsp;
+    const changeRatio = result.totalScanned &gt; 0
+      ? ((result.added + result.modified + result.deleted) / result.totalScanned * 100).toFixed(1)
+      : <span class="branch-1 cbranch-no" title="branch not covered" >'0.0';</span>
+    lines.push(`Change Ratio: ${changeRatio}%`);
+&nbsp;
+    const recommendation = this.shouldUseIncrementalUpdate(result)
+      ? <span class="branch-0 cbranch-no" title="branch not covered" >'INCREMENTAL UPDATE'</span>
+      : 'FULL REBUILD';
+    lines.push(`Recommendation: ${recommendation}`);
+&nbsp;
+    return lines.join('\n');
+  }
+&nbsp;
+  /**
+   * Get detailed change information for debugging
+   *
+   * @param result - Validation result
+   * @param changeType - Optional filter by change type
+   * @returns Detailed change descriptions
+   */
+  getChangeDetails(result: ValidationResult, changeType?: ChangeType): string[] {
+    const changes = changeType
+      ? this.filterByType(result, changeType)
+      : this.getChangedFiles(result);
+&nbsp;
+    return changes.map(change =&gt; {
+      const type = change.changeType.toUpperCase().padEnd(10);
+      const path = change.path;
+      const reason = change.reason ? ` (${change.reason})` : <span class="branch-1 cbranch-no" title="branch not covered" >'';</span>
+      return `${type} ${path}${reason}`;
+    });
   }
 }
 &nbsp;</pre></td></tr></table></pre>
@@ -1149,14 +1395,14 @@ export class GitService {
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
                 at 2026-02-16T06:45:15.172Z
             </div>
-        <script src="../../../prettify.js"></script>
+        <script src="../../../../prettify.js"></script>
         <script>
             window.onload = function () {
                 prettyPrint();
             };
         </script>
-        <script src="../../../sorter.js"></script>
-        <script src="../../../block-navigation.js"></script>
+        <script src="../../../../sorter.js"></script>
+        <script src="../../../../block-navigation.js"></script>
     </body>
 </html>
     

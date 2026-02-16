@@ -3,15 +3,15 @@
 <html lang="en">
 
 <head>
-    <title>Code coverage report for src/services/git/RepositoryDetector.ts</title>
+    <title>Code coverage report for src/services/search/index/InvertedIndex.ts</title>
     <meta charset="utf-8" />
-    <link rel="stylesheet" href="../../../prettify.css" />
-    <link rel="stylesheet" href="../../../base.css" />
-    <link rel="shortcut icon" type="image/x-icon" href="../../../favicon.png" />
+    <link rel="stylesheet" href="../../../../prettify.css" />
+    <link rel="stylesheet" href="../../../../base.css" />
+    <link rel="shortcut icon" type="image/x-icon" href="../../../../favicon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <style type='text/css'>
         .coverage-summary .sorter {
-            background-image: url(../../../sort-arrow-sprite.png);
+            background-image: url(../../../../sort-arrow-sprite.png);
         }
     </style>
 </head>
@@ -19,34 +19,34 @@
 <body>
 <div class='wrapper'>
     <div class='pad1'>
-        <h1><a href="../../../index.html">All files</a> / <a href="index.html">src/services/git</a> RepositoryDetector.ts</h1>
+        <h1><a href="../../../../index.html">All files</a> / <a href="index.html">src/services/search/index</a> InvertedIndex.ts</h1>
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">95.14% </span>
+                <span class="strong">97.02% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>98/103</span>
+                <span class='fraction'>98/101</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">92.72% </span>
+                <span class="strong">93.33% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>51/55</span>
+                <span class='fraction'>42/45</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">84.61% </span>
+                <span class="strong">100% </span>
                 <span class="quiet">Functions</span>
-                <span class='fraction'>11/13</span>
+                <span class='fraction'>20/20</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">96.73% </span>
+                <span class="strong">96.9% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>89/92</span>
+                <span class='fraction'>94/97</span>
             </div>
         
             
@@ -375,7 +375,39 @@
 <a name='L310'></a><a href='#L310'>310</a>
 <a name='L311'></a><a href='#L311'>311</a>
 <a name='L312'></a><a href='#L312'>312</a>
-<a name='L313'></a><a href='#L313'>313</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<a name='L313'></a><a href='#L313'>313</a>
+<a name='L314'></a><a href='#L314'>314</a>
+<a name='L315'></a><a href='#L315'>315</a>
+<a name='L316'></a><a href='#L316'>316</a>
+<a name='L317'></a><a href='#L317'>317</a>
+<a name='L318'></a><a href='#L318'>318</a>
+<a name='L319'></a><a href='#L319'>319</a>
+<a name='L320'></a><a href='#L320'>320</a>
+<a name='L321'></a><a href='#L321'>321</a>
+<a name='L322'></a><a href='#L322'>322</a>
+<a name='L323'></a><a href='#L323'>323</a>
+<a name='L324'></a><a href='#L324'>324</a>
+<a name='L325'></a><a href='#L325'>325</a>
+<a name='L326'></a><a href='#L326'>326</a>
+<a name='L327'></a><a href='#L327'>327</a>
+<a name='L328'></a><a href='#L328'>328</a>
+<a name='L329'></a><a href='#L329'>329</a>
+<a name='L330'></a><a href='#L330'>330</a>
+<a name='L331'></a><a href='#L331'>331</a>
+<a name='L332'></a><a href='#L332'>332</a>
+<a name='L333'></a><a href='#L333'>333</a>
+<a name='L334'></a><a href='#L334'>334</a>
+<a name='L335'></a><a href='#L335'>335</a>
+<a name='L336'></a><a href='#L336'>336</a>
+<a name='L337'></a><a href='#L337'>337</a>
+<a name='L338'></a><a href='#L338'>338</a>
+<a name='L339'></a><a href='#L339'>339</a>
+<a name='L340'></a><a href='#L340'>340</a>
+<a name='L341'></a><a href='#L341'>341</a>
+<a name='L342'></a><a href='#L342'>342</a>
+<a name='L343'></a><a href='#L343'>343</a>
+<a name='L344'></a><a href='#L344'>344</a>
+<a name='L345'></a><a href='#L345'>345</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -392,12 +424,7 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">4x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -413,8 +440,70 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">44x</span>
-<span class="cline-any cline-yes">44x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">114x</span>
+<span class="cline-any cline-yes">114x</span>
+<span class="cline-any cline-yes">114x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">12873x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">12872x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">12872x</span>
+<span class="cline-any cline-yes">59621x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">12872x</span>
+<span class="cline-any cline-yes">1177x</span>
+<span class="cline-any cline-yes">1177x</span>
+<span class="cline-any cline-yes">1177x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">542992x</span>
+<span class="cline-any cline-yes">12872x</span>
+<span class="cline-any cline-yes">2869x</span>
+<span class="cline-any cline-yes">2869x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">10003x</span>
+<span class="cline-any cline-yes">10003x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">10003x</span>
+<span class="cline-any cline-yes">10003x</span>
+<span class="cline-any cline-yes">10003x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">10003x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">10000x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">10003x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">10006x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -426,195 +515,27 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">5x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">5x</span>
+<span class="cline-any cline-yes">35x</span>
+<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">5x</span>
-<span class="cline-any cline-yes">13x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">11x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">11x</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">34x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">34x</span>
+<span class="cline-any cline-yes">1138x</span>
+<span class="cline-any cline-yes">1138x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">11x</span>
-<span class="cline-any cline-yes">10x</span>
-<span class="cline-any cline-yes">15x</span>
 <span class="cline-any cline-yes">8x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1130x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">5x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">5x</span>
-<span class="cline-any cline-yes">5x</span>
-<span class="cline-any cline-yes">11x</span>
-<span class="cline-any cline-yes">11x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">7x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">7x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">5x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">5x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">11x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">11x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">11x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">11x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">10x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">10x</span>
-<span class="cline-any cline-yes">15x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">15x</span>
-<span class="cline-any cline-yes">13x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">10x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">10x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">10x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">11x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">15x</span>
-<span class="cline-any cline-yes">15x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">15x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">26x</span>
-<span class="cline-any cline-yes">15x</span>
-<span class="cline-any cline-yes">15x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">15x</span>
-<span class="cline-any cline-yes">7x</span>
-<span class="cline-any cline-yes">7x</span>
-<span class="cline-any cline-yes">7x</span>
-<span class="cline-any cline-yes">7x</span>
+<span class="cline-any cline-yes">26x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">15x</span>
-<span class="cline-any cline-yes">4x</span>
-<span class="cline-any cline-yes">4x</span>
-<span class="cline-any cline-yes">4x</span>
-<span class="cline-any cline-yes">4x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">15x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">15x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">14x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">13x</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -623,20 +544,55 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">15x</span>
-<span class="cline-any cline-yes">14x</span>
-<span class="cline-any cline-yes">14x</span>
-<span class="cline-any cline-yes">14x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">531x</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">531x</span>
+<span class="cline-any cline-yes">531x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">531x</span>
+<span class="cline-any cline-yes">3135x</span>
+<span class="cline-any cline-yes">3135x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">15x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">15x</span>
+<span class="cline-any cline-yes">3134x</span>
+<span class="cline-any cline-yes">3134x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">530x</span>
+<span class="cline-any cline-yes">530x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">530x</span>
+<span class="cline-any cline-yes">8x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">8x</span>
+<span class="cline-any cline-yes">31x</span>
+<span class="cline-any cline-yes">31x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">31x</span>
+<span class="cline-any cline-yes">27x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">8x</span>
+<span class="cline-any cline-yes">8x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">530x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -647,27 +603,20 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">9x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">9x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">9x</span>
+<span class="cline-any cline-yes">524x</span>
+<span class="cline-any cline-yes">18x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">9x</span>
+<span class="cline-any cline-yes">9x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -679,324 +628,471 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">3x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-yes">6x</span>
+<span class="cline-any cline-yes">6x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">5x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">18x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">113x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">88x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">5x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">2x</span>
 <span class="cline-any cline-yes">2x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">/**
- * RepositoryDetector - Repository detection from file access patterns
+ * InvertedIndex - Trie-based inverted index for full-text search
  *
- * Responsible for:
- * - Discovering Git repositories in filesystem
- * - Scoring repositories based on file access patterns
- * - Detecting relevant repositories for sessions
- * - Providing ranked repository candidates
+ * Maps terms � documents using a compressed Trie structure.
+ * Provides O(log n) term lookups and supports incremental updates.
+ *
+ * Responsibilities:
+ * - Add/remove terms for documents
+ * - Retrieve postings (documents containing a term)
+ * - Prefix search for autocomplete/fuzzy matching
+ * - Persistence (serialize/deserialize)
  */
 &nbsp;
-import * as fs from 'fs/promises';
-import * as path from 'path';
-import { createLogger } from '../../utils/logger.js';
-import { GitService } from './GitService.js';
-import type { RepoCandidate, RepositoryDetectionOptions } from '../../models/Git.js';
-import type { FileAccess } from '../../models/Session.js';
+import { TrieNode } from './TrieNode.js';
+import type { DocumentPosting } from '../../../models/IndexModels.js';
+import { createLogger } from '../../../utils/logger.js';
 &nbsp;
-const logger = createLogger('RepositoryDetector');
+const logger = createLogger('InvertedIndex');
 &nbsp;
 /**
- * Default scoring weights
+ * Inverted index implementation using Trie data structure
  */
-const SCORING = {
-  EDITED_FILE: 10,
-  READ_FILE: 5,
-  SESSION_TOPIC_MATCH: 20,
-  IS_CWD: 15,
-  CWD_WITHIN_REPO: 8,
-  REPO_WITHIN_CWD: 5,
-} as const;
+export class InvertedIndex {
+  /**
+   * Root of the Trie
+   */
+  private root: TrieNode;
 &nbsp;
-/**
- * Service for detecting Git repositories from file access patterns
- */
-export class RepositoryDetector {
-  private gitService: GitService;
+  /**
+   * Total number of unique terms in the index
+   */
+  private termCount: number;
 &nbsp;
-  constructor(gitService: GitService) {
-    this.gitService = gitService;
-    logger.info('RepositoryDetector initialized');
+  /**
+   * Create a new inverted index
+   */
+  constructor() {
+    this.root = new TrieNode();
+    this.termCount = 0;
+    logger.debug('InvertedIndex created');
   }
 &nbsp;
   /**
-   * Find all Git repositories starting from a directory
+   * Add a term to the index for a specific document
    *
-   * Searches subdirectories (up to maxDepth) and parent directories (up to 3 levels up)
-   *
-   * @param startPath - Starting directory path
-   * @param maxDepth - Maximum depth to search subdirectories (default: 2)
-   * @returns Array of repository paths
+   * @param term - The term to add (should be normalized/lowercased)
+   * @param posting - Document posting information
    */
-  async findRepositories(startPath: string, maxDepth: number = 2): Promise&lt;string[]&gt; {
-    logger.debug('Finding repositories', { startPath, maxDepth });
-&nbsp;
-    const repos: string[] = [];
-&nbsp;
-    // Search subdirectories
-    const searchDir = async (dirPath: string, depth: number): Promise&lt;void&gt; =&gt; {
-      if (depth &gt; maxDepth) return;
-&nbsp;
-      try {
-        // Check if this directory is a git repo
-        if (await this.gitService.isGitRepository(dirPath)) {
-          repos.push(dirPath);
-          logger.debug('Found repository in subdirectory', { path: dirPath, depth });
-        }
-&nbsp;
-        // Search subdirectories
-        const entries = await fs.readdir(dirPath, { withFileTypes: true });
-        for (const entry of entries) {
-          if (entry.isDirectory() &amp;&amp; entry.name !== 'node_modules' &amp;&amp; entry.name !== '.git') {
-            await searchDir(path.join(dirPath, entry.name), depth + 1);
-          }
-        }
-      } catch (error) {
-        // Skip directories we can't access
-        logger.debug('Skipping inaccessible directory', {
-          dirPath,
-          error: (error as Error).message,
-        });
-      }
-    };
-&nbsp;
-    await searchDir(startPath, 0);
-&nbsp;
-    // Also check parent directories (up to 3 levels)
-    let currentPath = startPath;
-    for (let i = 0; i &lt; 3; i++) {
-      const parentPath = path.dirname(currentPath);
-      if (parentPath === currentPath) break; // Reached root
-&nbsp;
-      if (await this.gitService.isGitRepository(parentPath)) {
-        <span class="missing-if-branch" title="else path not taken" >E</span>if (!repos.includes(parentPath)) {
-          repos.push(parentPath);
-          logger.debug('Found repository in parent directory', { path: parentPath, level: i + 1 });
-        }
-      }
-&nbsp;
-      currentPath = parentPath;
+  addTerm(term: string, posting: DocumentPosting): void {
+    if (!term || term.length === 0) {
+      logger.warn('Attempted to add empty term');
+      return;
     }
 &nbsp;
-    logger.info('Repository search complete', {
-      startPath,
-      repositoriesFound: repos.length,
-    });
+    let node = this.root;
 &nbsp;
-    return repos;
+    // Traverse/create path for each character
+    for (const char of term) {
+      node = node.addChild(char);
+    }
+&nbsp;
+    // Mark as end of word and add posting
+    if (!node.isEndOfWord) {
+      node.markAsEndOfWord([]);
+      this.termCount++;
+      logger.debug('New term added to index', { term, termCount: this.termCount });
+    }
+&nbsp;
+    // Check if posting already exists for this document
+    const existingPosting = node.getPostings().find(p =&gt; p.docId === posting.docId);
+    if (!existingPosting) {
+      node.addPosting(posting);
+      logger.debug('Posting added for term', { term, docId: posting.docId });
+    } else {
+      // Merge with existing posting
+      existingPosting.termFrequency += posting.termFrequency;
+      existingPosting.positions.push(...posting.positions);
+&nbsp;
+      // Merge field scores (aggregate by field)
+      for (const newFieldScore of posting.fieldScores) {
+        const existingFieldScore = existingPosting.fieldScores.find(
+          fs =&gt; fs.field === newFieldScore.field
+        );
+        if (existingFieldScore) {
+          // Update frequency for existing field
+          existingFieldScore.frequency += newFieldScore.frequency;
+        } else {
+          // Add new field score
+          existingPosting.fieldScores.push(newFieldScore);
+        }
+      }
+&nbsp;
+      logger.debug('Posting merged for term', {
+        term,
+        docId: posting.docId,
+        totalFrequency: existingPosting.termFrequency,
+        fields: existingPosting.fieldScores.map(fs =&gt; fs.field),
+      });
+    }
   }
 &nbsp;
   /**
-   * Detect relevant repositories based on file access patterns
+   * Get all document postings for a term
    *
-   * @param filesAccessed - Array of file access records
-   * @param options - Detection options
-   * @returns Array of scored repository candidates
+   * @param term - The term to look up
+   * @returns Array of postings, or empty array if term not found
    */
-  async detectFromFileAccess(
-    filesAccessed: FileAccess[],
-    options: RepositoryDetectionOptions &amp; {
-      cwd?: string;
-      sessionId?: string;
-    } = {}
-  ): Promise&lt;RepoCandidate[]&gt; {
-    const {
-      minScore = 0,
-      maxCandidates = 10,
-      includeMetadata = true,
-      cwd = process.env.PWD || <span class="branch-1 cbranch-no" title="branch not covered" >process.cwd(),</span>
-      sessionId,
-    } = options;
-&nbsp;
-    logger.debug('Detecting repositories from file access', {
-      filesAccessedCount: filesAccessed.length,
-      cwd,
-      sessionId,
-    });
-&nbsp;
-    // Find all repositories
-    const repoPaths = await this.findRepositories(cwd);
-&nbsp;
-    if (repoPaths.length === 0) {
-      logger.info('No repositories found');
+  getPostings(term: string): DocumentPosting[] {
+    if (!term || term.length === 0) {
       return [];
     }
 &nbsp;
-    // Score each repository
-    const candidates: RepoCandidate[] = [];
+    let node = this.root;
 &nbsp;
-    for (const repoPath of repoPaths) {
-      const candidate = await this.scoreRepository(
-        repoPath,
-        filesAccessed,
-        cwd,
-        sessionId,
-        includeMetadata
-      );
-&nbsp;
-      // Include if score meets threshold or if it's the only repo
-      if (candidate.score &gt;= minScore || repoPaths.length === 1) {
-        candidates.push(candidate);
+    // Traverse the trie
+    for (const char of term) {
+      const child = node.getChild(char);
+      if (!child) {
+        // Term not in index
+        return [];
       }
+      node = child;
     }
 &nbsp;
-    // Sort by score (descending)
-    candidates.sort((a, b) =&gt; b.score - a.score);
+    // Return postings if this is a complete term
+    <span class="missing-if-branch" title="else path not taken" >E</span>if (node.isEndOfWord) {
+      return node.getPostings();
+    }
 &nbsp;
-    // Limit results
-    const limitedCandidates = candidates.slice(0, maxCandidates);
-&nbsp;
-    logger.info('Repository detection complete', {
-      candidatesFound: limitedCandidates.length,
-      topScore: limitedCandidates[0]?.score,
-    });
-&nbsp;
-    return limitedCandidates;
+<span class="cstat-no" title="statement not covered" >    return [];</span>
   }
 &nbsp;
   /**
-   * Score a repository based on file access patterns and session context
+   * Remove all postings for a specific document from a term
    *
-   * @param repoPath - Repository path
-   * @param filesAccessed - File access records
-   * @param cwd - Current working directory
-   * @param sessionId - Session identifier
-   * @param includeMetadata - Whether to fetch branch/remote info
-   * @returns Scored repository candidate
+   * @param term - The term to update
+   * @param docId - The document ID to remove
+   * @returns True if posting was removed
    */
-  private async scoreRepository(
-    repoPath: string,
-    filesAccessed: FileAccess[],
-    cwd: string,
-    sessionId?: string,
-    includeMetadata: boolean = true
-  ): Promise&lt;RepoCandidate&gt; {
-    let score = 0;
-    const reasons: string[] = [];
-&nbsp;
-    logger.debug('Scoring repository', { repoPath });
-&nbsp;
-    // Score based on files accessed in this repo
-    const filesInRepo = filesAccessed.filter(f =&gt; f.path.startsWith(repoPath));
-    const editedFiles = filesInRepo.filter(f =&gt; f.action === 'edit' || f.action === 'create');
-    const readFiles = filesInRepo.filter(f =&gt; f.action === 'read');
-&nbsp;
-    if (editedFiles.length &gt; 0) {
-      const points = editedFiles.length * SCORING.EDITED_FILE;
-      score += points;
-      reasons.push(`${editedFiles.length} file(s) modified`);
-      logger.debug('Scored edited files', { repoPath, editedFiles: editedFiles.length, points });
+  removeTerm(term: string, docId: string): boolean {
+    <span class="missing-if-branch" title="if path not taken" >I</span>if (!term || term.length === 0) {
+<span class="cstat-no" title="statement not covered" >      return false;</span>
     }
 &nbsp;
-    if (readFiles.length &gt; 0) {
-      const points = readFiles.length * SCORING.READ_FILE;
-      score += points;
-      reasons.push(`${readFiles.length} file(s) read`);
-      logger.debug('Scored read files', { repoPath, readFiles: readFiles.length, points });
+    let node = this.root;
+    const path: Array&lt;{ node: TrieNode; char: string }&gt; = [];
+&nbsp;
+    // Traverse the trie, recording path
+    for (const char of term) {
+      const child = node.getChild(char);
+      if (!child) {
+        // Term not in index
+        return false;
+      }
+      path.push({ node, char });
+      node = child;
     }
 &nbsp;
-    // Score based on session topic matching repo name
-    if (sessionId) {
-      const repoName = path.basename(repoPath);
-      <span class="missing-if-branch" title="else path not taken" >E</span>if (sessionId.toLowerCase().includes(repoName.toLowerCase())) {
-        score += SCORING.SESSION_TOPIC_MATCH;
-        reasons.push('Session topic matches repo name');
-        logger.debug('Scored session topic match', { repoPath, repoName, sessionId });
+    // Remove posting if term exists
+    <span class="missing-if-branch" title="else path not taken" >E</span>if (node.isEndOfWord) {
+      const removed = node.removePosting(docId);
+&nbsp;
+      // If no postings left, clean up the trie
+      if (node.getPostings().length === 0 &amp;&amp; !node.hasChildren()) {
+        node.clearPostings();
+&nbsp;
+        // Remove nodes from bottom up if they have no children and aren't end of other words
+        for (let i = path.length - 1; i &gt;= 0; i--) {
+          const { node: parentNode, char } = path[i];
+          const childNode = parentNode.getChild(char);
+&nbsp;
+          if (childNode &amp;&amp; !childNode.hasChildren() &amp;&amp; !childNode.isEndOfWord) {
+            parentNode.removeChild(char);
+          } else {
+            break; // Stop if we hit a node that's still needed
+          }
+        }
+&nbsp;
+        this.termCount--;
+        logger.debug('Term removed from index', { term, termCount: this.termCount });
+      }
+&nbsp;
+      return removed;
+    }
+&nbsp;
+<span class="cstat-no" title="statement not covered" >    return false;</span>
+  }
+&nbsp;
+  /**
+   * Remove all terms for a specific document
+   * This is expensive (O(n) where n = total terms) - use sparingly
+   *
+   * @param docId - The document ID to remove
+   * @returns Number of terms removed
+   */
+  removeDocument(docId: string): number {
+    let removedCount = 0;
+&nbsp;
+    // Get all terms and their postings
+    const allTerms = this.getAllTerms();
+&nbsp;
+    // Remove this document from each term's postings
+    for (const [term] of allTerms) {
+      if (this.removeTerm(term, docId)) {
+        removedCount++;
       }
     }
 &nbsp;
-    // Score based on proximity to CWD
-    if (repoPath === cwd) {
-      score += SCORING.IS_CWD;
-      reasons.push('Repo is current working directory');
-      logger.debug('Scored CWD match', { repoPath });
-    } else if (cwd.startsWith(repoPath)) {
-      score += SCORING.CWD_WITHIN_REPO;
-      reasons.push('CWD is within this repo');
-      logger.debug('Scored CWD within repo', { repoPath, cwd });
-    <span class="missing-if-branch" title="if path not taken" >I</span>} else if (repoPath.startsWith(cwd)) {
-<span class="cstat-no" title="statement not covered" >      score += SCORING.REPO_WITHIN_CWD;</span>
-<span class="cstat-no" title="statement not covered" >      reasons.push('Repo is subdirectory of CWD');</span>
-<span class="cstat-no" title="statement not covered" >      logger.debug('Scored repo within CWD', { repoPath, cwd });</span>
+    logger.debug('Document removed from index', { docId, termsRemoved: removedCount });
+    return removedCount;
+  }
+&nbsp;
+  /**
+   * Get all terms with a given prefix
+   * Useful for autocomplete and fuzzy search
+   *
+   * @param prefix - The prefix to search for
+   * @returns Array of terms matching the prefix
+   */
+  getTermsWithPrefix(prefix: string): string[] {
+    if (!prefix || prefix.length === 0) {
+      return [];
     }
 &nbsp;
-    // Get repository metadata if requested
-    let branch: string | undefined;
-    let remote: string | null | undefined;
-    let name: string;
+    let node = this.root;
 &nbsp;
-    if (includeMetadata) {
-      name = await this.gitService.getRepositoryName(repoPath);
-      branch = await this.gitService.getCurrentBranch(repoPath).catch(<span class="fstat-no" title="function not covered" >() =&gt; <span class="cstat-no" title="statement not covered" >u</span>ndefined)</span>;
-      remote = await this.gitService.getRemoteUrl(repoPath).catch(<span class="fstat-no" title="function not covered" >() =&gt; <span class="cstat-no" title="statement not covered" >u</span>ndefined)</span>;
-    } else {
-      name = path.basename(repoPath);
+    // Navigate to the prefix node
+    for (const char of prefix) {
+      const child = node.getChild(char);
+      if (!child) {
+        // Prefix not in index
+        return [];
+      }
+      node = child;
     }
 &nbsp;
-    logger.debug('Repository scored', { repoPath, name, score, reasonsCount: reasons.length });
+    // Collect all complete terms from this node
+    const terms = node.getAllTerms(prefix);
+    return terms.map(([term]) =&gt; term);
+  }
 &nbsp;
+  /**
+   * Check if a term exists in the index
+   *
+   * @param term - The term to check
+   * @returns True if term exists
+   */
+  hasTerm(term: string): boolean {
+    return this.getPostings(term).length &gt; 0;
+  }
+&nbsp;
+  /**
+   * Get total number of unique terms
+   *
+   * @returns Number of terms
+   */
+  getTermCount(): number {
+    return this.termCount;
+  }
+&nbsp;
+  /**
+   * Get all terms and their postings
+   * WARNING: This is expensive for large indexes
+   *
+   * @returns Array of [term, postings] tuples
+   */
+  getAllTerms(): Array&lt;[string, DocumentPosting[]]&gt; {
+    return this.root.getAllTerms();
+  }
+&nbsp;
+  /**
+   * Get document frequency (number of documents containing a term)
+   *
+   * @param term - The term to check
+   * @returns Number of documents containing this term
+   */
+  getDocumentFrequency(term: string): number {
+    return this.getPostings(term).length;
+  }
+&nbsp;
+  /**
+   * Clear the entire index
+   */
+  clear(): void {
+    this.root = new TrieNode();
+    this.termCount = 0;
+    logger.info('Index cleared');
+  }
+&nbsp;
+  /**
+   * Get estimated memory usage
+   *
+   * @returns Estimated memory in bytes
+   */
+  getMemoryUsage(): number {
+    return this.root.getMemoryUsage();
+  }
+&nbsp;
+  /**
+   * Serialize the index to a plain object (for persistence)
+   *
+   * @returns Serialized index
+   */
+  toJSON(): Record&lt;string, unknown&gt; {
     return {
-      path: repoPath,
-      name,
-      score,
-      reasons,
-      branch,
-      remote,
+      root: this.root.toJSON(),
+      termCount: this.termCount,
     };
   }
 &nbsp;
   /**
-   * Get the top repository candidate from file access
+   * Deserialize an index from a plain object
    *
-   * Helper method for sessions that want a single "best guess" repository
-   *
-   * @param filesAccessed - File access records
-   * @param options - Detection options
-   * @returns Top repository candidate or null if none found
+   * @param obj - Serialized index
+   * @returns New InvertedIndex instance
    */
-  async getTopCandidate(
-    filesAccessed: FileAccess[],
-    options: RepositoryDetectionOptions &amp; {
-      cwd?: string;
-      sessionId?: string;
-    } = {}
-  ): Promise&lt;RepoCandidate | null&gt; {
-    const candidates = await this.detectFromFileAccess(filesAccessed, {
-      ...options,
-      maxCandidates: 1,
-    });
-&nbsp;
-    return candidates[0] || null;
+  static fromJSON(obj: Record&lt;string, unknown&gt;): InvertedIndex {
+    const index = new InvertedIndex();
+    index.root = TrieNode.fromJSON(obj.root as Record&lt;string, unknown&gt;);
+    index.termCount = obj.termCount as number;
+    logger.info('Index loaded from JSON', { termCount: index.termCount });
+    return index;
   }
 &nbsp;
   /**
-   * Check if a candidate is a clear winner
+   * Get statistics about the index
    *
-   * A candidate is considered a clear winner if:
-   * - It's the only candidate, OR
-   * - Its score is more than 2x the next highest score
-   *
-   * @param candidates - Sorted array of candidates (highest score first)
-   * @returns true if first candidate is a clear winner
+   * @returns Index statistics
    */
-  isClearWinner(candidates: RepoCandidate[]): boolean {
-    if (candidates.length === 0) return false;
-    if (candidates.length === 1) return true;
+  getStatistics(): {
+    termCount: number;
+    memoryUsage: number;
+    avgPostingsPerTerm: number;
+  } {
+    const allTerms = this.getAllTerms();
+    const totalPostings = allTerms.reduce((sum, [, postings]) =&gt; sum + postings.length, 0);
 &nbsp;
-    const topScore = candidates[0].score;
-    const secondScore = candidates[1].score;
-&nbsp;
-    return topScore &gt; secondScore * 2;
+    return {
+      termCount: this.termCount,
+      memoryUsage: this.getMemoryUsage(),
+      avgPostingsPerTerm: this.termCount &gt; 0 ? totalPostings / this.termCount : 0,
+    };
   }
 }
 &nbsp;</pre></td></tr></table></pre>
@@ -1008,14 +1104,14 @@ export class RepositoryDetector {
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
                 at 2026-02-16T06:45:15.172Z
             </div>
-        <script src="../../../prettify.js"></script>
+        <script src="../../../../prettify.js"></script>
         <script>
             window.onload = function () {
                 prettyPrint();
             };
         </script>
-        <script src="../../../sorter.js"></script>
-        <script src="../../../block-navigation.js"></script>
+        <script src="../../../../sorter.js"></script>
+        <script src="../../../../block-navigation.js"></script>
     </body>
 </html>
     
