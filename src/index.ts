@@ -8,7 +8,7 @@ import {
   Tool,
 } from '@modelcontextprotocol/sdk/types.js';
 import fs from 'fs/promises';
-import fssync from 'fs';
+import fssync, { type Stats } from 'fs';
 import https from 'https';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -168,7 +168,15 @@ function loadFullConfig(): FullServerConfig {
           hasModeSupport: false,
         };
       }
-    } catch {
+    } catch (error) {
+      // ENOENT is expected for non-existent config paths; log others
+      const isNotFound =
+        error instanceof Error && 'code' in error && (error as { code?: string }).code === 'ENOENT';
+      if (!isNotFound) {
+        logger.warn(`Failed to parse config at ${configPath}`, {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
       continue;
     }
   }
@@ -239,6 +247,16 @@ function loadConfig(): ServerConfig {
 const CONFIG = loadConfig();
 const VAULT_PATH = CONFIG.primaryVault.path; // Keep for backward compatibility
 
+// Validate that configured vault paths exist on startup
+{
+  const allVaultPaths = [CONFIG.primaryVault.path, ...CONFIG.secondaryVaults.map(v => v.path)];
+  for (const vaultPath of allVaultPaths) {
+    if (!fssync.existsSync(vaultPath)) {
+      logger.warn(`Configured vault path does not exist: ${vaultPath}`);
+    }
+  }
+}
+
 interface EmbeddingCacheEntry {
   file: string;
   embedding: number[];
@@ -293,21 +311,24 @@ class ObsidianMCPServer {
   // Track if Phase 1 analysis has completed to prevent loop bug
   private phase1Completed: boolean = false;
   // Store Phase 1 session data for context truncation recovery (Decision 048)
-  // eslint-disable-next-line @typescript-eslint/no-redundant-type-constituents
-  private phase1SessionData: any | null = null;
+  private phase1SessionData: tools.SessionData | null = null;
   private embeddingConfig: EmbeddingConfig;
   // LRU cache with 2000 entry limit (~6MB for embeddings at 384 dimensions × 4 bytes × 2000)
   // Prevents unbounded memory growth during heavy search sessions
   private embeddingCache: LRUCache<string, EmbeddingCacheEntry> = new LRUCache({
     maxSize: 2000,
   });
-  private extractor: any = null;
+  // Xenova transformers pipeline function for feature extraction
+
+  private extractor: ((text: string, options: Record<string, unknown>) => Promise<any>) | null =
+    null;
   private embeddingInitPromise: Promise<void> | null = null;
   private embeddingToggleFile: string = '';
   private gitService: GitService;
   private sessionStateFile: SessionStateFile;
   private indexBuilders: Map<string, IndexBuilder> = new Map(); // Per-vault index builders
   private indexedSearches: Map<string, IndexedSearch> = new Map(); // Per-vault indexed searches
+  private modeSwitching: boolean = false; // Guard against concurrent mode switches
 
   constructor() {
     this.config = CONFIG;
@@ -456,6 +477,16 @@ class ObsidianMCPServer {
   } {
     const previousMode = currentMode;
 
+    // Prevent concurrent mode switches
+    if (this.modeSwitching) {
+      return {
+        success: false,
+        message: 'A mode switch is already in progress. Please wait and try again.',
+        previousMode,
+        currentMode: previousMode,
+      };
+    }
+
     // Check if mode switching is supported
     if (!isModeSupported()) {
       return {
@@ -489,84 +520,89 @@ class ObsidianMCPServer {
     }
 
     // Update the global mode
-    currentMode = mode;
-
-    // Get the new configuration for this mode
+    this.modeSwitching = true;
     try {
-      this.config = getConfigForMode(mode);
-    } catch (error) {
-      // Rollback on failure
-      currentMode = previousMode;
-      return {
-        success: false,
-        message: `Failed to switch to ${mode} mode: ${error instanceof Error ? error.message : String(error)}`,
-        previousMode,
-        currentMode: previousMode,
-      };
-    }
+      currentMode = mode;
 
-    // Reinitialize embedding config with new vault paths
-    const cacheDirs = new Map<string, string>();
-    cacheDirs.set(
-      this.config.primaryVault.path,
-      path.join(this.config.primaryVault.path, '.embedding-cache')
-    );
-    for (const vault of this.config.secondaryVaults) {
-      cacheDirs.set(vault.path, path.join(vault.path, '.embedding-cache'));
-    }
-    this.embeddingConfig.cacheDirs = cacheDirs;
-    this.embeddingToggleFile = path.join(this.config.primaryVault.path, '.embedding-toggle.json');
-
-    // Clear embedding cache (will be repopulated as needed)
-    this.embeddingCache.clear();
-
-    // Reinitialize index builders and indexed searches for new vaults
-    this.indexBuilders.clear();
-    this.indexedSearches.clear();
-
-    if (DEFAULT_INDEX_CONFIG.enabled) {
-      const vaultAuthorities = this.buildVaultAuthoritiesMap();
-
-      // Primary vault
-      const primaryCacheDir = path.join(
-        this.config.primaryVault.path,
-        DEFAULT_INDEX_CONFIG.cacheDir
-      );
-      const primaryBuilder = new IndexBuilder(primaryCacheDir);
-      this.indexBuilders.set(this.config.primaryVault.path, primaryBuilder);
-      this.indexedSearches.set(
-        this.config.primaryVault.path,
-        new IndexedSearch(primaryBuilder, primaryCacheDir, vaultAuthorities)
-      );
-
-      // Secondary vaults
-      for (const vault of this.config.secondaryVaults) {
-        const cacheDir = path.join(vault.path, DEFAULT_INDEX_CONFIG.cacheDir);
-        const builder = new IndexBuilder(cacheDir);
-        this.indexBuilders.set(vault.path, builder);
-        this.indexedSearches.set(
-          vault.path,
-          new IndexedSearch(builder, cacheDir, vaultAuthorities)
-        );
+      // Get the new configuration for this mode
+      try {
+        this.config = getConfigForMode(mode);
+      } catch (error) {
+        // Rollback on failure
+        currentMode = previousMode;
+        return {
+          success: false,
+          message: `Failed to switch to ${mode} mode: ${error instanceof Error ? error.message : String(error)}`,
+          previousMode,
+          currentMode: previousMode,
+        };
       }
+
+      // Reinitialize embedding config with new vault paths
+      const cacheDirs = new Map<string, string>();
+      cacheDirs.set(
+        this.config.primaryVault.path,
+        path.join(this.config.primaryVault.path, '.embedding-cache')
+      );
+      for (const vault of this.config.secondaryVaults) {
+        cacheDirs.set(vault.path, path.join(vault.path, '.embedding-cache'));
+      }
+      this.embeddingConfig.cacheDirs = cacheDirs;
+      this.embeddingToggleFile = path.join(this.config.primaryVault.path, '.embedding-toggle.json');
+
+      // Clear embedding cache (will be repopulated as needed)
+      this.embeddingCache.clear();
+
+      // Reinitialize index builders and indexed searches for new vaults
+      this.indexBuilders.clear();
+      this.indexedSearches.clear();
+
+      if (DEFAULT_INDEX_CONFIG.enabled) {
+        const vaultAuthorities = this.buildVaultAuthoritiesMap();
+
+        // Primary vault
+        const primaryCacheDir = path.join(
+          this.config.primaryVault.path,
+          DEFAULT_INDEX_CONFIG.cacheDir
+        );
+        const primaryBuilder = new IndexBuilder(primaryCacheDir);
+        this.indexBuilders.set(this.config.primaryVault.path, primaryBuilder);
+        this.indexedSearches.set(
+          this.config.primaryVault.path,
+          new IndexedSearch(primaryBuilder, primaryCacheDir, vaultAuthorities)
+        );
+
+        // Secondary vaults
+        for (const vault of this.config.secondaryVaults) {
+          const cacheDir = path.join(vault.path, DEFAULT_INDEX_CONFIG.cacheDir);
+          const builder = new IndexBuilder(cacheDir);
+          this.indexBuilders.set(vault.path, builder);
+          this.indexedSearches.set(
+            vault.path,
+            new IndexedSearch(builder, cacheDir, vaultAuthorities)
+          );
+        }
+      }
+
+      // Reinitialize SessionStateFile for new primary vault (Decision 054)
+      this.sessionStateFile = new SessionStateFile(this.config.primaryVault.path);
+
+      logger.info('Mode switched', {
+        previousMode,
+        currentMode: mode,
+        primaryVault: this.config.primaryVault.name,
+        secondaryVaults: this.config.secondaryVaults.length,
+      });
+
+      return {
+        success: true,
+        message: `Switched from ${previousMode} mode to ${mode} mode. Now using ${this.config.primaryVault.name} as primary vault.`,
+        previousMode,
+        currentMode: mode,
+      };
+    } finally {
+      this.modeSwitching = false;
     }
-
-    // Reinitialize SessionStateFile for new primary vault (Decision 054)
-    this.sessionStateFile = new SessionStateFile(this.config.primaryVault.path);
-
-    logger.info('Mode switched', {
-      previousMode,
-      currentMode: mode,
-      primaryVault: this.config.primaryVault.name,
-      secondaryVaults: this.config.secondaryVaults.length,
-    });
-
-    return {
-      success: true,
-      message: `Switched from ${previousMode} mode to ${mode} mode. Now using ${this.config.primaryVault.name} as primary vault.`,
-      previousMode,
-      currentMode: mode,
-    };
   }
 
   private setupHandlers(): void {
@@ -1093,6 +1129,13 @@ class ObsidianMCPServer {
         const entries = JSON.parse(data) as EmbeddingCacheEntry[];
 
         for (const entry of entries) {
+          // Sanitize: reject entries with path traversal attempts
+          if (entry.file.includes('..') || path.isAbsolute(entry.file)) {
+            logger.warn('Skipping embedding cache entry with suspicious path', {
+              file: entry.file,
+            });
+            continue;
+          }
           // Reconstruct absolute file path for cache key
           const absolutePath = path.join(vaultPath, entry.file);
           const cacheEntry: EmbeddingCacheEntry = {
@@ -1106,8 +1149,17 @@ class ObsidianMCPServer {
             timestamp: entry.timestamp,
           });
         }
-      } catch {
-        // Cache file doesn't exist for this vault yet, which is fine
+      } catch (error) {
+        // ENOENT is expected when cache doesn't exist yet; log other errors
+        const isNotFound =
+          error instanceof Error &&
+          'code' in error &&
+          (error as { code?: string }).code === 'ENOENT';
+        if (!isNotFound) {
+          logger.warn(`Failed to load embedding cache for vault ${vaultPath}`, {
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
       }
     }
 
@@ -1169,7 +1221,7 @@ class ObsidianMCPServer {
     logger.info('Saved embeddings to cache', { size: stats.size });
   }
 
-  private getCachedEmbedding(file: string, fileStats: any): number[] | null {
+  private getCachedEmbedding(file: string, fileStats: Stats): number[] | null {
     if (!this.embeddingConfig.enabled) {
       return null;
     }
@@ -1189,7 +1241,7 @@ class ObsidianMCPServer {
   private async getOrCreateEmbedding(
     file: string,
     content: string,
-    fileStats: any
+    fileStats: Stats
   ): Promise<number[]> {
     // Try to get from cache
     const cached = this.getCachedEmbedding(file, fileStats);
@@ -2415,7 +2467,7 @@ Check the sessions/ directory for recent conversations.
 
       // Read the project file to find linked sessions
       const content = await fs.readFile(projectFile, 'utf-8');
-      const sessionLinks = content.match(/\[\[2025-\d{2}_\d{2}-\d{2}-\d{2}[^\]]*\]\]/g) || [];
+      const sessionLinks = content.match(/\[\[\d{4}-\d{2}_\d{2}-\d{2}-\d{2}[^\]]*\]\]/g) || [];
 
       if (sessionLinks.length === 0) {
         return null;
@@ -2427,7 +2479,7 @@ Check the sessions/ directory for recent conversations.
 
       for (const link of sessionLinks) {
         // Extract session ID from [[...]]
-        const sessionMatch = link.match(/\[\[(2025-\d{2}_\d{2}-\d{2}-\d{2})/);
+        const sessionMatch = link.match(/\[\[(\d{4}-\d{2}_\d{2}-\d{2}-\d{2})/);
         if (sessionMatch) {
           const sessionPart = sessionMatch[1];
           // Parse date and time: 2025-11-15_12-01-39
@@ -2470,7 +2522,7 @@ Check the sessions/ directory for recent conversations.
     this.phase1Completed = true;
   }
 
-  private storePhase1SessionData(data: any): void {
+  private storePhase1SessionData(data: tools.SessionData): void {
     // Deep clone filesAccessed to avoid reference issues (Decision 048 fix)
     // This allows us to accumulate file accesses after Phase 1 completes
     this.phase1SessionData = {
@@ -2478,9 +2530,12 @@ Check the sessions/ directory for recent conversations.
       filesAccessed: [...(data.filesAccessed || [])],
     };
 
-    // Persist to session state file (Decision 054) - fire-and-forget
+    // Persist to session state file (Decision 054) - fire-and-forget with structured logging
     this.sessionStateFile.storePhase1Data(this.phase1SessionData).catch(error => {
-      logger.warn('Failed to persist Phase 1 data to session state file', { error });
+      logger.warn('Failed to persist Phase 1 data to session state file', {
+        error: error instanceof Error ? error.message : String(error),
+        sessionId: this.currentSessionId,
+      });
     });
   }
 
@@ -2494,10 +2549,10 @@ Check the sessions/ directory for recent conversations.
     filePath: string,
     action: 'read' | 'edit' | 'create'
   ): void {
-    if (this.phase1SessionData && this.phase1SessionData.filesAccessed) {
+    if (this.phase1SessionData?.filesAccessed) {
       // Avoid duplicates - check if this exact path+action already exists
       const exists = this.phase1SessionData.filesAccessed.some(
-        (f: { path: string; action: string }) => f.path === filePath && f.action === action
+        f => f.path === filePath && f.action === action
       );
       if (!exists) {
         this.phase1SessionData.filesAccessed.push({
@@ -2509,8 +2564,7 @@ Check the sessions/ directory for recent conversations.
     }
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-redundant-type-constituents
-  private getStoredPhase1SessionData(): any | null {
+  private getStoredPhase1SessionData(): tools.SessionData | null {
     return this.phase1SessionData;
   }
 
@@ -2553,7 +2607,9 @@ Check the sessions/ directory for recent conversations.
     // Initialize session state file for new session (Decision 054)
     // Fire-and-forget - don't block on file I/O
     this.sessionStateFile.initialize(new Date()).catch(error => {
-      logger.warn('Failed to initialize session state file', { error });
+      logger.warn('Failed to initialize session state file', {
+        error: error instanceof Error ? error.message : String(error),
+      });
     });
   }
 
@@ -2580,8 +2636,16 @@ Check the sessions/ directory for recent conversations.
         // For existing files, normalize the full path
         normalizedPath = fssync.realpathSync(filePath);
       }
-    } catch {
-      // If normalization fails, use the original path
+    } catch (error) {
+      // ENOENT is expected for files being created in new directories; log other errors
+      const isNotFound =
+        error instanceof Error && 'code' in error && (error as { code?: string }).code === 'ENOENT';
+      if (!isNotFound) {
+        logger.warn('Path normalization failed, using original path', {
+          filePath,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
       normalizedPath = filePath;
     }
 
@@ -2793,7 +2857,7 @@ Check the sessions/ directory for recent conversations.
     relPath: string,
     fileName: string,
     content: string,
-    fileStats: any,
+    fileStats: Stats,
     queryLower: string,
     queryTerms: string[],
     dateRange?: { start?: string; end?: string },
@@ -3509,8 +3573,29 @@ Check the sessions/ directory for recent conversations.
       // HTTP/HTTPS mode with Streamable HTTP transport
       const app = express();
 
-      // Store transports by session ID
+      // Store transports by session ID with last-activity timestamps
       const transports: Record<string, StreamableHTTPServerTransport> = {};
+      const transportLastActivity: Record<string, number> = {};
+      const SESSION_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
+
+      // Periodic cleanup of abandoned sessions
+      const cleanupInterval = setInterval(() => {
+        const now = Date.now();
+        for (const sessionId of Object.keys(transportLastActivity)) {
+          if (now - transportLastActivity[sessionId] > SESSION_TIMEOUT_MS) {
+            logger.info(`Cleaning up abandoned session: ${sessionId}`);
+            const transport = transports[sessionId];
+            if (transport) {
+              transport.close().catch(error => {
+                logger.warn(`Error closing abandoned transport ${sessionId}`, { error });
+              });
+            }
+            delete transports[sessionId];
+            delete transportLastActivity[sessionId];
+          }
+        }
+      }, 60 * 1000); // Check every minute
+      cleanupInterval.unref(); // Don't prevent process exit
 
       // Middleware
       app.use(cors());
@@ -3521,71 +3606,114 @@ Check the sessions/ directory for recent conversations.
         res.json({ status: 'ok', timestamp: new Date().toISOString() });
       });
 
+      // Helper to validate session ID header (can be string or string[])
+      const getSessionId = (req: express.Request): string | undefined => {
+        const raw = req.headers['mcp-session-id'];
+        if (typeof raw === 'string') return raw;
+        if (Array.isArray(raw)) return raw[0];
+        return undefined;
+      };
+
       // MCP POST endpoint - handles initialization and method calls
       app.post('/mcp', async (req, res) => {
-        const sessionId = req.headers['mcp-session-id'] as string | undefined;
-        let transport: StreamableHTTPServerTransport;
+        try {
+          const sessionId = getSessionId(req);
+          let transport: StreamableHTTPServerTransport;
 
-        if (sessionId && transports[sessionId]) {
-          // Reuse existing transport for this session
-          transport = transports[sessionId];
-        } else {
-          // Create new transport for new session
-          transport = new StreamableHTTPServerTransport({
-            sessionIdGenerator: () => {
-              const newId = `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-              logger.info(`New session initialized: ${newId}`);
-              return newId;
-            },
-            onsessioninitialized: sid => {
-              logger.info(`Storing transport for session: ${sid}`);
-              transports[sid] = transport;
-            },
-          });
+          if (sessionId && transports[sessionId]) {
+            // Reuse existing transport for this session
+            transport = transports[sessionId];
+          } else {
+            // Create new transport for new session
+            transport = new StreamableHTTPServerTransport({
+              sessionIdGenerator: () => {
+                const newId = `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+                logger.info(`New session initialized: ${newId}`);
+                return newId;
+              },
+              onsessioninitialized: sid => {
+                logger.info(`Storing transport for session: ${sid}`);
+                transports[sid] = transport;
+                transportLastActivity[sid] = Date.now();
+              },
+            });
 
-          // Set up cleanup on transport close
-          transport.onclose = () => {
-            const sid = transport.sessionId;
-            if (sid && transports[sid]) {
-              logger.info(`Transport closed for session ${sid}`);
-              delete transports[sid];
-            }
-          };
+            // Set up cleanup on transport close
+            transport.onclose = () => {
+              const sid = transport.sessionId;
+              if (sid && transports[sid]) {
+                logger.info(`Transport closed for session ${sid}`);
+                delete transports[sid];
+                delete transportLastActivity[sid];
+              }
+            };
 
-          // Connect transport to MCP server
-          await this.server.connect(transport);
+            // Connect transport to MCP server
+            await this.server.connect(transport);
+          }
+
+          // Track activity and handle the request
+          if (transport.sessionId) {
+            transportLastActivity[transport.sessionId] = Date.now();
+          }
+          await transport.handleRequest(req, res, req.body);
+        } catch (error) {
+          logger.error(
+            'Error handling MCP POST request',
+            error instanceof Error ? error : new Error(String(error))
+          );
+          if (!res.headersSent) {
+            res.status(500).send('Internal server error');
+          }
         }
-
-        // Handle the request
-        await transport.handleRequest(req, res, req.body);
       });
 
       // MCP GET endpoint - handles SSE streams for established sessions
       app.get('/mcp', async (req, res) => {
-        const sessionId = req.headers['mcp-session-id'] as string | undefined;
+        try {
+          const sessionId = getSessionId(req);
 
-        if (!sessionId || !transports[sessionId]) {
-          res.status(400).send('Invalid or missing session ID');
-          return;
+          if (!sessionId || !transports[sessionId]) {
+            res.status(400).send('Invalid or missing session ID');
+            return;
+          }
+
+          logger.info(`SSE stream requested for session: ${sessionId}`);
+          const transport = transports[sessionId];
+          await transport.handleRequest(req, res);
+        } catch (error) {
+          logger.error(
+            'Error handling MCP GET request',
+            error instanceof Error ? error : new Error(String(error))
+          );
+          if (!res.headersSent) {
+            res.status(500).send('Internal server error');
+          }
         }
-
-        logger.info(`SSE stream requested for session: ${sessionId}`);
-        const transport = transports[sessionId];
-        await transport.handleRequest(req, res);
       });
 
       // MCP DELETE endpoint - handles session termination
       app.delete('/mcp', async (req, res) => {
-        const sessionId = req.headers['mcp-session-id'] as string | undefined;
+        try {
+          const sessionId = getSessionId(req);
 
-        if (!sessionId || !transports[sessionId]) {
-          res.status(400).send('Invalid or missing session ID');
-          return;
+          if (!sessionId || !transports[sessionId]) {
+            res.status(400).send('Invalid or missing session ID');
+            return;
+          }
+
+          logger.info(`Session termination requested for: ${sessionId}`);
+          const transport = transports[sessionId];
+          await transport.handleRequest(req, res);
+        } catch (error) {
+          logger.error(
+            'Error handling MCP DELETE request',
+            error instanceof Error ? error : new Error(String(error))
+          );
+          if (!res.headersSent) {
+            res.status(500).send('Internal server error');
+          }
         }
-
-        logger.info(`Session termination requested for: ${sessionId}`);
-        const transport = transports[sessionId];
-        await transport.handleRequest(req, res);
       });
 
       // Start HTTP or HTTPS server
@@ -3593,22 +3721,41 @@ Check the sessions/ directory for recent conversations.
         // HTTPS mode - load certificates
         const currentDir = path.dirname(fileURLToPath(import.meta.url));
         const certsPath = path.join(currentDir, '..', 'certs');
-        const httpsOptions = {
-          key: fssync.readFileSync(path.join(certsPath, 'key.pem')),
-          cert: fssync.readFileSync(path.join(certsPath, 'cert.pem')),
-        };
+        let httpsOptions: { key: Buffer; cert: Buffer };
+        try {
+          httpsOptions = {
+            key: fssync.readFileSync(path.join(certsPath, 'key.pem')),
+            cert: fssync.readFileSync(path.join(certsPath, 'cert.pem')),
+          };
+        } catch (error) {
+          logger.error(
+            'Failed to load TLS certificates',
+            error instanceof Error ? error : new Error(String(error))
+          );
+          logger.error(`Expected certificates at: ${certsPath}/key.pem and ${certsPath}/cert.pem`);
+          process.exit(1);
+        }
 
-        https.createServer(httpsOptions, app).listen(port, '0.0.0.0', () => {
+        const httpsServer = https.createServer(httpsOptions, app);
+        httpsServer.on('error', error => {
+          logger.error('HTTPS server error', error);
+          process.exit(1);
+        });
+        httpsServer.listen(port, '0.0.0.0', () => {
           logger.info(`Obsidian MCP Server running on HTTPS at https://0.0.0.0:${port}`);
           logger.info(`MCP endpoint: https://0.0.0.0:${port}/mcp`);
           logger.info(`Health check: https://0.0.0.0:${port}/health`);
         });
       } else {
         // HTTP mode
-        app.listen(port, '0.0.0.0', () => {
+        const httpServer = app.listen(port, '0.0.0.0', () => {
           logger.info(`Obsidian MCP Server running on HTTP at http://0.0.0.0:${port}`);
           logger.info(`MCP endpoint: http://0.0.0.0:${port}/mcp`);
           logger.info(`Health check: http://0.0.0.0:${port}/health`);
+        });
+        httpServer.on('error', error => {
+          logger.error('HTTP server error', error);
+          process.exit(1);
         });
       }
 
@@ -3616,6 +3763,7 @@ Check the sessions/ directory for recent conversations.
       process.on('SIGINT', () => {
         void (async () => {
           logger.info('Shutting down server...');
+          clearInterval(cleanupInterval);
           for (const sessionId in transports) {
             try {
               logger.info(`Closing transport for session ${sessionId}`);
@@ -3640,6 +3788,19 @@ Check the sessions/ directory for recent conversations.
     }
   }
 }
+
+// Global error handlers to prevent silent failures
+process.on('unhandledRejection', reason => {
+  logger.error(
+    'Unhandled Promise Rejection',
+    reason instanceof Error ? reason : new Error(String(reason))
+  );
+});
+
+process.on('uncaughtException', error => {
+  logger.error('Uncaught Exception', error);
+  process.exit(1);
+});
 
 const server = new ObsidianMCPServer();
 server.run().catch(error => {

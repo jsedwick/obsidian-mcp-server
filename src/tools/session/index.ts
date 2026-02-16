@@ -14,7 +14,7 @@ export { analyzeSessionCommits } from './analyzeSessionCommits.js';
 export type { AnalyzeSessionCommitsArgs, AnalyzeCommitsResult } from './analyzeSessionCommits.js';
 
 export { closeSession } from './closeSession.js';
-export type { CloseSessionArgs, CloseSessionResult } from './closeSession.js';
+export type { CloseSessionArgs, CloseSessionResult, SessionData } from './closeSession.js';
 
 export { getSessionContext } from './getSessionContext.js';
 export type { GetSessionContextArgs, GetSessionContextResult } from './getSessionContext.js';
