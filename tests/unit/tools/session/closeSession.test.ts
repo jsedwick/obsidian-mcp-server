@@ -5,7 +5,7 @@
  * - findSessionCommits: Detect commits made during session
  * - runPhase1Analysis: Analyze commits and provide suggestions
  * - runPhase2Finalization: Save session after user updates
- * - runSinglePhaseClose: Legacy fallback when no commits detected
+ * - closeSession: Main orchestration function (two-phase only, Decision 044)
  * - closeSession: Main orchestration function
  */
 
@@ -15,7 +15,6 @@ import {
   findSessionCommits,
   runPhase1Analysis,
   runPhase2Finalization,
-  runSinglePhaseClose,
   type CloseSessionArgs,
   type SessionData,
 } from '../../../../src/tools/session/closeSession.js';
@@ -631,87 +630,7 @@ describe('closeSession - Two-Phase Workflow', () => {
     });
   });
 
-  describe('runSinglePhaseClose', () => {
-    it('should save session and run custodian in one phase', async () => {
-      const args: CloseSessionArgs = {
-        summary: 'Simple session',
-        _invoked_by_slash_command: true,
-      };
-
-      const sessionId = '2025-01-15_14-30-00';
-      const sessionFile = path.join(vaultPath, 'sessions/2025-01/2025-01-15_14-30-00.md');
-      const sessionContent = '# Simple session content';
-      const dateStr = '2025-01-15';
-      const monthDir = path.join(vaultPath, 'sessions/2025-01');
-      const detectedRepoInfo = null;
-
-      await fs.mkdir(monthDir, { recursive: true });
-
-      const result = await runSinglePhaseClose(
-        args,
-        context,
-        sessionId,
-        sessionFile,
-        sessionContent,
-        dateStr,
-        monthDir,
-        detectedRepoInfo
-      );
-
-      // Verify file was written
-      const fileExists = await fs
-        .access(sessionFile)
-        .then(() => true)
-        .catch(() => false);
-      expect(fileExists).toBe(true);
-
-      // Verify result
-      expect(result.content[0].text).toContain('Session created:');
-      expect(result.content[0].text).toContain(sessionId);
-      expect(context.setCurrentSession).toHaveBeenCalled();
-      expect(context.vaultCustodian).toHaveBeenCalled();
-      expect(context.clearSessionState).toHaveBeenCalled();
-    });
-
-    it('should include repo detection message when repo is detected', async () => {
-      const args: CloseSessionArgs = {
-        summary: 'Session with repo',
-        _invoked_by_slash_command: true,
-      };
-
-      const sessionId = '2025-01-15_14-30-00';
-      const sessionFile = path.join(vaultPath, 'sessions/2025-01/2025-01-15_14-30-00.md');
-      const sessionContent = '# Content';
-      const dateStr = '2025-01-15';
-      const monthDir = path.join(vaultPath, 'sessions/2025-01');
-      const detectedRepoInfo = {
-        path: '/test/repo',
-        name: 'test-repo',
-        branch: 'main',
-      };
-
-      await fs.mkdir(monthDir, { recursive: true });
-
-      const result = await runSinglePhaseClose(
-        args,
-        context,
-        sessionId,
-        sessionFile,
-        sessionContent,
-        dateStr,
-        monthDir,
-        detectedRepoInfo,
-        ''
-      );
-
-      expect(result.content[0].text).toContain('Git Repository Auto-Linked');
-      expect(result.content[0].text).toContain('test-repo');
-      expect(result.content[0].text).toContain('/test/repo');
-      expect(result.content[0].text).toContain('Branch: main');
-    });
-
-    // auto-commit test removed: auto-commit feature was removed from closeSession
-  });
+  // Decision 044: runSinglePhaseClose tests removed - two-phase workflow is always required
 
   describe('closeSession - main orchestration', () => {
     it('should reject calls not from /close slash command', async () => {

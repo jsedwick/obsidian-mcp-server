@@ -386,8 +386,18 @@ export async function runPhase1Analysis(
 
   const uniqueFilesToCheck = Array.from(new Set(filesToCheck));
 
-  // Semantic topic discovery for review (Decision 036)
-  const rawSemanticTopics = await discoverTopicsForReview(args.summary, context);
+  // Run both semantic discovery searches in parallel (results reused by Phase 2)
+  const [allDiscoveredTopics, allDiscoveredDecisions] = await Promise.all([
+    discoverRelatedTopics(args.summary, context),
+    discoverRelatedDecisions(args.summary, context),
+  ]);
+
+  // Semantic topic discovery for review (Decision 036) - uses pre-computed topics
+  const rawSemanticTopics = await discoverTopicsForReview(
+    args.summary,
+    context,
+    allDiscoveredTopics
+  );
 
   // DEBUG: Log semantic discovery results before deduplication
   logger.info('=== SEMANTIC TOPIC DISCOVERY DEBUG ===');
@@ -427,6 +437,18 @@ export async function runPhase1Analysis(
     semanticTopicsPresented: semanticTopicsForReview.map(t => ({ path: t.path, title: t.title })),
     // Commit-related topics for enforcement (Decision 041)
     commitRelatedTopics: commitRelatedTopics.length > 0 ? commitRelatedTopics : undefined,
+    // Phase 1 discovery results passed to Phase 2 to avoid redundant semantic search
+    discoveredTopics: allDiscoveredTopics.map(t => ({
+      path: t.path,
+      title: t.title,
+      similarity: t.similarity,
+    })),
+    discoveredDecisions: allDiscoveredDecisions.map(d => ({
+      path: d.path,
+      title: d.title,
+      projectSlug: d.projectSlug,
+      similarity: d.similarity,
+    })),
   };
 
   // Store session_data in MCP server state for context truncation recovery (Decision 048)
@@ -972,8 +994,9 @@ async function discoverRelatedTopics(
         }
 
         // Quality check: Read topic and verify meaningful keyword matches
+        let topicContent: string;
         try {
-          const topicContent = await fs.readFile(filePath, 'utf-8');
+          topicContent = await fs.readFile(filePath, 'utf-8');
           const contentLower = topicContent.toLowerCase();
 
           // Count how many keywords appear in topic content
@@ -1000,12 +1023,22 @@ async function discoverRelatedTopics(
           continue;
         }
 
-        // Extract topic title from filename
+        // Extract topic title from frontmatter (preserves casing like "MCP Server")
+        // Falls back to filename-derived title if frontmatter unavailable
         const fileName = path.basename(filePath, '.md');
-        const title = fileName
-          .split('-')
-          .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-          .join(' ');
+        let title: string;
+        const titleMatch = topicContent.match(/^---\n[\s\S]*?^title:\s*"?([^"\n]+)"?\s*$/m);
+        const h1Match = topicContent.match(/^# (.+)$/m);
+        if (titleMatch) {
+          title = titleMatch[1].trim();
+        } else if (h1Match) {
+          title = h1Match[1].trim();
+        } else {
+          title = fileName
+            .split('-')
+            .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+            .join(' ');
+        }
 
         topics.push({ path: filePath, title, similarity });
 
@@ -1219,8 +1252,9 @@ async function discoverRelatedDecisions(
         }
 
         // Quality check: Read decision and verify meaningful keyword matches
+        let decisionContent: string;
         try {
-          const decisionContent = await fs.readFile(filePath, 'utf-8');
+          decisionContent = await fs.readFile(filePath, 'utf-8');
           const contentLower = decisionContent.toLowerCase();
 
           // Count how many keywords appear in decision content
@@ -1255,12 +1289,22 @@ async function discoverRelatedDecisions(
           const projectSlug = parts[1];
           const fileName = path.basename(filePath, '.md');
 
-          // Extract title from filename (remove number prefix if present)
-          const title = fileName
-            .replace(/^\d+-/, '') // Remove leading number
-            .split('-')
-            .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-            .join(' ');
+          // Extract title from frontmatter or H1 (preserves casing)
+          // Falls back to filename-derived title if unavailable
+          let title: string;
+          const titleMatch = decisionContent.match(/^---\n[\s\S]*?^title:\s*"?([^"\n]+)"?\s*$/m);
+          const h1Match = decisionContent.match(/^# (.+)$/m);
+          if (titleMatch) {
+            title = titleMatch[1].trim();
+          } else if (h1Match) {
+            title = h1Match[1].trim();
+          } else {
+            title = fileName
+              .replace(/^\d+-/, '') // Remove leading number
+              .split('-')
+              .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+              .join(' ');
+          }
 
           decisions.push({ path: filePath, title, projectSlug, similarity });
 
@@ -1785,11 +1829,14 @@ export async function runPhase2Finalization(
     }
   }
 
-  // Discover related content using semantic search (run in parallel)
-  const [discoveredTopics, discoveredDecisions] = await Promise.all([
-    discoverRelatedTopics(_args.summary, context),
-    discoverRelatedDecisions(_args.summary, context),
-  ]);
+  // Use Phase 1 discovery results if available, otherwise fall back to fresh search
+  const [discoveredTopics, discoveredDecisions] =
+    data.discoveredTopics && data.discoveredDecisions
+      ? [data.discoveredTopics, data.discoveredDecisions]
+      : await Promise.all([
+          discoverRelatedTopics(_args.summary, context),
+          discoverRelatedDecisions(_args.summary, context),
+        ]);
 
   // Batch all content updates in memory before writing to disk
   let updatedContent = data.sessionContent;
@@ -1798,8 +1845,9 @@ export async function runPhase2Finalization(
   // Phase 1 builds sessionContent with empty handoff; Phase 2 args contains the AI-generated handoff
   if (_args.handoff && _args.handoff.trim()) {
     // Replace the ## Handoff section with the new handoff from Phase 2
-    // Pattern matches: ## Handoff\n\n[content]\n\n## (next section) or end
-    const handoffPattern = /## Handoff\n\n(?:_No handoff notes_|.+?)(?=\n\n## |\n\n---|\n*$)/s;
+    // Matches everything between "## Handoff" and "## Files Accessed" (the known next section)
+    // Non-greedy with specific terminator avoids truncation if handoff contains ## headers
+    const handoffPattern = /## Handoff\n\n[\s\S]*?(?=\n\n## Files Accessed)/;
     if (handoffPattern.test(updatedContent)) {
       updatedContent = updatedContent.replace(
         handoffPattern,
@@ -1979,169 +2027,7 @@ export async function runPhase2Finalization(
   };
 }
 
-export async function runSinglePhaseClose(
-  _args: CloseSessionArgs,
-  context: CloseSessionContext,
-  sessionId: string,
-  sessionFile: string,
-  sessionContent: string,
-  _dateStr: string,
-  _monthDir: string,
-  detectedRepoInfo: { path: string; name: string; branch?: string; remote?: string } | null
-): Promise<CloseSessionResult> {
-  // Discover related content using semantic search (run in parallel)
-  const [discoveredTopics, discoveredDecisions] = await Promise.all([
-    discoverRelatedTopics(_args.summary, context),
-    discoverRelatedDecisions(_args.summary, context),
-  ]);
-
-  // Enrich top 3 discovered topics with review metadata (Decision 036)
-  // Pass pre-computed topics to avoid duplicate search
-  const topicsForReview = await discoverTopicsForReview(_args.summary, context, discoveredTopics);
-
-  // Batch all content updates in memory before writing to disk
-  let updatedContent = sessionContent;
-
-  // Add discovered topics
-  if (discoveredTopics.length > 0) {
-    updatedContent = addRelatedTopicsToSession(updatedContent, discoveredTopics);
-  }
-
-  // Add discovered decisions
-  if (discoveredDecisions.length > 0) {
-    updatedContent = addRelatedDecisionsToSession(updatedContent, discoveredDecisions);
-  }
-
-  // Add links for accessed files (topics/decisions modified via update_document)
-  updatedContent = addAccessedFilesLinksToSession(
-    updatedContent,
-    context.filesAccessed,
-    context.vaultPath
-  );
-
-  // Single write to disk after all in-memory updates
-  await fs.writeFile(sessionFile, updatedContent);
-  sessionContent = updatedContent;
-
-  context.setCurrentSession(sessionId, sessionFile);
-
-  let repoDetectionMessage = '';
-  if (detectedRepoInfo) {
-    const repoLines = [
-      '',
-      'Git Repository Auto-Linked:',
-      `  Name: ${detectedRepoInfo.name}`,
-      `  Path: ${detectedRepoInfo.path}`,
-    ];
-    if (detectedRepoInfo.branch) repoLines.push(`  Branch: ${detectedRepoInfo.branch}`);
-    repoLines.push('  Project page created/updated');
-    if (context.topicsCreated.length > 0) {
-      repoLines.push(`  ${context.topicsCreated.length} topic(s) linked to project`);
-    }
-    repoDetectionMessage = repoLines.join('\n');
-  }
-
-  const lines: string[] = [`Session created: ${sessionId}`, `Session file: ${sessionFile}`];
-
-  if (context.topicsCreated.length > 0) {
-    lines.push(`Topics linked: ${context.topicsCreated.length}`);
-    context.topicsCreated.forEach(t => lines.push(`  - ${t.title}`));
-  }
-
-  if (context.decisionsCreated.length > 0) {
-    lines.push(`Decisions linked: ${context.decisionsCreated.length}`);
-    context.decisionsCreated.forEach(d => lines.push(`  - ${d.title}`));
-  }
-
-  if (context.projectsCreated.length > 0) {
-    lines.push(`Projects linked: ${context.projectsCreated.length}`);
-    context.projectsCreated.forEach(p => lines.push(`  - ${p.name}`));
-  }
-
-  if (context.filesAccessed.length > 0) {
-    lines.push(`Files accessed: ${context.filesAccessed.length}`);
-  }
-
-  const editedOrCreatedFiles = context.filesAccessed
-    .filter(
-      f => (f.action === 'edit' || f.action === 'create') && f.path.startsWith(context.vaultPath)
-    )
-    .map(f => f.path);
-
-  const filesToCheck: string[] = [
-    sessionFile,
-    ...context.topicsCreated.map(t => t.file),
-    ...context.decisionsCreated.map(d => d.file),
-    ...context.projectsCreated.map(p => p.file),
-    ...editedOrCreatedFiles,
-    ...discoveredTopics.map(t => t.path), // Add discovered topics for reciprocal linking
-    ...discoveredDecisions.map(d => d.path), // Add discovered decisions for reciprocal linking
-  ];
-
-  const uniqueFilesToCheck = Array.from(new Set(filesToCheck));
-
-  // Validate that summary claims match actual session file content
-  const validationWarnings = validateSummaryAccuracy(
-    _args.summary,
-    sessionContent,
-    context.vaultPath
-  );
-  let validationReport = '';
-  if (validationWarnings.length > 0) {
-    validationReport =
-      '\n\n⚠️  **Summary Validation Warnings:**\n\n' + validationWarnings.join('\n');
-  }
-
-  let vaultCustodianReport = '';
-  if (uniqueFilesToCheck.length > 0) {
-    try {
-      const custodianResult = await context.vaultCustodian({ files_to_check: uniqueFilesToCheck });
-      if (custodianResult.content && custodianResult.content[0]) {
-        vaultCustodianReport = '\n\n' + (custodianResult.content[0] as { text: string }).text;
-      }
-    } catch (error) {
-      vaultCustodianReport =
-        '\n\n⚠️  Vault custodian check failed: ' +
-        (error instanceof Error ? error.message : String(error));
-    }
-  }
-
-  context.clearSessionState();
-
-  // Build semantic topic review section for no-commit sessions (Decision 042)
-  // Hard enforcement - these topics are reviewed for linking but not enforced
-  // (enforcement only applies to two-phase workflow where topics are presented in Phase 1)
-  let semanticReviewNote = '';
-  if (topicsForReview.length > 0) {
-    semanticReviewNote = '\n\n📚 **Semantically Related Topics** (Decision 042)\n\n';
-    semanticReviewNote +=
-      'The following topics may be related to this session. Consider reviewing if content is outdated:\n';
-    for (const topic of topicsForReview) {
-      const slug = path.basename(topic.path, '.md');
-      let reviewInfo = '';
-      if (topic.daysSinceReview !== null) {
-        reviewInfo = ` (${topic.daysSinceReview} days since review)`;
-      } else {
-        reviewInfo = ' (never reviewed)';
-      }
-      semanticReviewNote += `  - [[${slug}|${topic.title}]]${reviewInfo}\n`;
-    }
-  }
-
-  return {
-    content: [
-      {
-        type: 'text',
-        text:
-          lines.join('\n') +
-          repoDetectionMessage +
-          semanticReviewNote +
-          validationReport +
-          vaultCustodianReport,
-      },
-    ],
-  };
-}
+// Decision 044: runSinglePhaseClose was removed - two-phase workflow is always required
 
 export interface CloseSessionArgs {
   summary: string;
@@ -2193,6 +2079,14 @@ export interface SessionData {
     title: string;
     relevance: string;
     commitHash: string;
+  }>;
+  // Phase 1 discovery results passed to Phase 2 to avoid redundant semantic search
+  discoveredTopics?: Array<{ path: string; title: string; similarity: number }>;
+  discoveredDecisions?: Array<{
+    path: string;
+    title: string;
+    projectSlug: string;
+    similarity: number;
   }>;
 }
 

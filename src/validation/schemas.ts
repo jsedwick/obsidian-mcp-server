@@ -149,6 +149,26 @@ const SessionDataSchema = z.object({
       })
     )
     .optional(),
+  // Phase 1 discovery results passed to Phase 2 to avoid redundant semantic search
+  discoveredTopics: z
+    .array(
+      z.object({
+        path: z.string(),
+        title: z.string(),
+        similarity: z.number(),
+      })
+    )
+    .optional(),
+  discoveredDecisions: z
+    .array(
+      z.object({
+        path: z.string(),
+        title: z.string(),
+        projectSlug: z.string(),
+        similarity: z.number(),
+      })
+    )
+    .optional(),
 });
 
 export const CloseSessionArgsSchema = z
