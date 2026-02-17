@@ -504,7 +504,7 @@ const TaskContextSchema = z.enum(['work', 'personal'], {
 // get_tasks_by_date
 export const GetTasksByDateArgsSchema = z.object({
   date: NonEmptyString.describe(
-    'Date to query tasks for (today, tomorrow, this-week, overdue, or YYYY-MM-DD)'
+    'Date to query tasks for (all, today, tomorrow, this-week, overdue, todo, or YYYY-MM-DD)'
   ),
   status: TaskStatusSchema.optional().describe('Filter by task status (default: incomplete)'),
   project: z.string().optional().describe('Filter tasks by project slug'),

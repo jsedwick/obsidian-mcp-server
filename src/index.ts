@@ -2042,7 +2042,7 @@ SCOPE: Decisions can be vault-level (affecting the MCP system itself) or project
             date: {
               type: 'string',
               description:
-                'Date to query tasks for. Accepts: "today", "tomorrow", "this-week", or YYYY-MM-DD format',
+                'Date to query tasks for. Accepts: "all" (grouped by urgency), "today", "tomorrow", "this-week", "overdue", "todo", or YYYY-MM-DD format',
             },
             status: {
               type: 'string',

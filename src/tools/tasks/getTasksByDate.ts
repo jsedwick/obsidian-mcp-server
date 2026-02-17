@@ -14,7 +14,7 @@ import matter from 'gray-matter';
 import { formatLocalDate } from '../../utils/dateFormat.js';
 
 export interface GetTasksByDateArgs {
-  date: string; // 'today' | 'tomorrow' | 'this-week' | 'overdue' | 'todo' | YYYY-MM-DD format
+  date: string; // 'all' | 'today' | 'tomorrow' | 'this-week' | 'overdue' | 'todo' | YYYY-MM-DD format
   status?: 'incomplete' | 'complete' | 'all';
   project?: string; // Optional filter by project
 }
@@ -276,7 +276,7 @@ function cleanTaskText(taskLine: string): string {
 async function parseTaskListFile(
   filePath: string,
   queryDate: string,
-  queryType: 'specific' | 'this-week' | 'overdue' | 'todo',
+  queryType: 'specific' | 'this-week' | 'overdue' | 'todo' | 'all',
   statusFilter: 'incomplete' | 'complete' | 'all',
   weekRange?: { start: string; end: string }
 ): Promise<TaskResult[]> {
@@ -324,7 +324,17 @@ async function parseTaskListFile(
     let hasUnparseableDate = false;
 
     // Handle different query types
-    if (queryType === 'todo') {
+    if (queryType === 'all') {
+      // Return all tasks from Tasks and Todo sections
+      if (currentSection !== 'tasks' && currentSection !== 'todo') continue;
+      // Mark unparseable dates
+      if (currentSection === 'tasks' && dueDate) {
+        const parsedDue = parseNaturalDate(dueDate);
+        if (!parsedDue) {
+          hasUnparseableDate = true;
+        }
+      }
+    } else if (queryType === 'todo') {
       // Return tasks from ## Todo section (no due date)
       if (currentSection !== 'todo') continue;
     } else if (queryType === 'overdue') {
@@ -474,14 +484,17 @@ export async function getTasksByDate(
   }
 
   // Determine query type and target date
-  let queryType: 'specific' | 'this-week' | 'overdue' | 'todo';
+  let queryType: 'specific' | 'this-week' | 'overdue' | 'todo' | 'all';
   let queryDate: string;
   let weekRange: { start: string; end: string } | undefined;
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  if (date === 'todo') {
+  if (date === 'all') {
+    queryType = 'all';
+    queryDate = '';
+  } else if (date === 'todo') {
     queryType = 'todo';
     queryDate = '';
   } else if (date === 'overdue') {
@@ -538,7 +551,92 @@ export async function getTasksByDate(
     };
   }
 
-  // Group by source file
+  // Format a single task line
+  function formatTaskLine(task: TaskResult): string {
+    const checkbox = task.status === 'complete' ? '[x]' : '[ ]';
+    let line = `- ${checkbox} ${task.task}`;
+    if (task.dueDate) {
+      line += ` (due: ${task.dueDate})`;
+      if (task.unparseableDate) {
+        line += ` ⚠️ unrecognized date format`;
+      }
+    }
+    if (task.completedDate) line += ` (completed: ${task.completedDate})`;
+    const metadataStr = Object.entries(task.metadata)
+      .filter(([key]) => !['due', 'completed'].includes(key))
+      .map(([key, value]) => `@${key}:${value}`)
+      .join(' ');
+    if (metadataStr) line += ` ${metadataStr}`;
+    return line;
+  }
+
+  // For "all" mode, group by urgency
+  if (date === 'all') {
+    const todayStr = formatLocalDate(today);
+    const wkRange = getWeekRange(today);
+
+    const groups: {
+      overdue: TaskResult[];
+      today: TaskResult[];
+      thisWeek: TaskResult[];
+      later: TaskResult[];
+      ambiguous: TaskResult[];
+      todo: TaskResult[];
+    } = { overdue: [], today: [], thisWeek: [], later: [], ambiguous: [], todo: [] };
+
+    for (const task of allTasks) {
+      if (!task.dueDate) {
+        groups.todo.push(task);
+        continue;
+      }
+
+      const parsedDue = parseNaturalDate(task.dueDate);
+      if (!parsedDue) {
+        groups.ambiguous.push(task);
+        continue;
+      }
+
+      if (parsedDue < todayStr) {
+        groups.overdue.push(task);
+      } else if (parsedDue === todayStr) {
+        groups.today.push(task);
+      } else if (parsedDue >= wkRange.start && parsedDue <= wkRange.end) {
+        groups.thisWeek.push(task);
+      } else {
+        groups.later.push(task);
+      }
+    }
+
+    let output = `Found ${allTasks.length} ${status} task(s):\n`;
+
+    const sections: Array<{ label: string; tasks: TaskResult[] }> = [
+      { label: '⚠️ Overdue', tasks: groups.overdue },
+      { label: '📅 Due Today', tasks: groups.today },
+      { label: '📆 Due This Week', tasks: groups.thisWeek },
+      { label: '🗓️ Due Later', tasks: groups.later },
+      { label: '❓ Ambiguous Date', tasks: groups.ambiguous },
+      { label: '📋 Todo (no date)', tasks: groups.todo },
+    ];
+
+    for (const section of sections) {
+      if (section.tasks.length === 0) continue;
+      output += `\n**${section.label}**\n`;
+      for (const task of section.tasks) {
+        output += formatTaskLine(task) + '\n';
+      }
+    }
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: output.trim(),
+        },
+      ],
+    };
+  }
+
+  // Group by source file (for non-"all" queries)
   const tasksByFile = new Map<string, TaskResult[]>();
   for (const task of allTasks) {
     const fileName = path.basename(task.source);
@@ -554,21 +652,7 @@ export async function getTasksByDate(
   for (const [fileName, tasks] of tasksByFile) {
     output += `**${fileName}**\n`;
     for (const task of tasks) {
-      const checkbox = task.status === 'complete' ? '[x]' : '[ ]';
-      let line = `- ${checkbox} ${task.task}`;
-      if (task.dueDate) {
-        line += ` (due: ${task.dueDate})`;
-        if (task.unparseableDate) {
-          line += ` ⚠️ unrecognized date format`;
-        }
-      }
-      if (task.completedDate) line += ` (completed: ${task.completedDate})`;
-      const metadataStr = Object.entries(task.metadata)
-        .filter(([key]) => !['due', 'completed'].includes(key))
-        .map(([key, value]) => `@${key}:${value}`)
-        .join(' ');
-      if (metadataStr) line += ` ${metadataStr}`;
-      output += line + '\n';
+      output += formatTaskLine(task) + '\n';
     }
     output += '\n';
   }

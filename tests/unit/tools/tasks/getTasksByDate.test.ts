@@ -254,6 +254,118 @@ tags: [tasks, archived]
     vi.useRealTimers();
   });
 
+  it('should return all tasks grouped by urgency with date: "all"', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-02-16T12:00:00Z')); // Monday
+
+    await createTaskListFile(
+      vaultPath,
+      'work-tasks.md',
+      `## Tasks
+
+- [ ] Overdue task (due: 2026-01-31) @priority:high
+- [ ] Due today task (due: 2026-02-16) @priority:medium
+- [ ] Due this week task (due: this-week) @priority:medium
+- [ ] Due later task (due: 2026-06-01) @priority:low
+- [ ] Ambiguous date task (due: somethng weird) @priority:low
+
+## Todo
+
+- [ ] Undated todo item @priority:medium
+
+## Completed
+`
+    );
+
+    const result = await getTasksByDate({ date: 'all' }, vaultPath);
+    const text = result.content[0].text;
+
+    // Should contain all tasks
+    expect(text).toContain('Found 6');
+
+    // Should have urgency group headers
+    expect(text).toContain('Overdue');
+    expect(text).toContain('Due Today');
+    expect(text).toContain('Due This Week');
+    expect(text).toContain('Due Later');
+    expect(text).toContain('Ambiguous Date');
+    expect(text).toContain('Todo (no date)');
+
+    // Tasks should appear under correct groups
+    expect(text).toContain('Overdue task');
+    expect(text).toContain('Due today task');
+    expect(text).toContain('Due this week task');
+    expect(text).toContain('Due later task');
+    expect(text).toContain('Ambiguous date task');
+    expect(text).toContain('Undated todo item');
+
+    // Ambiguous should have warning
+    expect(text).toContain('⚠️ unrecognized date format');
+
+    vi.useRealTimers();
+  });
+
+  it('should omit empty groups in "all" mode', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-02-16T12:00:00Z'));
+
+    await createTaskListFile(
+      vaultPath,
+      'work-tasks.md',
+      `## Tasks
+
+- [ ] Overdue task (due: 2020-01-01) @priority:high
+
+## Todo
+
+## Completed
+`
+    );
+
+    const result = await getTasksByDate({ date: 'all' }, vaultPath);
+    const text = result.content[0].text;
+
+    expect(text).toContain('Overdue');
+    expect(text).not.toContain('Due Today');
+    expect(text).not.toContain('Due This Week');
+    expect(text).not.toContain('Due Later');
+    expect(text).not.toContain('Ambiguous');
+    expect(text).not.toContain('Todo');
+
+    vi.useRealTimers();
+  });
+
+  it('should filter by project in "all" mode', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-02-16T12:00:00Z'));
+
+    await createTaskListFile(
+      vaultPath,
+      'work-tasks.md',
+      `## Tasks
+
+- [ ] Alpha overdue (due: 2020-01-01) @project:alpha
+- [ ] Beta overdue (due: 2020-01-01) @project:beta
+
+## Todo
+
+- [ ] Alpha todo @project:alpha
+
+## Completed
+`
+    );
+
+    const result = await getTasksByDate({ date: 'all', project: 'alpha' }, vaultPath);
+    const text = result.content[0].text;
+
+    expect(text).toContain('Alpha overdue');
+    expect(text).toContain('Alpha todo');
+    expect(text).not.toContain('Beta overdue');
+    expect(text).toContain('Found 2');
+
+    vi.useRealTimers();
+  });
+
   it('should include tasks with unparseable dates and show warning', async () => {
     await createTaskListFile(
       vaultPath,
