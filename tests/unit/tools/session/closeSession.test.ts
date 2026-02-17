@@ -118,112 +118,149 @@ describe('closeSession - Two-Phase Workflow', () => {
   });
 
   describe('runPhase1Analysis', () => {
-    it.skip('should analyze commits and return suggestions', async () => {
-      const args: CloseSessionArgs = {
-        summary: 'Implemented feature X',
-        topic: 'feature-x',
-        _invoked_by_slash_command: true,
-      };
-
-      const sessionId = '2025-01-15_14-30-00_feature-x';
-      const monthDir = path.join(vaultPath, 'sessions/2025-01');
-      await fs.mkdir(monthDir, { recursive: true });
-      const sessionFile = path.join(monthDir, '2025-01-15_14-30-00_feature-x.md');
-      const sessionContent = '# Session content';
-      const dateStr = '2025-01-15';
-      const detectedRepoInfo = {
-        path: '/test/repo',
-        name: 'test-repo',
-        branch: 'main',
-        remote: 'origin',
-      };
-      // Mock commit analysis
-      context.analyzeCommitImpact = vi.fn().mockResolvedValue({
-        content: [
-          {
-            text: '**Commit abc123**\n\nChanged files:\n- src/feature.ts\n\nSuggested topic updates:\n- Update "Feature X Implementation" topic',
-          },
-        ],
+    it('should analyze commits and call analyzeCommitImpact for each', async () => {
+      // Use a real git repo so findSessionCommits works (it's a module-level function)
+      const testRepoPath = await createTestGitRepo({
+        name: 'phase1-analysis-repo',
+        initialCommit: 'Initial setup',
       });
 
-      // Mock session start time and commits
-      context.getSessionStartTime = vi.fn().mockReturnValue(new Date('2025-01-15T10:00:00Z'));
+      try {
+        // Wait to ensure initial commit timestamp is strictly before session start
+        await new Promise(resolve => setTimeout(resolve, 1100));
 
-      // Create a wrapped context that intercepts the call to findSessionCommits
-      const wrappedContext = {
-        ...context,
-        getSessionStartTime: vi.fn().mockReturnValue(new Date('2025-01-15T10:00:00Z')),
-      };
+        const sessionStart = new Date();
+        context.getSessionStartTime = vi.fn().mockReturnValue(sessionStart);
 
-      // We need to actually call findSessionCommits since it's used directly in runPhase1Analysis
-      // But we need to mock it to return our test commit
-      // Monkey-patch the module - since we can't directly mock the imported function,
-      // we'll test with actual git operations in the integration tests instead
-      // For this unit test, let's mock at the context level
-      const result = await runPhase1Analysis(
-        args,
-        wrappedContext,
-        sessionId,
-        sessionFile,
-        sessionContent,
-        dateStr,
-        monthDir,
-        detectedRepoInfo
-      );
+        // Wait to ensure test commits are after session start
+        await new Promise(resolve => setTimeout(resolve, 1100));
 
-      expect(result.content).toHaveLength(1);
-      expect(result.content[0].text).toContain('Phase 1 Complete: Commit Analysis');
-      expect(result.content[0].text).toContain('1 commit was made during this session');
-      expect(result.content[0].text).toContain('finalize: true');
-      expect(result.content[0].text).toContain('session_data:');
-      expect(context.analyzeCommitImpact).toHaveBeenCalledWith({
-        repo_path: '/test/repo',
-        commit_hash: 'abc123def456',
-        include_diff: false,
-      });
+        // Make a commit after session start
+        await createTestCommit(testRepoPath, {
+          message: 'Add feature X',
+          files: { 'feature.ts': 'export function featureX() {}' },
+        });
+
+        context.analyzeCommitImpact = vi.fn().mockResolvedValue({
+          content: [
+            {
+              text: '**Commit Analysis**\n\nChanged files:\n- feature.ts',
+            },
+          ],
+        });
+
+        const args: CloseSessionArgs = {
+          summary: 'Implemented feature X',
+          _invoked_by_slash_command: true,
+        };
+
+        const sessionId = '2025-01-15_14-30-00';
+        const monthDir = path.join(vaultPath, 'sessions/2025-01');
+        await fs.mkdir(monthDir, { recursive: true });
+        const sessionFile = path.join(monthDir, '2025-01-15_14-30-00.md');
+        const sessionContent = '# Session content';
+        const dateStr = '2025-01-15';
+        const detectedRepoInfo = {
+          path: testRepoPath,
+          name: 'phase1-analysis-repo',
+          branch: 'main',
+        };
+
+        const result = await runPhase1Analysis(
+          args,
+          context,
+          sessionId,
+          sessionFile,
+          sessionContent,
+          dateStr,
+          monthDir,
+          detectedRepoInfo,
+          ''
+        );
+
+        expect(result.content).toHaveLength(1);
+        expect(result.content[0].text).toContain('Session Analysis Complete');
+        expect(result.content[0].text).toMatch(/1 commits? (was|were) made during this session/);
+        expect(result.content[0].text).toContain('finalize: true');
+        expect(context.analyzeCommitImpact).toHaveBeenCalledTimes(1);
+        expect(context.analyzeCommitImpact).toHaveBeenCalledWith(
+          expect.objectContaining({
+            repo_path: testRepoPath,
+            include_diff: false,
+          })
+        );
+      } finally {
+        await cleanupTestGitRepo(testRepoPath);
+      }
     });
 
-    it.skip('should handle multiple commits', async () => {
-      const args: CloseSessionArgs = {
-        summary: 'Multiple changes',
-        _invoked_by_slash_command: true,
-      };
-
-      const sessionId = '2025-01-15_14-30-00';
-      const monthDir = path.join(vaultPath, 'sessions/2025-01');
-      await fs.mkdir(monthDir, { recursive: true });
-      const sessionFile = path.join(monthDir, '2025-01-15_14-30-00.md');
-      const sessionContent = '# Session content';
-      const dateStr = '2025-01-15';
-      const detectedRepoInfo = {
-        path: '/test/repo',
-        name: 'test-repo',
-      };
-
-      context.analyzeCommitImpact = vi.fn().mockResolvedValue({
-        content: [{ text: 'Analysis result' }],
+    it('should detect and analyze multiple commits', async () => {
+      const testRepoPath = await createTestGitRepo({
+        name: 'multi-commit-repo',
+        initialCommit: 'Initial setup',
       });
-      context.getSessionStartTime = vi.fn().mockReturnValue(new Date('2025-01-15T10:00:00Z'));
 
-      const result = await runPhase1Analysis(
-        args,
-        {
-          ...context,
-          async findSessionCommits() {
-            return ['abc123', 'def456', 'ghi789'];
-          },
-        } as any,
-        sessionId,
-        sessionFile,
-        sessionContent,
-        dateStr,
-        monthDir,
-        detectedRepoInfo,
-        ''
-      );
+      try {
+        // Wait to ensure initial commit timestamp is strictly before session start
+        await new Promise(resolve => setTimeout(resolve, 1100));
 
-      expect(result.content[0].text).toContain('3 commits were made during this session');
-      expect(context.analyzeCommitImpact).toHaveBeenCalledTimes(3);
+        const sessionStart = new Date();
+        context.getSessionStartTime = vi.fn().mockReturnValue(sessionStart);
+
+        // Wait to ensure test commits are after session start
+        await new Promise(resolve => setTimeout(resolve, 1100));
+
+        // Make 3 commits after session start
+        await createTestCommit(testRepoPath, {
+          message: 'Commit 1',
+          files: { 'file1.ts': 'content 1' },
+        });
+        await createTestCommit(testRepoPath, {
+          message: 'Commit 2',
+          files: { 'file2.ts': 'content 2' },
+        });
+        await createTestCommit(testRepoPath, {
+          message: 'Commit 3',
+          files: { 'file3.ts': 'content 3' },
+        });
+
+        context.analyzeCommitImpact = vi.fn().mockResolvedValue({
+          content: [{ text: 'Analysis result' }],
+        });
+
+        const args: CloseSessionArgs = {
+          summary: 'Multiple changes',
+          _invoked_by_slash_command: true,
+        };
+
+        const sessionId = '2025-01-15_14-30-00';
+        const monthDir = path.join(vaultPath, 'sessions/2025-01');
+        await fs.mkdir(monthDir, { recursive: true });
+        const sessionFile = path.join(monthDir, '2025-01-15_14-30-00.md');
+        const sessionContent = '# Session content';
+        const dateStr = '2025-01-15';
+        const detectedRepoInfo = {
+          path: testRepoPath,
+          name: 'multi-commit-repo',
+        };
+
+        const result = await runPhase1Analysis(
+          args,
+          context,
+          sessionId,
+          sessionFile,
+          sessionContent,
+          dateStr,
+          monthDir,
+          detectedRepoInfo,
+          ''
+        );
+
+        expect(result.content[0].text).toContain('3 commits');
+        expect(context.analyzeCommitImpact).toHaveBeenCalledTimes(3);
+      } finally {
+        await cleanupTestGitRepo(testRepoPath);
+      }
     });
 
     it('should use two-phase workflow even without session start time (Decision 044 fix)', async () => {

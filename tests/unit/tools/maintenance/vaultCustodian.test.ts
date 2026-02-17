@@ -320,15 +320,129 @@ The above is just an example - the link should not create a reciprocal link.
     await fs.rm(tmpDir, { recursive: true });
   });
 
-  it.skip('should validate vault structure', () => {
-    // TODO: Implement after reading vaultCustodian source
+  it('should move sessions in wrong directory to correct monthly directory', async () => {
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'vault-structure-test-'));
+
+    // Create vault structure
+    const sessionsDir = path.join(tmpDir, 'sessions');
+    await fs.mkdir(sessionsDir, { recursive: true });
+    await fs.mkdir(path.join(tmpDir, 'topics'), { recursive: true });
+    await fs.mkdir(path.join(tmpDir, 'decisions'), { recursive: true });
+    await fs.mkdir(path.join(tmpDir, 'projects'), { recursive: true });
+
+    // Place a session file directly in sessions/ instead of sessions/2025-01/
+    const wrongLocationFile = path.join(sessionsDir, '2025-01-15_10-00-00_test-session.md');
+    await fs.writeFile(
+      wrongLocationFile,
+      `---\nsession_id: 2025-01-15_10-00-00_test-session\n---\n\n# Test Session`
+    );
+
+    const { vaultCustodian } = await import('../../../../src/tools/maintenance/vaultCustodian.js');
+
+    const result = await vaultCustodian(
+      { files_to_check: [wrongLocationFile] },
+      {
+        vaultPath: tmpDir,
+        ensureVaultStructure: async () => {},
+        findSessionFile: async () => null,
+      }
+    );
+
+    // Session should be moved to correct monthly directory
+    const correctPath = path.join(sessionsDir, '2025-01', '2025-01-15_10-00-00_test-session.md');
+    const movedExists = await fs
+      .access(correctPath)
+      .then(() => true)
+      .catch(() => false);
+    expect(movedExists).toBe(true);
+
+    // Original location should no longer exist
+    const originalExists = await fs
+      .access(wrongLocationFile)
+      .then(() => true)
+      .catch(() => false);
+    expect(originalExists).toBe(false);
+
+    expect(result.content[0].text).toContain('Moved');
+
+    await fs.rm(tmpDir, { recursive: true });
   });
 
-  it.skip('should fix broken links', () => {
-    // TODO: Implement
+  it('should fix broken wiki links by finding correct paths', async () => {
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'vault-fix-links-test-'));
+
+    // Create vault structure
+    const topicsDir = path.join(tmpDir, 'topics');
+    await fs.mkdir(topicsDir, { recursive: true });
+    await fs.mkdir(path.join(tmpDir, 'sessions'), { recursive: true });
+    await fs.mkdir(path.join(tmpDir, 'decisions'), { recursive: true });
+    await fs.mkdir(path.join(tmpDir, 'projects'), { recursive: true });
+
+    // Create an actual topic
+    await fs.writeFile(
+      path.join(topicsDir, 'real-topic.md'),
+      `---\ntitle: Real Topic\n---\n\n# Real Topic\n\nContent.`
+    );
+
+    // Create a topic with a link using directory prefix (should be stripped)
+    const linkingTopic = path.join(topicsDir, 'linking-topic.md');
+    await fs.writeFile(
+      linkingTopic,
+      `---\ntitle: Linking Topic\n---\n\n# Linking Topic\n\nSee [[topics/real-topic]] for details.`
+    );
+
+    const { vaultCustodian } = await import('../../../../src/tools/maintenance/vaultCustodian.js');
+
+    await vaultCustodian(
+      { files_to_check: [linkingTopic] },
+      {
+        vaultPath: tmpDir,
+        ensureVaultStructure: async () => {},
+        findSessionFile: async () => null,
+      }
+    );
+
+    // The topics/ prefix should have been stripped from the link
+    const fixedContent = await fs.readFile(linkingTopic, 'utf-8');
+    expect(fixedContent).toContain('[[real-topic]]');
+    expect(fixedContent).not.toContain('[[topics/real-topic]]');
+
+    await fs.rm(tmpDir, { recursive: true });
   });
 
-  it.skip('should reorganize files if needed', () => {
-    // TODO: Implement
+  it('should add frontmatter to topics that are missing it', async () => {
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'vault-frontmatter-test-'));
+
+    // Create vault structure
+    const topicsDir = path.join(tmpDir, 'topics');
+    await fs.mkdir(topicsDir, { recursive: true });
+    await fs.mkdir(path.join(tmpDir, 'sessions'), { recursive: true });
+    await fs.mkdir(path.join(tmpDir, 'decisions'), { recursive: true });
+    await fs.mkdir(path.join(tmpDir, 'projects'), { recursive: true });
+
+    // Create a topic WITHOUT frontmatter
+    const noFrontmatterTopic = path.join(topicsDir, 'no-frontmatter.md');
+    await fs.writeFile(noFrontmatterTopic, `# No Frontmatter\n\nThis topic has no frontmatter.`);
+
+    const { vaultCustodian } = await import('../../../../src/tools/maintenance/vaultCustodian.js');
+
+    const result = await vaultCustodian(
+      { files_to_check: [noFrontmatterTopic] },
+      {
+        vaultPath: tmpDir,
+        ensureVaultStructure: async () => {},
+        findSessionFile: async () => null,
+      }
+    );
+
+    // Frontmatter should have been added
+    const fixedContent = await fs.readFile(noFrontmatterTopic, 'utf-8');
+    expect(fixedContent).toMatch(/^---\n/);
+    expect(fixedContent).toContain('title: no-frontmatter');
+    expect(fixedContent).toContain('tags: []');
+
+    expect(result.content[0].text).toContain('Added frontmatter');
+
+    await fs.rm(tmpDir, { recursive: true });
   });
 });
