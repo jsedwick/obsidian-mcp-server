@@ -220,4 +220,70 @@ tags: [tasks, archived]
     expect(result.content[0].text).toContain('Active task');
     expect(result.content[0].text).not.toContain('Old task');
   });
+
+  it('should parse "this-week" natural language date', async () => {
+    // Mock Date to control "today" for consistent test results
+    const mockToday = new Date('2026-02-16T12:00:00Z'); // Monday
+    vi.useFakeTimers();
+    vi.setSystemTime(mockToday);
+
+    await createTaskListFile(
+      vaultPath,
+      'work-tasks.md',
+      `## Tasks
+
+- [ ] Task due this week (due: this-week) @priority:medium
+- [ ] Task due specific date (due: 2026-02-20) @priority:high
+- [ ] Task due next week (due: 2026-02-23)
+
+## Todo
+
+## Completed
+`
+    );
+
+    // Query for this week (Feb 16-22, 2026 is Mon-Sun)
+    const result = await getTasksByDate({ date: 'this-week' }, vaultPath);
+
+    // Should find both "this-week" task (converts to Friday 2026-02-20) and explicit 2026-02-20
+    expect(result.content[0].text).toContain('Task due this week');
+    expect(result.content[0].text).toContain('Task due specific date');
+    expect(result.content[0].text).not.toContain('Task due next week');
+    expect(result.content[0].text).toContain('Found 2');
+
+    vi.useRealTimers();
+  });
+
+  it('should include tasks with unparseable dates and show warning', async () => {
+    await createTaskListFile(
+      vaultPath,
+      'work-tasks.md',
+      `## Tasks
+
+- [ ] Future task (due: 2027-12-31) @priority:high
+- [ ] Task with typo (due: thsi-week) @priority:medium
+- [ ] Task with invalid format (due: some random text) @priority:low
+
+## Todo
+
+## Completed
+`
+    );
+
+    // Query for this-week should include unparseable dates (with warnings)
+    const result = await getTasksByDate({ date: 'this-week' }, vaultPath);
+    expect(result.content[0].text).toContain('Task with typo');
+    expect(result.content[0].text).toContain('Task with invalid format');
+    expect(result.content[0].text).toContain('⚠️ unrecognized date format');
+    expect(result.content[0].text).not.toContain('Future task'); // Outside this week
+    expect(result.content[0].text).toContain('Found 2'); // Only unparseable ones
+
+    // Query for specific date should also include unparseable dates
+    const result2 = await getTasksByDate({ date: '2026-02-16' }, vaultPath);
+    expect(result2.content[0].text).toContain('Task with typo');
+    expect(result2.content[0].text).toContain('Task with invalid format');
+    expect(result2.content[0].text).toContain('⚠️ unrecognized date format');
+    expect(result2.content[0].text).not.toContain('Future task'); // Wrong date
+    expect(result2.content[0].text).toContain('Found 2');
+  });
 });

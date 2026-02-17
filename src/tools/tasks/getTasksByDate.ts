@@ -29,6 +29,7 @@ export interface TaskResult {
   dueDate?: string; // YYYY-MM-DD or natural language
   completedDate?: string; // YYYY-MM-DD
   metadata: Record<string, string>; // All @key:value metadata
+  unparseableDate?: boolean; // True if due date couldn't be parsed
 }
 
 export interface GetTasksByDateResult {
@@ -69,6 +70,15 @@ function parseNaturalDate(dateStr: string): string | null {
   if (normalized.includes('end of month')) {
     const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0);
     return formatLocalDate(lastDay);
+  }
+
+  // Check for "this week" - convert to Friday of current week
+  if (normalized === 'this-week' || normalized === 'this week') {
+    const currentDay = today.getDay();
+    const daysUntilFriday = (5 - currentDay + 7) % 7; // 5 = Friday
+    const friday = new Date(today);
+    friday.setDate(today.getDate() + daysUntilFriday);
+    return formatLocalDate(friday);
   }
 
   // Check for "next week"
@@ -310,6 +320,9 @@ async function parseTaskListFile(
     const metadata = extractMetadata(line);
     const taskText = cleanTaskText(line);
 
+    // Track unparseable dates for warning display
+    let hasUnparseableDate = false;
+
     // Handle different query types
     if (queryType === 'todo') {
       // Return tasks from ## Todo section (no due date)
@@ -319,7 +332,11 @@ async function parseTaskListFile(
       if (currentSection !== 'tasks') continue;
       if (!dueDate) continue;
       const parsedDue = parseNaturalDate(dueDate);
-      if (!parsedDue || parsedDue >= todayStr) continue;
+      if (!parsedDue) {
+        // Skip unparseable dates for overdue queries (can't determine if overdue)
+        continue;
+      }
+      if (parsedDue >= todayStr) continue;
     } else if (queryType === 'this-week' && weekRange) {
       // Tasks due within the week range
       if (currentSection === 'completed') {
@@ -335,7 +352,12 @@ async function parseTaskListFile(
       } else if (currentSection === 'tasks') {
         if (!dueDate) continue;
         const parsedDue = parseNaturalDate(dueDate);
-        if (!parsedDue || parsedDue < weekRange.start || parsedDue > weekRange.end) continue;
+        if (!parsedDue) {
+          // Include unparseable dates in this-week queries with warning
+          hasUnparseableDate = true;
+        } else if (parsedDue < weekRange.start || parsedDue > weekRange.end) {
+          continue;
+        }
       } else {
         continue; // Skip todo items for this-week query
       }
@@ -350,7 +372,12 @@ async function parseTaskListFile(
         // Match by due date
         if (!dueDate) continue;
         const parsedDue = parseNaturalDate(dueDate);
-        if (parsedDue !== queryDate) continue;
+        if (!parsedDue) {
+          // Include unparseable dates in specific date queries with warning
+          hasUnparseableDate = true;
+        } else if (parsedDue !== queryDate) {
+          continue;
+        }
       } else {
         continue;
       }
@@ -366,6 +393,7 @@ async function parseTaskListFile(
       dueDate: dueDate || undefined,
       completedDate: completedDate || undefined,
       metadata,
+      unparseableDate: hasUnparseableDate || undefined,
     });
   }
 
@@ -528,7 +556,12 @@ export async function getTasksByDate(
     for (const task of tasks) {
       const checkbox = task.status === 'complete' ? '[x]' : '[ ]';
       let line = `- ${checkbox} ${task.task}`;
-      if (task.dueDate) line += ` (due: ${task.dueDate})`;
+      if (task.dueDate) {
+        line += ` (due: ${task.dueDate})`;
+        if (task.unparseableDate) {
+          line += ` ⚠️ unrecognized date format`;
+        }
+      }
       if (task.completedDate) line += ` (completed: ${task.completedDate})`;
       const metadataStr = Object.entries(task.metadata)
         .filter(([key]) => !['due', 'completed'].includes(key))
