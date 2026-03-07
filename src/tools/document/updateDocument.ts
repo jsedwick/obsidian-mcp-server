@@ -445,7 +445,19 @@ export async function updateDocument(
 
     newContent = existingWithoutFm.replace(args.old_string, content);
   } else if (strategy === 'replace') {
-    // Full replacement (strip frontmatter from new content)
+    // For new files, preserve frontmatter from provided content
+    if (!fileExists) {
+      const newFmMatch = content.match(/^---\n([\s\S]*?)\n---/);
+      if (newFmMatch) {
+        try {
+          const newFm = yaml.parse(newFmMatch[1]) as Record<string, unknown>;
+          frontmatter = { ...frontmatter, ...newFm };
+        } catch {
+          // Invalid YAML in new content frontmatter — ignore, use defaults
+        }
+      }
+    }
+    // Strip frontmatter from content body
     newContent = content.replace(/^---\n[\s\S]*?\n---\n/, '');
   } else {
     // section-edit: replace only the specified section

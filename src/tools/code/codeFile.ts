@@ -104,13 +104,18 @@ export async function codeFile(
       throw new Error('edit operation requires old_string parameter');
     }
 
-    if (!existingContent.includes(oldString)) {
-      // Provide helpful error with truncated preview
+    const occurrences = existingContent.split(oldString).length - 1;
+
+    if (occurrences === 0) {
       const preview = oldString.length > 100 ? `${oldString.slice(0, 100)}...` : oldString;
       throw new Error(`old_string not found in file: ${filePath}\nSearched for: "${preview}"`);
     }
+    if (occurrences > 1) {
+      throw new Error(
+        `old_string found ${occurrences} times in ${path.basename(filePath)}. Provide a larger string with more context to make it unique.`
+      );
+    }
 
-    // Replace first occurrence (matches native Edit behavior)
     finalContent = existingContent.replace(oldString, content);
   }
 
