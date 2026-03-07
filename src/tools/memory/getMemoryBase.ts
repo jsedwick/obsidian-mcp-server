@@ -167,29 +167,38 @@ async function loadActivePersistentIssues(vaultPath: string): Promise<string> {
 }
 
 /**
- * Load recent entries from an accumulator file
- * Returns last N entries (most recent first) with timestamps
+ * Load corrections as condensed actionable rules
+ * Extracts title + "How to prevent" bullets from each correction entry
+ * for a compact, directive format that stays effective in context
  */
-async function loadRecentAccumulatorEntries(
-  vaultPath: string,
-  filename: string,
-  maxEntries = 3
-): Promise<string> {
+async function loadCondensedCorrectionRules(vaultPath: string, filename: string): Promise<string> {
   try {
     const filePath = path.join(vaultPath, filename);
     const content = await fs.readFile(filePath, 'utf-8');
 
-    // Split by H2 headers (## YYYY-MM-DD entries)
-    const entries = content.split(/(?=^## )/m).filter(e => e.trim().startsWith('##'));
+    // Split by H2 headers and filter to correction entries
+    const entries = content.split(/(?=^## )/m).filter(e => e.trim().startsWith('## 🚫'));
 
     if (entries.length === 0) {
       return '';
     }
 
-    // Take the most recent N entries
-    const recentEntries = entries.slice(0, maxEntries);
+    const rules: string[] = [];
+    for (const entry of entries) {
+      // Extract title (strip emoji prefix and date suffix)
+      const titleMatch = entry.match(/^## 🚫\s+(.+?)(?:\s*-\s*\d{4}-\d{2}-\d{2})?\s*$/m);
+      const title = titleMatch ? titleMatch[1].trim() : null;
 
-    return recentEntries.join('\n');
+      // Extract "How to prevent" bullets
+      const preventMatch = entry.match(/\*\*How to prevent:\*\*\n((?:- .+\n?)*)/);
+
+      if (title && preventMatch) {
+        const bullets = preventMatch[1].trim();
+        rules.push(`**${title}:**\n${bullets}`);
+      }
+    }
+
+    return rules.join('\n\n');
   } catch {
     // File doesn't exist or can't be read
     return '';
@@ -221,16 +230,12 @@ export async function getMemoryBase(
   // Extract recent handoffs from session files (scan filesystem directly)
   const recentHandoffs = await extractRecentHandoffs(vaultPath, 3);
 
-  // Load all corrections (no truncation - reinforcement value outweighs context cost)
-  const corrections = await loadRecentAccumulatorEntries(
-    vaultPath,
-    'accumulator-corrections.md',
-    Infinity
-  );
+  // Load corrections as condensed actionable rules
+  const corrections = await loadCondensedCorrectionRules(vaultPath, 'accumulator-corrections.md');
 
   let crossSessionKnowledge = '';
   if (corrections) {
-    crossSessionKnowledge = `## Recent Corrections\n\n${corrections}`;
+    crossSessionKnowledge = `## ⚠️ Correction Rules\n\n${corrections}`;
   }
 
   // Load active persistent issues (Decision 048)

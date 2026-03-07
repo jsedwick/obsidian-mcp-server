@@ -67,7 +67,7 @@ Next: finish Phase 4 tests
     expect(result.content[0].text).toContain('finish Phase 4 tests');
   });
 
-  it('should load corrections from accumulator', async () => {
+  it('should load condensed correction rules from accumulator', async () => {
     await fs.writeFile(
       path.join(vaultPath, 'accumulator-corrections.md'),
       `# Accumulator: Corrections
@@ -79,13 +79,16 @@ Next: finish Phase 4 tests
 
 **How to prevent:**
 - Don't do that
+- Always check first
 `,
       'utf-8'
     );
 
     const result = await getMemoryBase({}, vaultPath);
-    expect(result.content[0].text).toContain('Recent Corrections');
-    expect(result.content[0].text).toContain('Made a mistake');
+    expect(result.content[0].text).toContain('Correction Rules');
+    expect(result.content[0].text).toContain('**Test Correction:**');
+    expect(result.content[0].text).toContain("- Don't do that");
+    expect(result.content[0].text).not.toContain('Made a mistake');
   });
 
   it('should load active persistent issues', async () => {
@@ -125,7 +128,11 @@ sessions: []
 
 ## 🚫 Fix - 2026-02-15
 
-**What:** Something
+**What I did wrong:**
+- Something
+
+**How to prevent:**
+- Do better
 `,
       'utf-8'
     );
@@ -136,7 +143,7 @@ sessions: []
     const text = result.content[0].text;
     expect(text).toContain('SESSION_START_TIME');
     expect(text).toContain('Jesse');
-    expect(text).toContain('Recent Corrections');
+    expect(text).toContain('Correction Rules');
     // Sections separated by ---
     expect(text).toContain('---');
   });
