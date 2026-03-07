@@ -181,6 +181,13 @@ export const CloseSessionArgsSchema = z
       .describe(
         'Handoff notes for next session. REQUIRED in Phase 2 (finalize: true) - generate using prompt from Phase 1 (Decision 052).'
       ),
+    decision_review: z
+      .string()
+      .optional()
+      .describe(
+        'Decision consideration acknowledgment (Decision 057). REQUIRED in Phase 2. ' +
+          'Either "none_warranted: [reason]" or "created: [slug1], [slug2]".'
+      ),
     _invoked_by_slash_command: z
       .boolean()
       .optional()
@@ -456,6 +463,15 @@ export const CreateDecisionArgsSchema = z.object({
     .describe('Set to true to bypass keyword detection warnings'),
 });
 
+// find_undocumented_decisions
+export const FindUndocumentedDecisionsArgsSchema = z.object({
+  days: z.number().optional().default(30).describe('How far back to scan in days (default: 30)'),
+  project: z
+    .string()
+    .optional()
+    .describe('Optional: filter to sessions mentioning a specific project slug'),
+});
+
 /**
  * MAINTENANCE TOOLS (2 tools)
  */
@@ -728,6 +744,7 @@ export const ValidationSchemas = {
 
   // Decisions tools
   create_decision: CreateDecisionArgsSchema,
+  find_undocumented_decisions: FindUndocumentedDecisionsArgsSchema,
 
   // Maintenance tools
   vault_custodian: VaultCustodianArgsSchema,

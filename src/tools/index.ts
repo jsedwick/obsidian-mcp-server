@@ -20,7 +20,7 @@ export * from './review/index.js';
 // Git/Project tools (7)
 export * from './git/index.js';
 
-// Decision tools (2)
+// Decision tools (3)
 export * from './decisions/index.js';
 
 // Maintenance tools (2)
@@ -73,8 +73,9 @@ export * from './issues/index.js';
  * - link_session_to_repository
  * - list_recent_projects
  *
- * DECISIONS (1 tool):
+ * DECISIONS (2 tools):
  * - create_decision
+ * - find_undocumented_decisions
  *
  * MAINTENANCE (2 tools):
  * - vault_custodian

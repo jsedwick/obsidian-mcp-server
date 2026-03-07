@@ -22,6 +22,9 @@ Thumbs.db
 *.swp
 *.swo
 
+# Test coverage
+coverage/
+
 # TypeScript
 *.tsbuildinfo
 certs/

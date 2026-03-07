@@ -22,6 +22,15 @@ export interface RelatedTopic {
   relevance: string; // Why this topic is related to the commit
 }
 
+/**
+ * Structured decision data for proactive surfacing (Decision 057)
+ */
+export interface RelatedDecision {
+  path: string;
+  title: string;
+  relevance: string; // Why this decision is related to the commit
+}
+
 export interface AnalyzeCommitImpactResult {
   content: Array<{
     type: string;
@@ -32,6 +41,11 @@ export interface AnalyzeCommitImpactResult {
    * Used by closeSession to enforce topic review
    */
   relatedTopics?: RelatedTopic[];
+  /**
+   * Structured list of decisions related to this commit (Decision 057)
+   * Used by closeSession to surface related decisions in Phase 1
+   */
+  relatedDecisions?: RelatedDecision[];
 }
 
 export async function analyzeCommitImpact(
@@ -118,6 +132,8 @@ export async function analyzeCommitImpact(
     const relatedContent: string[] = [];
     // Collect structured topic data for enforcement (Decision 041)
     const relatedTopicsMap = new Map<string, RelatedTopic>();
+    // Collect structured decision data for proactive surfacing (Decision 057)
+    const relatedDecisionsMap = new Map<string, RelatedDecision>();
 
     for (const term of searchTerms) {
       try {
@@ -131,24 +147,28 @@ export async function analyzeCommitImpact(
         if (!resultText.includes('Found 0 matches')) {
           relatedContent.push(`**Search for "${term}":**\n${resultText}\n`);
 
-          // Extract topic paths from search results (Decision 041)
+          // Extract file paths from search results (Decision 041 + 057)
           // Format: **1. /path/to/file.md** or **/path/to/file.md**
           const pathMatches = resultText.matchAll(/\*\*(?:\d+\.\s*)?([^*]+\.md)\*\*/g);
           for (const match of pathMatches) {
             const filePath = match[1].trim();
-            // Only include topics (not sessions, decisions, or archived files)
-            if (
-              filePath.includes('/topics/') &&
-              !filePath.includes('/archive/') &&
-              filePath.startsWith(context.vaultPath)
-            ) {
-              // Extract title from filename
+
+            if (filePath.startsWith(context.vaultPath) && !filePath.includes('/archive/')) {
               const fileName = path.basename(filePath, '.md');
               const title = fileName.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 
-              // Add to map (deduplicate by path)
-              if (!relatedTopicsMap.has(filePath)) {
+              // Collect topics (Decision 041)
+              if (filePath.includes('/topics/') && !relatedTopicsMap.has(filePath)) {
                 relatedTopicsMap.set(filePath, {
+                  path: filePath,
+                  title,
+                  relevance: `Matched search term: "${term}"`,
+                });
+              }
+
+              // Collect decisions (Decision 057)
+              if (filePath.includes('/decisions/') && !relatedDecisionsMap.has(filePath)) {
+                relatedDecisionsMap.set(filePath, {
                   path: filePath,
                   title,
                   relevance: `Matched search term: "${term}"`,
@@ -162,8 +182,9 @@ export async function analyzeCommitImpact(
       }
     }
 
-    // Convert map to array, limit to top 5 topics
+    // Convert maps to arrays, limit to top 5 each
     const relatedTopics = Array.from(relatedTopicsMap.values()).slice(0, 5);
+    const relatedDecisions = Array.from(relatedDecisionsMap.values()).slice(0, 5);
 
     // Build impact analysis prompt
     const analysisPrompt = `Analyze this Git commit and provide COMPREHENSIVE impact assessment for documentation updates.
@@ -271,6 +292,8 @@ ${analysisPrompt}
       ],
       // Structured topic data for enforcement (Decision 041)
       relatedTopics: relatedTopics.length > 0 ? relatedTopics : undefined,
+      // Structured decision data for proactive surfacing (Decision 057)
+      relatedDecisions: relatedDecisions.length > 0 ? relatedDecisions : undefined,
     };
   } catch (error) {
     throw new Error(

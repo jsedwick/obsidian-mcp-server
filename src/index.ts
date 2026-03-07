@@ -671,6 +671,14 @@ class ObsidianMCPServer {
               trackFileAccess: this.trackFileAccess.bind(this),
             });
 
+          case 'find_undocumented_decisions':
+            return await tools.findUndocumentedDecisions(
+              validatedArgs as tools.FindUndocumentedDecisionsArgs,
+              {
+                vaultPath: this.config.primaryVault.path,
+              }
+            );
+
           case 'get_session_context':
             return await tools.getSessionContext(validatedArgs as tools.GetSessionContextArgs, {
               vaultPath: this.config.primaryVault.path,
@@ -1551,6 +1559,27 @@ SCOPE: Decisions can be vault-level (affecting the MCP system itself) or project
         },
       },
       {
+        name: 'find_undocumented_decisions',
+        description:
+          'Scan recent sessions for decision-like patterns (strategic choices, tradeoffs, comparisons) ' +
+          'that may not have corresponding ADRs. Returns ranked list of sessions likely containing ' +
+          'undocumented decisions. Use periodically for vault maintenance or during /close to catch missed decisions.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            days: {
+              type: 'number',
+              description: 'How far back to scan in days (default: 30)',
+              default: 30,
+            },
+            project: {
+              type: 'string',
+              description: 'Optional: filter to sessions mentioning a specific project slug',
+            },
+          },
+        },
+      },
+      {
         name: 'get_session_context',
         description: 'Retrieve the full context from a session file.',
         inputSchema: {
@@ -1608,6 +1637,12 @@ SCOPE: Decisions can be vault-level (affecting the MCP system itself) or project
               type: 'string',
               description:
                 'Optional handoff notes for the next session - unfinished business, queued questions, context needed for continuity. Be verbose - these notes improve cross-session continuity.',
+            },
+            decision_review: {
+              type: 'string',
+              description:
+                'Decision consideration acknowledgment (Decision 057). Required in Phase 2. ' +
+                'Either "none_warranted: [brief reason]" or "created: [slug1], [slug2]".',
             },
             _invoked_by_slash_command: {
               type: 'boolean',

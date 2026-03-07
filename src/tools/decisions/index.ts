@@ -12,3 +12,10 @@ export type {
   CreateDecisionResult,
   CreateDecisionContext,
 } from './createDecision.js';
+
+export { findUndocumentedDecisions } from './findUndocumentedDecisions.js';
+export type {
+  FindUndocumentedDecisionsArgs,
+  FindUndocumentedDecisionsResult,
+  FindUndocumentedDecisionsContext,
+} from './findUndocumentedDecisions.js';

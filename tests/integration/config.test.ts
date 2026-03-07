@@ -24,7 +24,7 @@ describe('Configuration & Validation', () => {
   describe('ValidationSchemas registry', () => {
     it('should have schemas registered for all expected tools', () => {
       const schemaKeys = Object.keys(ValidationSchemas);
-      expect(schemaKeys.length).toBe(34);
+      expect(schemaKeys.length).toBe(35);
     });
 
     it('should have TOOL_NAMES array matching schema keys', () => {

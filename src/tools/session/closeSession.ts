@@ -314,6 +314,14 @@ export async function runPhase1Analysis(
   let commitAnalysisReport = commitDetectionError;
   // Collect commit-related topics for enforcement (Decision 041)
   const commitRelatedTopicsMap = new Map<string, RelatedTopic & { commitHash: string }>();
+  // Collect commit-related decisions for proactive surfacing (Decision 057)
+  const commitRelatedDecisions: Array<{
+    path: string;
+    title: string;
+    relevance: string;
+    commitHash: string;
+  }> = [];
+  const commitRelatedDecisionPaths = new Set<string>();
 
   if (sessionCommits.length > 0 && detectedRepoInfo) {
     commitAnalysisReport += `
@@ -346,6 +354,22 @@ export async function runPhase1Analysis(
                 commitHash: commitHash.substring(0, 12),
               };
               commitRelatedTopicsMap.set(topicPath, typedTopic);
+            }
+          }
+        }
+
+        // Collect related decisions from this commit (Decision 057)
+        if (analysis.relatedDecisions) {
+          for (const decision of analysis.relatedDecisions) {
+            const decisionPath: string = decision.path;
+            if (!commitRelatedDecisionPaths.has(decisionPath)) {
+              commitRelatedDecisionPaths.add(decisionPath);
+              commitRelatedDecisions.push({
+                path: decisionPath,
+                title: decision.title,
+                relevance: decision.relevance,
+                commitHash: commitHash.substring(0, 12),
+              });
             }
           }
         }
@@ -496,11 +520,23 @@ export async function runPhase1Analysis(
     'If creating: Use `create_topic_page` with comprehensive content.\n' +
     'If not: No action required (existing topics sufficient).';
 
-  // Build new decision consideration section (Decision 056)
-  const newDecisionConsiderationSection =
+  // Build new decision consideration section (Decision 056 + 057)
+  let newDecisionConsiderationSection =
     '\n\n---\n\n' +
     '⚖️ **New Decision Consideration**\n\n' +
-    'Did this session involve **strategic choices between alternatives**?\n\n' +
+    'Did this session involve **strategic choices between alternatives**?\n\n';
+
+  // Surface commit-related decisions for awareness (Decision 057)
+  if (commitRelatedDecisions.length > 0) {
+    newDecisionConsiderationSection +=
+      '📋 **Existing decisions related to commits in this session:**\n' +
+      commitRelatedDecisions
+        .map(d => `- **${d.title}** (commit ${d.commitHash})\n  ${d.relevance}`)
+        .join('\n') +
+      '\n\nReview these before creating new decisions — your changes may warrant updating an existing ADR.\n\n';
+  }
+
+  newDecisionConsiderationSection +=
     '**Create an ADR (Architectural Decision Record) when:**\n' +
     '- You chose between 2+ libraries, frameworks, or tools\n' +
     '- You selected an architecture pattern over alternatives\n' +
@@ -567,13 +603,15 @@ export async function runPhase1Analysis(
           '   - New patterns, architectures, or significant features deserve their own topics\n' +
           '   - Use `create_topic_page` for substantial new concepts\n' +
           '   - If no new topic warranted, proceed to next step (this is fine)\n\n' +
-          `${sessionCommits.length > 0 ? '5' : '4'}. **CONSIDER NEW DECISION CREATION** (Decision 056):\n` +
+          `${sessionCommits.length > 0 ? '5' : '4'}. **CONSIDER NEW DECISION CREATION** (Decision 056 + 057):\n` +
           '   - Review the "New Decision Consideration" section above\n' +
           '   - Did this session involve strategic choices between alternatives?\n' +
           '   - Library/framework selection, architecture patterns, and tradeoffs deserve ADRs\n' +
           '   - Use `create_decision` with context, alternatives, rationale, and consequences\n' +
           '   - **Litmus test:** Can you list 2-3 alternatives considered? If not, use a topic instead\n' +
-          '   - If no decision warranted, proceed to next step (this is fine)\n\n' +
+          '   - **You MUST acknowledge this step** in the finalize call via `decision_review` parameter:\n' +
+          '     - If creating decisions: `decision_review: "created: decision-slug-1, decision-slug-2"`\n' +
+          '     - If no decision warranted: `decision_review: "none_warranted: [brief reason]"`\n\n' +
           `${sessionCommits.length > 0 ? '6' : '5'}. **GENERATE HANDOFF NOTES** (Decision 052) - Use this prompt:\n\n` +
           '```\n' +
           generateHandoffPrompt({
@@ -593,6 +631,7 @@ export async function runPhase1Analysis(
           (topic ? `  ${topic}\n` : '') +
           '  finalize: true,\n' +
           '  handoff: "[paste generated handoff notes here]",  // REQUIRED (Decision 052)\n' +
+          '  decision_review: "none_warranted: [brief reason]",  // REQUIRED (Decision 057) - or list created decision slugs\n' +
           `  session_data: ${JSON.stringify(sessionData, null, 2)}
 ` +
           '})\n' +
@@ -1829,6 +1868,21 @@ export async function runPhase2Finalization(
     }
   }
 
+  // ENFORCEMENT CHECK (Decision 057): Require explicit decision review acknowledgment
+  // Soft enforcement: warn but don't block finalization
+  let decisionReviewWarning = '';
+  if (!_args.decision_review || _args.decision_review.trim() === '') {
+    decisionReviewWarning =
+      '\n\n⚠️  **Decision Review Not Acknowledged (Decision 057)**\n' +
+      'Phase 2 was called without `decision_review` parameter.\n' +
+      'Future sessions should include either:\n' +
+      '- `decision_review: "none_warranted: [reason]"` if no strategic choices were made\n' +
+      '- `decision_review: "created: [decision-slug-1], [decision-slug-2]"` for decisions created\n';
+    logger.warn('Decision review not acknowledged in Phase 2 (Decision 057)');
+  } else {
+    logger.info('Decision review acknowledged:', { decision_review: _args.decision_review });
+  }
+
   // Use Phase 1 discovery results if available, otherwise fall back to fresh search
   const [discoveredTopics, discoveredDecisions] =
     data.discoveredTopics && data.discoveredDecisions
@@ -2021,7 +2075,11 @@ export async function runPhase2Finalization(
       {
         type: 'text',
         text:
-          lines.join('\n') + data.repoDetectionMessage + validationReport + vaultCustodianReport,
+          lines.join('\n') +
+          data.repoDetectionMessage +
+          validationReport +
+          decisionReviewWarning +
+          vaultCustodianReport,
       },
     ],
   };
@@ -2033,6 +2091,7 @@ export interface CloseSessionArgs {
   summary: string;
   topic?: string;
   handoff?: string; // Optional in Phase 1, REQUIRED in Phase 2 (AI-generated via prompt, Decision 052)
+  decision_review?: string; // Phase 2: acknowledgment of decision consideration (Decision 057)
   _invoked_by_slash_command?: boolean;
   // Phase control for two-phase workflow (Decision 022)
   analyze_only?: boolean; // Phase 1: analyze commits, return suggestions
