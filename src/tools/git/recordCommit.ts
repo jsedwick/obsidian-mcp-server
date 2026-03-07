@@ -1,6 +1,6 @@
 /**
  * Tool: record_commit
- * Description: Record a Git commit in the Obsidian vault, creating a commit page with diff and session links.
+ * Description: Record a Git commit in the Obsidian vault, creating a commit page with stats and session links.
  */
 
 import * as fs from 'fs/promises';
@@ -67,9 +67,6 @@ export async function recordCommit(
   const subject = lines[5];
   const body = lines.slice(6).join('\n');
 
-  // Get diff
-  const { stdout: diff } = await execAsync(`git show ${args.commit_hash}`, { cwd: args.repo_path });
-
   // Get stats
   const { stdout: stats } = await execAsync(`git show --stat ${args.commit_hash}`, {
     cwd: args.repo_path,
@@ -112,7 +109,6 @@ export async function recordCommit(
     subject,
     body,
     stats,
-    diff,
     sessionId: context.currentSessionId,
     projectName: name,
     projectSlug: slug,

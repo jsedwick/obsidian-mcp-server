@@ -15,6 +15,10 @@
  * - How-to guides or troubleshooting (use create_topic_page instead)
  *
  * A decision should have: context, multiple alternatives considered, rationale for choice, and consequences.
+ *
+ * CONTENT STYLE: Be direct and concise. State context in 2-3 sentences, list
+ * alternatives as brief bullet points with key tradeoffs, and focus rationale
+ * on the decisive factors.
  */
 
 import fs from 'fs/promises';

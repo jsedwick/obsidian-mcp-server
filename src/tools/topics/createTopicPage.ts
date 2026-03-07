@@ -13,6 +13,10 @@
  * - Strategic or organizational decisions (use create_decision instead)
  * - Git repository tracking (use create_project_page instead)
  * - Conversation logs (use save_session_note instead)
+ *
+ * CONTENT STYLE: Write for a technical reader who needs actionable reference
+ * material. Use concise sections with examples over lengthy explanations.
+ * Prefer bullet points and code blocks over prose.
  */
 
 import fs from 'fs/promises';

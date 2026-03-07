@@ -331,7 +331,6 @@ export interface CommitTemplateArgs {
   subject: string;
   body: string;
   stats: string;
-  diff: string;
   sessionId: string;
   projectName: string;
   projectSlug: string;
@@ -373,14 +372,9 @@ ${args.subject}
 
 ${args.body}
 
-## Changes Overview
+## Changes
 \`\`\`
 ${args.stats}
-\`\`\`
-
-## Full Diff
-\`\`\`diff
-${args.diff}
 \`\`\`
 
 ## Related Sessions

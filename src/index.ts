@@ -1482,7 +1482,9 @@ USE FOR:
 DO NOT USE FOR:
 - Strategic or organizational decisions (use create_decision instead)
 - Git repository tracking (use create_project_page instead)
-- Conversation logs (use save_session_note instead)`,
+- Conversation logs (use save_session_note instead)
+
+CONTENT STYLE: Write for a technical reader who needs actionable reference material. Use concise sections with examples over lengthy explanations. Prefer bullet points and code blocks over prose. Omit obvious context — focus on what someone would need to look up.`,
         inputSchema: {
           type: 'object',
           properties: {
@@ -1523,7 +1525,9 @@ A decision should have: context, multiple alternatives considered, rationale for
 
 NOTE: If your title contains implementation keywords (fix, bug, implement, etc.), the tool will suggest using create_topic_page instead. Use force: true if the decision is genuinely strategic despite the keywords (e.g., decision to fix architecture that also includes implementation guide).
 
-SCOPE: Decisions can be vault-level (affecting the MCP system itself) or project-specific (affecting a particular codebase). Use repo_path to auto-generate a collision-resistant project slug. If neither repo_path nor project is specified, decision is created as vault-level.`,
+SCOPE: Decisions can be vault-level (affecting the MCP system itself) or project-specific (affecting a particular codebase). Use repo_path to auto-generate a collision-resistant project slug. If neither repo_path nor project is specified, decision is created as vault-level.
+
+CONTENT STYLE: Be direct and concise. State the context in 2-3 sentences, list alternatives as brief bullet points with key tradeoffs, and keep the rationale focused on why this choice was made. Avoid restating obvious pros/cons — highlight the decisive factors.`,
         inputSchema: {
           type: 'object',
           properties: {
@@ -1939,7 +1943,7 @@ SCOPE: Decisions can be vault-level (affecting the MCP system itself) or project
       {
         name: 'record_commit',
         description:
-          'Record a Git commit in the Obsidian vault, creating a commit page with diff and session links.',
+          'Record a Git commit in the Obsidian vault, creating a commit page with stats and session links.',
         inputSchema: {
           type: 'object',
           properties: {
