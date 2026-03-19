@@ -2087,6 +2087,76 @@ export async function runPhase2Finalization(
 
 // Decision 044: runSinglePhaseClose was removed - two-phase workflow is always required
 
+/**
+ * Sync all git-tracked vaults to their remote repositories.
+ * Runs git add, commit, and push for each vault that has a .git directory.
+ * Non-blocking: failures are reported but do not throw.
+ */
+async function syncVaultsToGit(allVaultPaths: string[]): Promise<string> {
+  const results: string[] = [];
+  let commitCount = 0;
+  const pushErrors: string[] = [];
+
+  for (const vaultPath of allVaultPaths) {
+    // Skip if not a git repository
+    if (!fssync.existsSync(path.join(vaultPath, '.git'))) {
+      continue;
+    }
+
+    const vaultName = path.basename(vaultPath);
+
+    try {
+      // Stage all changes
+      await execAsync('git add .', { cwd: vaultPath });
+
+      // Check if there are changes to commit
+      try {
+        await execAsync('git diff-index --quiet HEAD --', { cwd: vaultPath });
+        // No changes - skip commit
+      } catch {
+        // Changes exist - commit them
+        const now = new Date();
+        const timestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}-${String(now.getMinutes()).padStart(2, '0')}-${String(now.getSeconds()).padStart(2, '0')}`;
+        await execAsync(`git commit -m "Session close auto-commit: ${timestamp}" --quiet`, {
+          cwd: vaultPath,
+        });
+        commitCount++;
+        logger.info(`Committed vault changes: ${vaultName}`);
+      }
+
+      // Push to remote
+      try {
+        await execAsync('git push --quiet', { cwd: vaultPath });
+      } catch (pushErr) {
+        pushErrors.push(vaultName);
+        logger.info(`Git push failed for ${vaultName}`, {
+          error: pushErr instanceof Error ? pushErr.message : String(pushErr),
+        });
+      }
+    } catch (error) {
+      logger.info(`Git sync error for ${vaultName}`, {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      pushErrors.push(vaultName);
+    }
+  }
+
+  // Build report
+  if (commitCount > 0) {
+    results.push(`📝 Auto-committed changes in ${commitCount} vault(s)`);
+  }
+
+  if (pushErrors.length === 0 && commitCount > 0) {
+    results.push('✅ All vaults synced to remote');
+  } else if (pushErrors.length === 0 && commitCount === 0) {
+    results.push('✅ All vaults up to date with remote');
+  } else {
+    results.push(`⚠️  Git push failed for: ${pushErrors.join(', ')}`);
+  }
+
+  return results.length > 0 ? '\n\n' + results.join('\n') : '';
+}
+
 export interface CloseSessionArgs {
   summary: string;
   topic?: string;
@@ -2313,6 +2383,13 @@ export async function closeSession(
       const phase2Result = await runPhase2Finalization(args, context, args.session_data!);
       // SUCCESS: Clear session state to allow subsequent /close operations
       context.clearSessionState();
+
+      // Sync all git-tracked vaults to remote after successful session close
+      const vaultSyncReport = await syncVaultsToGit(context.allVaultPaths);
+      if (vaultSyncReport && phase2Result.content.length > 0) {
+        phase2Result.content[0].text += vaultSyncReport;
+      }
+
       return phase2Result;
     } catch (error) {
       // Check if this is an enforcement error (Decision 041 or 042)
