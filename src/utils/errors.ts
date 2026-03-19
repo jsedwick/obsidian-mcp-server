@@ -152,3 +152,17 @@ export class MigrationError extends ObsidianMCPError {
     super(message, 'MIGRATION_ERROR', details);
   }
 }
+
+/**
+ * Security-related errors (input sanitization, access control violations)
+ *
+ * @example
+ * ```typescript
+ * throw new SecurityError('Path traversal detected', { path: '../../../etc/passwd' });
+ * ```
+ */
+export class SecurityError extends ObsidianMCPError {
+  constructor(message: string, details?: Record<string, unknown>) {
+    super(message, 'SECURITY_ERROR', details);
+  }
+}

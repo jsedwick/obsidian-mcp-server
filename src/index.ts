@@ -23,6 +23,9 @@ import { GitService } from './services/git/GitService.js';
 import { SessionStateFile } from './services/session/SessionStateFile.js';
 import type { RestoredSessionState } from './services/session/SessionStateFile.js';
 import { validateToolArgs, ValidationError } from './validation/index.js';
+import { SecurityPipeline } from './security/index.js';
+import { SecurityError } from './utils/errors.js';
+import type { SecurityConfig } from './security/types.js';
 import { IndexBuilder } from './services/search/index/IndexBuilder.js';
 import { IndexedSearch } from './services/search/IndexedSearch.js';
 import { DEFAULT_INDEX_CONFIG } from './models/IndexModels.js';
@@ -53,6 +56,9 @@ let currentMode: VaultMode = 'work';
 
 // Full configuration (loaded once, contains all vaults from all modes)
 let fullConfig: FullServerConfig | null = null;
+
+// Security configuration (loaded from .obsidian-mcp.json, falls back to defaults)
+let securityConfig: Partial<SecurityConfig> | undefined;
 
 /**
  * Get the current vault mode
@@ -102,6 +108,11 @@ function loadFullConfig(): FullServerConfig {
       const config: unknown = JSON.parse(configData);
 
       if (!config || typeof config !== 'object') continue;
+
+      // Extract security config if present
+      if ('security' in config && config.security && typeof config.security === 'object') {
+        securityConfig = config.security as Partial<SecurityConfig>;
+      }
 
       // Check for new format: primaryVaults array
       if ('primaryVaults' in config && Array.isArray(config.primaryVaults)) {
@@ -329,6 +340,7 @@ class ObsidianMCPServer {
   private indexBuilders: Map<string, IndexBuilder> = new Map(); // Per-vault index builders
   private indexedSearches: Map<string, IndexedSearch> = new Map(); // Per-vault indexed searches
   private modeSwitching: boolean = false; // Guard against concurrent mode switches
+  private securityPipeline: SecurityPipeline;
 
   constructor() {
     this.config = CONFIG;
@@ -374,6 +386,9 @@ class ObsidianMCPServer {
 
     // Initialize SessionStateFile for persistent session state (Decision 054)
     this.sessionStateFile = new SessionStateFile(this.config.primaryVault.path);
+
+    // Initialize security pipeline (loaded from .obsidian-mcp.json or defaults)
+    this.securityPipeline = new SecurityPipeline(securityConfig);
 
     // Initialize IndexBuilder and IndexedSearch for each vault if enabled
     if (DEFAULT_INDEX_CONFIG.enabled) {
@@ -620,6 +635,20 @@ class ObsidianMCPServer {
         // This provides runtime type safety and helpful error messages
         const validatedArgs = validateToolArgs(name as any, args);
 
+        // Security pipeline: sanitize inputs and check access control
+        const securityCtx = {
+          toolName: name,
+          args: validatedArgs as Record<string, unknown>,
+          vaultPaths: [
+            this.config.primaryVault.path,
+            ...this.config.secondaryVaults.map(v => v.path),
+          ],
+          primaryVaultPath: this.config.primaryVault.path,
+          secondaryVaultPaths: this.config.secondaryVaults.map(v => v.path),
+          timestamp: new Date(),
+        };
+        const securedArgs = this.securityPipeline.preExecute(securityCtx) as typeof validatedArgs;
+
         // Set session start time on first tool call if not already set
         // This ensures Phase 1 of two-phase close workflow has a valid start time
         // even if /mb is not explicitly run at session start
@@ -629,7 +658,7 @@ class ObsidianMCPServer {
 
         switch (name) {
           case 'search_vault':
-            return await tools.searchVault(validatedArgs as tools.SearchVaultArgs, {
+            return await tools.searchVault(securedArgs as tools.SearchVaultArgs, {
               vaultPath: this.config.primaryVault.path,
               config: this.config,
               embeddingConfig: this.embeddingConfig,
@@ -647,7 +676,7 @@ class ObsidianMCPServer {
             });
 
           case 'create_topic_page':
-            return await tools.createTopicPage(validatedArgs as tools.CreateTopicPageArgs, {
+            return await tools.createTopicPage(securedArgs as tools.CreateTopicPageArgs, {
               vaultPath: this.config.primaryVault.path,
               currentSessionId: this.currentSessionId,
               slugify: this.slugify.bind(this),
@@ -660,7 +689,7 @@ class ObsidianMCPServer {
             });
 
           case 'create_decision':
-            return await tools.createDecision(validatedArgs as tools.CreateDecisionArgs, {
+            return await tools.createDecision(securedArgs as tools.CreateDecisionArgs, {
               vaultPath: this.config.primaryVault.path,
               currentSessionId: this.currentSessionId,
               slugify: this.slugify.bind(this),
@@ -673,21 +702,21 @@ class ObsidianMCPServer {
 
           case 'find_undocumented_decisions':
             return await tools.findUndocumentedDecisions(
-              validatedArgs as tools.FindUndocumentedDecisionsArgs,
+              securedArgs as tools.FindUndocumentedDecisionsArgs,
               {
                 vaultPath: this.config.primaryVault.path,
               }
             );
 
           case 'get_session_context':
-            return await tools.getSessionContext(validatedArgs as tools.GetSessionContextArgs, {
+            return await tools.getSessionContext(securedArgs as tools.GetSessionContextArgs, {
               vaultPath: this.config.primaryVault.path,
               currentSessionId: this.currentSessionId,
               currentSessionFile: this.currentSessionFile,
             });
 
           case 'get_topic_context':
-            return await tools.getTopicContext(validatedArgs as tools.GetTopicContextArgs, {
+            return await tools.getTopicContext(securedArgs as tools.GetTopicContextArgs, {
               vaultPath: this.config.primaryVault.path,
               slugify: this.slugify.bind(this),
               trackFileAccess: this.trackFileAccess.bind(this),
@@ -695,7 +724,7 @@ class ObsidianMCPServer {
 
           case 'analyze_session_commits':
             return await tools.analyzeSessionCommits(
-              validatedArgs as tools.AnalyzeSessionCommitsArgs,
+              securedArgs as tools.AnalyzeSessionCommitsArgs,
               {
                 vaultPath: this.config.primaryVault.path,
                 filesAccessed: this.filesAccessed,
@@ -707,7 +736,7 @@ class ObsidianMCPServer {
             );
 
           case 'close_session':
-            return await tools.closeSession(validatedArgs as tools.CloseSessionArgs, {
+            return await tools.closeSession(securedArgs as tools.CloseSessionArgs, {
               vaultPath: this.config.primaryVault.path,
               allVaultPaths: [
                 this.config.primaryVault.path,
@@ -742,7 +771,7 @@ class ObsidianMCPServer {
             });
 
           case 'find_stale_topics':
-            return await tools.findStaleTopics(validatedArgs as tools.FindStaleTopicsArgs, {
+            return await tools.findStaleTopics(securedArgs as tools.FindStaleTopicsArgs, {
               vaultPath: this.config.primaryVault.path,
               ensureVaultStructure: this.ensureVaultStructure.bind(this),
               getFileAgeDays: this.getFileAgeDays.bind(this),
@@ -756,36 +785,36 @@ class ObsidianMCPServer {
             });
 
           case 'submit_topic_reviews':
-            return tools.submitTopicReviews(validatedArgs as tools.SubmitTopicReviewsArgs, {
+            return tools.submitTopicReviews(securedArgs as tools.SubmitTopicReviewsArgs, {
               vaultPath: this.config.primaryVault.path,
             });
 
           case 'archive_topic':
-            return await tools.archiveTopic(validatedArgs as tools.ArchiveTopicArgs, {
+            return await tools.archiveTopic(securedArgs as tools.ArchiveTopicArgs, {
               vaultPath: this.config.primaryVault.path,
               slugify: this.slugify.bind(this),
               ensureVaultStructure: this.ensureVaultStructure.bind(this),
             });
 
           case 'list_recent_sessions':
-            return await tools.listRecentSessions(validatedArgs as tools.ListRecentSessionsArgs, {
+            return await tools.listRecentSessions(securedArgs as tools.ListRecentSessionsArgs, {
               vaultPath: this.config.primaryVault.path,
               ensureVaultStructure: this.ensureVaultStructure.bind(this),
             });
 
           case 'list_recent_projects':
-            return await tools.listRecentProjects(validatedArgs as tools.ListRecentProjectsArgs, {
+            return await tools.listRecentProjects(securedArgs as tools.ListRecentProjectsArgs, {
               vaultPath: this.config.primaryVault.path,
             });
 
           case 'track_file_access':
-            return tools.trackFileAccess(validatedArgs as tools.TrackFileAccessArgs, {
+            return tools.trackFileAccess(securedArgs as tools.TrackFileAccessArgs, {
               filesAccessed: this.filesAccessed,
             });
 
           case 'detect_session_repositories':
             return await tools.detectSessionRepositories(
-              validatedArgs as tools.DetectSessionRepositoriesArgs,
+              securedArgs as tools.DetectSessionRepositoriesArgs,
               {
                 currentSessionId: this.currentSessionId,
                 filesAccessed: this.filesAccessed,
@@ -795,13 +824,13 @@ class ObsidianMCPServer {
             );
 
           case 'restore_session_data':
-            return await tools.restoreSessionData(validatedArgs as tools.RestoreSessionDataArgs, {
+            return await tools.restoreSessionData(securedArgs as tools.RestoreSessionDataArgs, {
               restoreSessionStateFromFile: this.restoreSessionStateFromFile.bind(this),
             });
 
           case 'link_session_to_repository':
             return await tools.linkSessionToRepository(
-              validatedArgs as tools.LinkSessionToRepositoryArgs,
+              securedArgs as tools.LinkSessionToRepositoryArgs,
               {
                 currentSessionFile: this.currentSessionFile,
                 filesAccessed: this.filesAccessed,
@@ -811,14 +840,14 @@ class ObsidianMCPServer {
             );
 
           case 'create_project_page':
-            return await tools.createProjectPage(validatedArgs as tools.CreateProjectPageArgs, {
+            return await tools.createProjectPage(securedArgs as tools.CreateProjectPageArgs, {
               vaultPath: this.config.primaryVault.path,
               gitService: this.gitService,
               trackProjectCreation: project => this.projectsCreated.push(project),
             });
 
           case 'record_commit':
-            return await tools.recordCommit(validatedArgs as tools.RecordCommitArgs, {
+            return await tools.recordCommit(securedArgs as tools.RecordCommitArgs, {
               vaultPath: this.config.primaryVault.path,
               gitService: this.gitService,
               currentSessionId: this.currentSessionId,
@@ -826,7 +855,7 @@ class ObsidianMCPServer {
             });
 
           case 'toggle_embeddings':
-            return await tools.toggleEmbeddings(validatedArgs as tools.ToggleEmbeddingsArgs, {
+            return await tools.toggleEmbeddings(securedArgs as tools.ToggleEmbeddingsArgs, {
               embeddingConfig: this.embeddingConfig,
               embeddingToggleFile: this.embeddingToggleFile,
               embeddingCache: this.embeddingCache,
@@ -839,7 +868,7 @@ class ObsidianMCPServer {
             });
 
           case 'vault_custodian':
-            return await tools.vaultCustodian(validatedArgs as tools.VaultCustodianArgs, {
+            return await tools.vaultCustodian(securedArgs as tools.VaultCustodianArgs, {
               vaultPath: this.config.primaryVault.path,
               ensureVaultStructure: this.ensureVaultStructure.bind(this),
               findSessionFile: this.findSessionFile.bind(this),
@@ -850,12 +879,12 @@ class ObsidianMCPServer {
             });
 
           case 'analyze_topic_content':
-            return await tools.analyzeTopicContent(validatedArgs as tools.AnalyzeTopicContentArgs, {
+            return await tools.analyzeTopicContent(securedArgs as tools.AnalyzeTopicContentArgs, {
               searchVault: this.searchVaultWrapper.bind(this),
             });
 
           case 'analyze_commit_impact':
-            return await tools.analyzeCommitImpact(validatedArgs as tools.AnalyzeCommitImpactArgs, {
+            return await tools.analyzeCommitImpact(securedArgs as tools.AnalyzeCommitImpactArgs, {
               vaultPath: this.config.primaryVault.path,
               gitService: this.gitService,
               searchVault: this.searchVaultWrapper.bind(this),
@@ -868,37 +897,37 @@ class ObsidianMCPServer {
             // Set explicit session start time for two-phase /close workflow
             this.sessionStartTime = new Date();
             return await tools.getMemoryBase(
-              validatedArgs as tools.GetMemoryBaseArgs,
+              securedArgs as tools.GetMemoryBaseArgs,
               this.config.primaryVault.path,
               { sessionStartTime: this.sessionStartTime }
             );
 
           case 'append_to_accumulator':
-            return await tools.appendToAccumulator(validatedArgs as tools.AppendToAccumulatorArgs, {
+            return await tools.appendToAccumulator(securedArgs as tools.AppendToAccumulatorArgs, {
               vaultPath: this.config.primaryVault.path,
               trackFileAccess: this.trackFileAccess.bind(this),
             });
 
           case 'get_tasks_by_date':
             return await tools.getTasksByDate(
-              validatedArgs as tools.GetTasksByDateArgs,
+              securedArgs as tools.GetTasksByDateArgs,
               this.config.primaryVault.path
             );
 
           case 'add_task':
             return await tools.addTask(
-              validatedArgs as tools.AddTaskArgs,
+              securedArgs as tools.AddTaskArgs,
               this.config.primaryVault.path
             );
 
           case 'complete_task':
             return await tools.completeTask(
-              validatedArgs as tools.CompleteTaskArgs,
+              securedArgs as tools.CompleteTaskArgs,
               this.config.primaryVault.path
             );
 
           case 'update_document':
-            return await tools.updateDocument(validatedArgs as tools.UpdateDocumentArgs, {
+            return await tools.updateDocument(securedArgs as tools.UpdateDocumentArgs, {
               vaultPath: this.config.primaryVault.path,
               slugify: this.slugify.bind(this),
               trackFileAccess: this.trackFileAccess.bind(this),
@@ -910,7 +939,7 @@ class ObsidianMCPServer {
             });
 
           case 'code_file':
-            return await tools.codeFile(validatedArgs as tools.CodeFileArgs, {
+            return await tools.codeFile(securedArgs as tools.CodeFileArgs, {
               vaultPath: this.config.primaryVault.path,
               secondaryVaults: this.config.secondaryVaults.map(v => ({
                 path: v.path,
@@ -920,12 +949,12 @@ class ObsidianMCPServer {
             });
 
           case 'workflow':
-            return await tools.workflow(validatedArgs as tools.WorkflowArgs, {
+            return await tools.workflow(securedArgs as tools.WorkflowArgs, {
               vaultPath: this.config.primaryVault.path,
             });
 
           case 'switch_mode': {
-            const { mode } = validatedArgs as { mode: VaultMode };
+            const { mode } = securedArgs as { mode: VaultMode };
             const result = this.switchMode(mode);
 
             // Format response
@@ -965,7 +994,7 @@ class ObsidianMCPServer {
           }
 
           case 'issue': {
-            const result = await tools.issue(validatedArgs as tools.IssueArgs, {
+            const result = await tools.issue(securedArgs as tools.IssueArgs, {
               vaultPath: this.config.primaryVault.path,
               linkIssueToSession: (slug: string) => {
                 this.linkedIssueSlug = slug;
@@ -980,13 +1009,13 @@ class ObsidianMCPServer {
           }
 
           case 'get_persistent_issues':
-            return await tools.getPersistentIssues(validatedArgs as tools.GetPersistentIssuesArgs, {
+            return await tools.getPersistentIssues(securedArgs as tools.GetPersistentIssuesArgs, {
               vaultPath: this.config.primaryVault.path,
             });
 
           case 'update_persistent_issue':
             return await tools.updatePersistentIssue(
-              validatedArgs as tools.UpdatePersistentIssueArgs,
+              securedArgs as tools.UpdatePersistentIssueArgs,
               {
                 vaultPath: this.config.primaryVault.path,
                 currentSessionId: this.currentSessionId || undefined,
@@ -1001,7 +1030,15 @@ class ObsidianMCPServer {
         // Enhanced error handling with special formatting for validation errors
         let errorMessage: string;
 
-        if (error instanceof ValidationError) {
+        if (error instanceof SecurityError) {
+          // Security violations get logged and returned with clear prefix
+          logger.warn('Security violation', {
+            tool: name,
+            message: error.message,
+            details: error.details,
+          });
+          errorMessage = `Security error: ${error.message}`;
+        } else if (error instanceof ValidationError) {
           // Validation errors already have well-formatted messages
           errorMessage = error.message;
         } else if (error instanceof Error) {
