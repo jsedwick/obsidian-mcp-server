@@ -1502,6 +1502,12 @@ class ObsidianMCPServer {
                 'Response detail level. minimal: files only, summary: + snippets (default), detailed: + extended context, full: complete matches',
               default: 'summary',
             },
+            auto_retry: {
+              type: 'boolean',
+              description:
+                'Enable automatic query broadening retry when results are poor (default: true)',
+              default: true,
+            },
           },
           required: ['query'],
         },
@@ -2798,14 +2804,25 @@ Check the sessions/ directory for recent conversations.
     totalCount: number,
     detail: ResponseDetail,
     hasSemanticSearch: boolean,
-    query: string
+    query: string,
+    retryData?: {
+      broadenedQuery: string;
+      reason: string;
+      formattedText: string;
+    }
   ): { content: Array<{ type: string; text: string }> } {
     if (results.length === 0) {
+      let text = `No results found for "${query}".`;
+      // Even with zero primary results, retry may have found something
+      if (retryData) {
+        text += `\n\n---\n🔄 Auto-retry with broadened query "${retryData.broadenedQuery}" (reason: ${retryData.reason}):\n\n`;
+        text += retryData.formattedText;
+      }
       return {
         content: [
           {
             type: 'text',
-            text: `No results found for "${query}".`,
+            text,
           },
         ],
       };
@@ -2916,6 +2933,12 @@ Check the sessions/ directory for recent conversations.
     }
     if (this.config.secondaryVaults.length > 0) {
       resultText += `\n📚 Searched ${1 + this.config.secondaryVaults.length} vault(s)`;
+    }
+
+    // Append auto-retry results if present
+    if (retryData) {
+      resultText += `\n\n---\n🔄 Auto-retry with broadened query "${retryData.broadenedQuery}" (reason: ${retryData.reason}):\n\n`;
+      resultText += retryData.formattedText;
     }
 
     return {

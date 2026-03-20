@@ -279,6 +279,11 @@ export const SearchVaultArgsSchema = z.object({
     .optional()
     .default(false)
     .describe('Include archived files in search results (default: false)'),
+  auto_retry: z
+    .boolean()
+    .optional()
+    .default(true)
+    .describe('Auto-retry with broadened query on poor results'),
 });
 
 // toggle_embeddings

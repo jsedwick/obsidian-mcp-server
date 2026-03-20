@@ -12,6 +12,8 @@ import type { IndexedSearch } from '../../services/search/IndexedSearch.js';
 import { IndexBuilder, BuildMode } from '../../services/search/index/IndexBuilder.js';
 import { DEFAULT_INDEX_CONFIG } from '../../models/IndexModels.js';
 import { createLogger } from '../../utils/logger.js';
+import { shouldRetry } from './retryStrategy.js';
+import { broadenQuery } from '../../utils/queryBroadening.js';
 
 const logger = createLogger('SearchVault');
 
@@ -24,6 +26,7 @@ export interface SearchVaultArgs {
   snippets_only?: boolean;
   detail?: string;
   include_archived?: boolean;
+  auto_retry?: boolean;
 }
 
 export interface SearchVaultResult {
@@ -83,7 +86,12 @@ export async function searchVault(
       totalCount: number,
       detail: ResponseDetail,
       hasSemanticSearch: boolean,
-      query: string
+      query: string,
+      retryData?: {
+        broadenedQuery: string;
+        reason: string;
+        formattedText: string;
+      }
     ) => { content: Array<{ type: string; text: string }> };
     getAllVaults: () => Array<{ path: string; name: string }>;
   }
@@ -246,13 +254,17 @@ export async function searchVault(
         // Save embedding cache after search
         await context.saveEmbeddingCache();
 
+        // Auto-retry with broadened query if results are poor
+        const retryData = await executeRetryIfNeeded(finalResults, maxResults, args, context);
+
         // Format and return results
         return context.formatSearchResults(
           finalResults,
           indexedResults.length,
           detailLevel,
           context.embeddingConfig.enabled,
-          args.query
+          args.query,
+          retryData ?? undefined
         );
       }
     } catch (error) {
@@ -598,14 +610,86 @@ export async function searchVault(
     }
   }
 
+  // Auto-retry with broadened query if results are poor
+  const retryData = await executeRetryIfNeeded(topResults, maxResults, args, context);
+
   // Format and return results using tiered response levels
   return context.formatSearchResults(
     topResults,
     results.length,
     detailLevel,
     queryEmbedding !== null,
-    args.query
+    args.query,
+    retryData ?? undefined
   );
+}
+
+/**
+ * Assess result quality and execute a retry search with broadened query if needed.
+ * Returns retry data for formatSearchResults, or null if no retry was needed/possible.
+ *
+ * The retry calls searchVault recursively with auto_retry: false to prevent infinite chains.
+ * The retry result is returned as pre-formatted text to avoid needing raw result access.
+ */
+async function executeRetryIfNeeded(
+  primaryResults: Array<{
+    file: string;
+    matches: string[];
+    date?: string;
+    score: number;
+    semanticScore?: number;
+    vault?: string;
+  }>,
+  maxResults: number,
+  args: SearchVaultArgs,
+  context: Parameters<typeof searchVault>[1]
+): Promise<{
+  broadenedQuery: string;
+  reason: string;
+  formattedText: string;
+} | null> {
+  // Skip if auto_retry is disabled (also prevents infinite recursion)
+  if (args.auto_retry === false) {
+    return null;
+  }
+
+  const decision = shouldRetry(primaryResults, maxResults);
+  if (!decision.shouldRetry) {
+    return null;
+  }
+
+  const broadened = broadenQuery(args.query);
+  if (!broadened) {
+    logger.info(`Retry triggered (${decision.reason}) but query broadening produced no change`);
+    return null;
+  }
+
+  logger.info(`Auto-retry: "${args.query}" → "${broadened}" (${decision.reason})`);
+
+  // Execute retry search with broadened query and auto_retry disabled
+  const retryResult = await searchVault(
+    {
+      ...args,
+      query: broadened,
+      auto_retry: false,
+      max_results: Math.max(5, Math.floor(maxResults / 2)),
+    },
+    context
+  );
+
+  const retryText = retryResult.content[0]?.text || '';
+
+  // Skip if retry also found nothing
+  if (retryText.startsWith('No results found')) {
+    logger.info('Auto-retry also found no results');
+    return null;
+  }
+
+  return {
+    broadenedQuery: broadened,
+    reason: decision.reason,
+    formattedText: retryText,
+  };
 }
 
 /**
