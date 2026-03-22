@@ -102,6 +102,24 @@ function getAllVaultPaths(): string[] {
 }
 
 /**
+ * Get all vaults across all modes as {path, name} objects.
+ * Used for update_document and code_file path validation — a vault file
+ * should be writable regardless of which mode is currently active.
+ */
+function getAllVaults(): Array<{ path: string; name: string }> {
+  if (!fullConfig) return [];
+  const seen = new Set<string>();
+  const vaults: Array<{ path: string; name: string }> = [];
+  for (const vault of [...fullConfig.allPrimaryVaults, ...fullConfig.allSecondaryVaults]) {
+    if (!seen.has(vault.path)) {
+      seen.add(vault.path);
+      vaults.push({ path: vault.path, name: vault.name });
+    }
+  }
+  return vaults;
+}
+
+/**
  * Load full configuration from file (all vaults, all modes)
  */
 function loadFullConfig(): FullServerConfig {
@@ -944,20 +962,14 @@ class ObsidianMCPServer {
               vaultPath: this.config.primaryVault.path,
               slugify: this.slugify.bind(this),
               trackFileAccess: this.trackFileAccess.bind(this),
-              secondaryVaults: this.config.secondaryVaults.map(v => ({
-                path: v.path,
-                name: v.name,
-              })),
+              secondaryVaults: getAllVaults(),
               ensureVaultStructure: this.ensureVaultStructure.bind(this),
             });
 
           case 'code_file':
             return await tools.codeFile(securedArgs as tools.CodeFileArgs, {
               vaultPath: this.config.primaryVault.path,
-              secondaryVaults: this.config.secondaryVaults.map(v => ({
-                path: v.path,
-                name: v.name,
-              })),
+              secondaryVaults: getAllVaults(),
               trackFileAccess: this.trackFileAccess.bind(this),
             });
 
@@ -2530,7 +2542,7 @@ Check the sessions/ directory for recent conversations.
       vaultPath: this.config.primaryVault.path,
       slugify: this.slugify.bind(this),
       trackFileAccess: this.trackFileAccess.bind(this),
-      secondaryVaults: this.config.secondaryVaults.map(v => ({ path: v.path, name: v.name })),
+      secondaryVaults: getAllVaults(),
       ensureVaultStructure: this.ensureVaultStructure.bind(this),
     });
   }
