@@ -88,6 +88,20 @@ function getAvailableModes(): VaultMode[] {
 }
 
 /**
+ * Get all vault paths across all modes (for security boundaries).
+ * Mode controls search scope, not security boundaries — all configured
+ * vaults should be accessible regardless of current mode.
+ */
+function getAllVaultPaths(): string[] {
+  if (!fullConfig) return [];
+  const paths = new Set<string>();
+  for (const vault of [...fullConfig.allPrimaryVaults, ...fullConfig.allSecondaryVaults]) {
+    paths.add(vault.path);
+  }
+  return Array.from(paths);
+}
+
+/**
  * Load full configuration from file (all vaults, all modes)
  */
 function loadFullConfig(): FullServerConfig {
@@ -636,13 +650,12 @@ class ObsidianMCPServer {
         const validatedArgs = validateToolArgs(name as any, args);
 
         // Security pipeline: sanitize inputs and check access control
+        // Use all vault paths across all modes for security boundaries —
+        // mode controls search scope, not file access boundaries
         const securityCtx = {
           toolName: name,
           args: validatedArgs as Record<string, unknown>,
-          vaultPaths: [
-            this.config.primaryVault.path,
-            ...this.config.secondaryVaults.map(v => v.path),
-          ],
+          vaultPaths: getAllVaultPaths(),
           primaryVaultPath: this.config.primaryVault.path,
           secondaryVaultPaths: this.config.secondaryVaults.map(v => v.path),
           timestamp: new Date(),
