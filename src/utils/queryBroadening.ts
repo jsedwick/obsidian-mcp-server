@@ -183,6 +183,26 @@ export function broadenQuery(originalQuery: string): string | null {
 }
 
 /**
+ * Extract individual core search terms from a query.
+ * Returns terms in original order with stop words and qualifiers removed.
+ * Used as a fallback retry strategy when query broadening produces no meaningful change.
+ */
+export function extractCoreTerms(query: string): string[] {
+  const normalized = query.trim().toLowerCase();
+  if (!normalized) return [];
+
+  const words = normalized.split(/\s+/);
+
+  // Remove stop words and qualifier words, keep terms 3+ chars
+  const coreWords = words.filter(
+    w => !STOP_WORDS.has(w) && !QUALIFIER_WORDS.has(w) && w.length >= 3
+  );
+
+  // If filtering removed everything, fall back to original words 3+ chars
+  return coreWords.length > 0 ? coreWords : words.filter(w => w.length >= 3);
+}
+
+/**
  * Strip common suffixes to broaden term matching.
  * Conservative — only strips if the remaining stem is long enough to be meaningful.
  */

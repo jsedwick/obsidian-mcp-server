@@ -13,7 +13,7 @@ import { IndexBuilder, BuildMode } from '../../services/search/index/IndexBuilde
 import { DEFAULT_INDEX_CONFIG } from '../../models/IndexModels.js';
 import { createLogger } from '../../utils/logger.js';
 import { shouldRetry } from './retryStrategy.js';
-import { broadenQuery } from '../../utils/queryBroadening.js';
+import { broadenQuery, extractCoreTerms } from '../../utils/queryBroadening.js';
 
 const logger = createLogger('SearchVault');
 
@@ -625,11 +625,15 @@ export async function searchVault(
 }
 
 /**
- * Assess result quality and execute a retry search with broadened query if needed.
+ * Assess result quality and execute retry searches with progressively broader strategies.
  * Returns retry data for formatSearchResults, or null if no retry was needed/possible.
  *
- * The retry calls searchVault recursively with auto_retry: false to prevent infinite chains.
- * The retry result is returned as pre-formatted text to avoid needing raw result access.
+ * Strategies (tried in order, stops at first success):
+ * 1. Broadened query — strip qualifiers, stop words, suffixes (existing behavior)
+ * 2. Individual term search — search each core term separately (vocabulary mismatch fix)
+ * 3. Relaxed filters — original query with category/directory filters removed
+ *
+ * All retries use auto_retry: false to prevent infinite recursion.
  */
 async function executeRetryIfNeeded(
   primaryResults: Array<{
@@ -658,38 +662,89 @@ async function executeRetryIfNeeded(
     return null;
   }
 
-  const broadened = broadenQuery(args.query);
-  if (!broadened) {
-    logger.info(`Retry triggered (${decision.reason}) but query broadening produced no change`);
-    return null;
-  }
-
-  logger.info(`Auto-retry: "${args.query}" → "${broadened}" (${decision.reason})`);
-
-  // Execute retry search with broadened query and auto_retry disabled
-  const retryResult = await searchVault(
-    {
-      ...args,
-      query: broadened,
-      auto_retry: false,
-      max_results: Math.max(5, Math.floor(maxResults / 2)),
-    },
-    context
-  );
-
-  const retryText = retryResult.content[0]?.text || '';
-
-  // Skip if retry also found nothing
-  if (retryText.startsWith('No results found')) {
-    logger.info('Auto-retry also found no results');
-    return null;
-  }
-
-  return {
-    broadenedQuery: broadened,
-    reason: decision.reason,
-    formattedText: retryText,
+  const retryMaxResults = Math.max(5, Math.floor(maxResults / 2));
+  const baseRetryArgs: SearchVaultArgs = {
+    ...args,
+    auto_retry: false,
+    max_results: retryMaxResults,
   };
+
+  // Strategy 1: Broadened query (existing behavior)
+  const broadened = broadenQuery(args.query);
+  if (broadened) {
+    logger.info(
+      `Auto-retry strategy 1 (broadened): "${args.query}" → "${broadened}" (${decision.reason})`
+    );
+    const result = await tryRetrySearch(broadened, baseRetryArgs, context);
+    if (result) {
+      return { broadenedQuery: broadened, reason: decision.reason, formattedText: result };
+    }
+    logger.info('Broadened query also found no results, trying next strategy');
+  } else {
+    logger.info(
+      `Retry triggered (${decision.reason}) but broadening produced no change, trying next strategy`
+    );
+  }
+
+  // Strategy 2: Individual term search (for vocabulary mismatch)
+  const terms = extractCoreTerms(args.query);
+  if (terms.length >= 2) {
+    // Try each core term individually (max 2 attempts), preserving original query order
+    const termsToTry = terms.slice(0, 2);
+    for (const term of termsToTry) {
+      logger.info(
+        `Auto-retry strategy 2 (individual term): "${args.query}" → "${term}" (${decision.reason})`
+      );
+      const result = await tryRetrySearch(term, baseRetryArgs, context);
+      if (result) {
+        return {
+          broadenedQuery: term,
+          reason: `${decision.reason}, individual term search`,
+          formattedText: result,
+        };
+      }
+    }
+    logger.info('Individual term searches found no results, trying next strategy');
+  }
+
+  // Strategy 3: Relaxed filters (drop category/directory restrictions)
+  if (args.category || (args.directories && args.directories.length > 0)) {
+    logger.info(
+      `Auto-retry strategy 3 (relaxed filters): removing category/directory filters (${decision.reason})`
+    );
+    const relaxedArgs: SearchVaultArgs = {
+      ...baseRetryArgs,
+      category: undefined,
+      directories: undefined,
+    };
+    const result = await tryRetrySearch(args.query, relaxedArgs, context);
+    if (result) {
+      return {
+        broadenedQuery: `${args.query} (broader search)`,
+        reason: `${decision.reason}, relaxed filters`,
+        formattedText: result,
+      };
+    }
+  }
+
+  logger.info('All retry strategies exhausted, no results found');
+  return null;
+}
+
+/**
+ * Execute a single retry search and return the formatted text, or null if no results found.
+ */
+async function tryRetrySearch(
+  query: string,
+  baseArgs: SearchVaultArgs,
+  context: Parameters<typeof searchVault>[1]
+): Promise<string | null> {
+  const retryResult = await searchVault({ ...baseArgs, query }, context);
+  const retryText = retryResult.content[0]?.text || '';
+  if (retryText.startsWith('No results found')) {
+    return null;
+  }
+  return retryText;
 }
 
 /**
