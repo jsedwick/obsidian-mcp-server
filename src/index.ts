@@ -51,8 +51,8 @@ interface FullServerConfig {
   hasModeSupport: boolean; // True if config uses new primaryVaults[] format
 }
 
-// Current mode state (default: work)
-let currentMode: VaultMode = 'work';
+// Current mode state (default: work, overridable via VAULT_MODE env var)
+let currentMode: VaultMode = process.env.VAULT_MODE === 'personal' ? 'personal' : 'work';
 
 // Full configuration (loaded once, contains all vaults from all modes)
 let fullConfig: FullServerConfig | null = null;
