@@ -87,11 +87,16 @@ export async function searchVault(
       detail: ResponseDetail,
       hasSemanticSearch: boolean,
       query: string,
-      retryData?: {
-        broadenedQuery: string;
-        reason: string;
-        formattedText: string;
-      }
+      retryData?:
+        | {
+            broadenedQuery: string;
+            reason: string;
+            formattedText: string;
+          }
+        | {
+            exhausted: true;
+            reason: string;
+          }
     ) => { content: Array<{ type: string; text: string }> };
     getAllVaults: () => Array<{ path: string; name: string }>;
   }
@@ -647,11 +652,18 @@ async function executeRetryIfNeeded(
   maxResults: number,
   args: SearchVaultArgs,
   context: Parameters<typeof searchVault>[1]
-): Promise<{
-  broadenedQuery: string;
-  reason: string;
-  formattedText: string;
-} | null> {
+): Promise<
+  | {
+      broadenedQuery: string;
+      reason: string;
+      formattedText: string;
+    }
+  | {
+      exhausted: true;
+      reason: string;
+    }
+  | null
+> {
   // Skip if auto_retry is disabled (also prevents infinite recursion)
   if (args.auto_retry === false) {
     return null;
@@ -728,7 +740,7 @@ async function executeRetryIfNeeded(
   }
 
   logger.info('All retry strategies exhausted, no results found');
-  return null;
+  return { exhausted: true, reason: decision.reason };
 }
 
 /**

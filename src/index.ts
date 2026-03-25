@@ -2830,18 +2830,27 @@ Check the sessions/ directory for recent conversations.
     detail: ResponseDetail,
     hasSemanticSearch: boolean,
     query: string,
-    retryData?: {
-      broadenedQuery: string;
-      reason: string;
-      formattedText: string;
-    }
+    retryData?:
+      | {
+          broadenedQuery: string;
+          reason: string;
+          formattedText: string;
+        }
+      | {
+          exhausted: true;
+          reason: string;
+        }
   ): { content: Array<{ type: string; text: string }> } {
     if (results.length === 0) {
       let text = `No results found for "${query}".`;
       // Even with zero primary results, retry may have found something
-      if (retryData) {
+      if (retryData && 'formattedText' in retryData) {
         text += `\n\n---\n🔄 Auto-retry with broadened query "${retryData.broadenedQuery}" (reason: ${retryData.reason}):\n\n`;
         text += retryData.formattedText;
+      }
+      // Append mandatory AI retry directive when all strategies exhausted
+      if (retryData && 'exhausted' in retryData) {
+        text += this.buildRetryDirective(query);
       }
       return {
         content: [
@@ -2961,9 +2970,13 @@ Check the sessions/ directory for recent conversations.
     }
 
     // Append auto-retry results if present
-    if (retryData) {
+    if (retryData && 'formattedText' in retryData) {
       resultText += `\n\n---\n🔄 Auto-retry with broadened query "${retryData.broadenedQuery}" (reason: ${retryData.reason}):\n\n`;
       resultText += retryData.formattedText;
+    }
+    // Append mandatory AI retry directive when all strategies exhausted
+    if (retryData && 'exhausted' in retryData) {
+      resultText += this.buildRetryDirective(query);
     }
 
     return {
@@ -2974,6 +2987,10 @@ Check the sessions/ directory for recent conversations.
         },
       ],
     };
+  }
+
+  private buildRetryDirective(query: string): string {
+    return `\n\n---\n⚠️ **MANDATORY: All automatic retry strategies exhausted for "${query}".**\n\nYou MUST now manually retry the search using different terms. Do NOT skip this step or tell the user nothing was found without trying. Strategies:\n\n1. **Synonyms/alternate phrasing** — Rephrase the query using different words that mean the same thing\n2. **Broader category terms** — Search for the general topic area (e.g., "appliance" instead of "water filter")\n3. **Component words** — Break compound concepts into individual words and search each\n4. **Browse vault structure** — List vault directories with ls to find relevant folders, then search within them\n5. **Known related content** — If you know related topics from this session, search for those instead\n\nTry at least 2-3 of these strategies before reporting no results to the user.`;
   }
 
   private scoreSearchResult(
