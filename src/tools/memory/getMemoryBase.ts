@@ -18,9 +18,8 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { formatLocalDateTime } from '../../utils/dateFormat.js';
 
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export interface GetMemoryBaseArgs {
-  // No arguments needed - reads from fixed location
+  working_directory?: string; // Primary CWD for prioritizing project-relevant handoffs
 }
 
 export interface GetMemoryBaseContext {
@@ -28,10 +27,16 @@ export interface GetMemoryBaseContext {
 }
 
 /**
- * Extract handoff notes from recent session files by scanning sessions/ directory
- * Returns formatted handoff text from last N sessions, skipping empty handoffs
+ * Extract handoff notes from recent session files by scanning sessions/ directory.
+ * When a working_directory is provided, prioritizes sessions that match that CWD,
+ * then fills remaining slots with the most recent sessions overall.
+ * Returns formatted handoff text from last N sessions, skipping empty handoffs.
  */
-async function extractRecentHandoffs(vaultPath: string, maxSessions = 3): Promise<string> {
+async function extractRecentHandoffs(
+  vaultPath: string,
+  maxSessions = 3,
+  workingDirectory?: string
+): Promise<string> {
   try {
     const sessionsPath = path.join(vaultPath, 'sessions');
 
@@ -64,13 +69,59 @@ async function extractRecentHandoffs(vaultPath: string, maxSessions = 3): Promis
       }
     }
 
-    // Sort by modification time (most recent first) and take top N
+    // Sort by modification time (most recent first)
     allSessionFiles.sort((a, b) => b.mtime - a.mtime);
-    const recentSessionPaths = allSessionFiles.slice(0, maxSessions).map(f => f.path);
+
+    // If we have a working directory, do a two-pass prioritized retrieval:
+    // Pass 1: Sessions matching the CWD (most relevant for continuity)
+    // Pass 2: Fill remaining slots with most recent sessions overall
+    let orderedSessionPaths: string[];
+
+    if (workingDirectory) {
+      const cwdMatches: string[] = [];
+      const others: string[] = [];
+
+      // Scan a reasonable number of recent sessions to find CWD matches
+      const scanLimit = Math.min(allSessionFiles.length, 20);
+      for (let i = 0; i < scanLimit; i++) {
+        const sessionPath = allSessionFiles[i].path;
+        try {
+          const fullPath = path.join(vaultPath, sessionPath);
+          const content = await fs.readFile(fullPath, 'utf-8');
+
+          // Check frontmatter for working_directory match
+          const fmMatch = content.match(/^---\n([\s\S]*?)\n---/);
+          if (fmMatch) {
+            const wdMatch = fmMatch[1].match(/working_directory:\s*"?([^"\n]+)"?/);
+            if (wdMatch && wdMatch[1].trim() === workingDirectory) {
+              cwdMatches.push(sessionPath);
+              continue;
+            }
+          }
+        } catch {
+          // Skip unreadable files
+        }
+        others.push(sessionPath);
+      }
+
+      // Prioritize: CWD-matching sessions first, then fill with recent others
+      const selected: string[] = [];
+      for (const p of cwdMatches) {
+        if (selected.length >= maxSessions) break;
+        selected.push(p);
+      }
+      for (const p of others) {
+        if (selected.length >= maxSessions) break;
+        selected.push(p);
+      }
+      orderedSessionPaths = selected;
+    } else {
+      orderedSessionPaths = allSessionFiles.slice(0, maxSessions).map(f => f.path);
+    }
 
     const handoffs: string[] = [];
 
-    for (const sessionPath of recentSessionPaths) {
+    for (const sessionPath of orderedSessionPaths) {
       try {
         const fullPath = path.join(vaultPath, sessionPath);
         const sessionContent = await fs.readFile(fullPath, 'utf-8');
@@ -228,7 +279,8 @@ export async function getMemoryBase(
   }
 
   // Extract recent handoffs from session files (scan filesystem directly)
-  const recentHandoffs = await extractRecentHandoffs(vaultPath, 3);
+  // When working_directory is provided, prioritize sessions matching that project
+  const recentHandoffs = await extractRecentHandoffs(vaultPath, 3, _args.working_directory);
 
   // Load corrections as condensed actionable rules
   const corrections = await loadCondensedCorrectionRules(vaultPath, 'accumulator-corrections.md');

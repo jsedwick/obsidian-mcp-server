@@ -2631,6 +2631,12 @@ export async function closeSession(
   const handoffNotes = args.handoff || '';
 
   // Build session content using template
+  // Use the first working directory as the primary CWD for session-to-project matching
+  const primaryWorkingDirectory = args.working_directories?.[0]
+    ?.replace(/^Working directory:\s*/i, '')
+    .replace(/^Additional working directories?:\s*/i, '')
+    .trim();
+
   const sessionContent = generateSessionTemplate({
     sessionId,
     date: dateStr,
@@ -2648,6 +2654,7 @@ export async function closeSession(
     relatedProjects: relatedContent.projects,
     tags: sessionTags,
     linkedIssue: context.linkedIssueSlug || undefined,
+    workingDirectory: primaryWorkingDirectory,
   });
 
   // PHASE 1: Analyze commits and return suggestions (Decision 022)

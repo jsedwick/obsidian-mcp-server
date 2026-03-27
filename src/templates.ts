@@ -25,6 +25,7 @@ export interface SessionFrontmatter {
   decisions: string[]; // List of decision titles made
   status: 'ongoing' | 'completed';
   tags: string[]; // Auto-extracted tags for categorization
+  working_directory?: string; // Primary working directory (CWD) at session time
 }
 
 /**
@@ -402,6 +403,7 @@ export interface SessionTemplateArgs {
   relatedProjects: Array<{ link: string; name: string }>;
   tags?: string[]; // Auto-extracted tags for categorization
   linkedIssue?: string; // Persistent issue linked to this session (Decision 048)
+  workingDirectory?: string; // Primary CWD for session-to-project matching in handoff retrieval
 }
 
 export function generateSessionTemplate(args: SessionTemplateArgs): string {
@@ -418,8 +420,11 @@ export function generateSessionTemplate(args: SessionTemplateArgs): string {
   // Strip any leading H1 header from summary to prevent duplicates
   const cleanedSummary = stripLeadingH1Header(args.summary);
 
-  // Build frontmatter string, conditionally including issue if present
+  // Build frontmatter string, conditionally including optional fields
   const issueField = args.linkedIssue ? `\nissue: "${args.linkedIssue}"` : '';
+  const workingDirField = args.workingDirectory
+    ? `\nworking_directory: "${args.workingDirectory}"`
+    : '';
 
   return `---
 date: "${frontmatter.date}"
@@ -428,7 +433,7 @@ session_id: "${frontmatter.session_id}"
 topics: ${JSON.stringify(frontmatter.topics)}
 decisions: ${JSON.stringify(frontmatter.decisions)}
 status: "${frontmatter.status}"
-tags: ${JSON.stringify(frontmatter.tags)}${issueField}
+tags: ${JSON.stringify(frontmatter.tags)}${issueField}${workingDirField}
 ---
 
 # Session: ${args.topic || 'Work session'}

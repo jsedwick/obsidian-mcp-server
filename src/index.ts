@@ -2107,10 +2107,16 @@ CONTENT STYLE: Be direct and concise. State the context in 2-3 sentences, list a
       {
         name: 'get_memory_base',
         description:
-          'Load session context at startup including: system directives, user reference, recent session handoffs (last 2-3 sessions), and recent corrections (last 2 mistake/correction pairs). Used for session initialization and establishing timing for commit detection. Provides orientation context with recent continuity information.',
+          'Load session context at startup including: system directives, user reference, recent session handoffs (last 2-3 sessions), and recent corrections (last 2 mistake/correction pairs). Used for session initialization and establishing timing for commit detection. Provides orientation context with recent continuity information. When working_directory is provided, prioritizes handoffs from sessions that worked in the same project.',
         inputSchema: {
           type: 'object',
-          properties: {},
+          properties: {
+            working_directory: {
+              type: 'string',
+              description:
+                'Primary working directory (CWD) from Claude Code. Used to prioritize session handoffs matching this project over purely chronological retrieval.',
+            },
+          },
         },
       },
       {

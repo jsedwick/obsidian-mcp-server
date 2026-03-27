@@ -505,7 +505,15 @@ export const GetTopicContextArgsSchema = z.object({
  */
 
 // get_memory_base
-export const GetMemoryBaseArgsSchema = z.object({}).describe('No arguments required');
+export const GetMemoryBaseArgsSchema = z.object({
+  working_directory: z
+    .string()
+    .optional()
+    .describe(
+      'Primary working directory (CWD) from Claude Code. Used to prioritize session handoffs ' +
+        'matching this project over purely chronological retrieval.'
+    ),
+});
 
 // append_to_accumulator
 export const AppendToAccumulatorArgsSchema = z.object({
