@@ -491,6 +491,102 @@ Original content in section two.`;
     });
   });
 
+  describe('Post-Write Verification', () => {
+    it('should include verification confirmation in output', async () => {
+      const filePath = path.join(vaultPath, 'topics/test-verify.md');
+      await fs.mkdir(path.dirname(filePath), { recursive: true });
+      await fs.writeFile(
+        filePath,
+        '---\ncategory: topic\ntitle: Test\n---\nOriginal content',
+        'utf-8'
+      );
+
+      const result = await updateDocument(
+        {
+          file_path: filePath,
+          content: 'Updated content',
+          strategy: 'replace',
+          reason: 'Testing verification output',
+        },
+        context
+      );
+
+      expect(result.content[0].text).toContain('Verified: ✅');
+      expect(result.content[0].text).toMatch(/\d+ bytes/);
+    });
+
+    it('should warn when replace strategy causes significant content loss', async () => {
+      const filePath = path.join(vaultPath, 'topics/large-topic.md');
+      await fs.mkdir(path.dirname(filePath), { recursive: true });
+      // Create a file with >100 chars of body content
+      const longBody = 'A'.repeat(200);
+      await fs.writeFile(
+        filePath,
+        `---\ncategory: topic\ntitle: Large Topic\n---\n${longBody}`,
+        'utf-8'
+      );
+
+      const result = await updateDocument(
+        {
+          file_path: filePath,
+          content: 'Short replacement',
+          strategy: 'replace',
+          reason: 'Testing content loss detection',
+        },
+        context
+      );
+
+      expect(result.content[0].text).toContain('CONTENT LOSS WARNING');
+      expect(result.content[0].text).toContain('git checkout');
+    });
+
+    it('should not warn when replace content is similar size', async () => {
+      const filePath = path.join(vaultPath, 'topics/normal-topic.md');
+      await fs.mkdir(path.dirname(filePath), { recursive: true });
+      const body = 'A'.repeat(150);
+      await fs.writeFile(filePath, `---\ncategory: topic\ntitle: Normal\n---\n${body}`, 'utf-8');
+
+      const result = await updateDocument(
+        {
+          file_path: filePath,
+          content: 'B'.repeat(150),
+          strategy: 'replace',
+          reason: 'Testing no false positive',
+        },
+        context
+      );
+
+      expect(result.content[0].text).not.toContain('CONTENT LOSS WARNING');
+    });
+
+    it('should verify edit strategy replaced old_string', async () => {
+      const filePath = path.join(vaultPath, 'topics/edit-verify.md');
+      await fs.mkdir(path.dirname(filePath), { recursive: true });
+      await fs.writeFile(
+        filePath,
+        '---\ncategory: topic\ntitle: Edit Test\n---\nHello world, this is a test.',
+        'utf-8'
+      );
+
+      const result = await updateDocument(
+        {
+          file_path: filePath,
+          content: 'goodbye universe',
+          strategy: 'edit',
+          old_string: 'Hello world',
+          reason: 'Testing edit verification',
+        },
+        context
+      );
+
+      expect(result.content[0].text).toContain('Verified: ✅');
+      // Verify the replacement actually happened
+      const updated = await fs.readFile(filePath, 'utf-8');
+      expect(updated).toContain('goodbye universe');
+      expect(updated).not.toContain('Hello world');
+    });
+  });
+
   describe('File Access Tracking', () => {
     it('should track edit action for existing files', async () => {
       const filePath = path.join(vaultPath, 'topics/test.md');

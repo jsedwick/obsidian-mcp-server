@@ -532,15 +532,62 @@ export async function updateDocument(
   // 8. Write file
   await fs.writeFile(filePath, finalContent, 'utf-8');
 
-  // 9. Track file access (CRITICAL - always happens, for both primary and secondary vaults)
+  // 9. Post-write verification — read file back and validate integrity
+  const verificationContent = await fs.readFile(filePath, 'utf-8');
+  const verificationWarnings: string[] = [];
+
+  if (!verificationContent || verificationContent.trim().length === 0) {
+    throw new Error(
+      `VERIFICATION FAILED: File is empty after write — ${path.basename(filePath)}. ` +
+        `This indicates a write failure. The file may need to be restored from git.`
+    );
+  }
+
+  if (verificationContent !== finalContent) {
+    throw new Error(
+      `VERIFICATION FAILED: Written content does not match expected content for ${path.basename(filePath)}. ` +
+        `Expected ${finalContent.length} bytes, got ${verificationContent.length} bytes.`
+    );
+  }
+
+  // Detect significant content loss on replace strategy for existing files
+  if (strategy === 'replace' && fileExists && existingContent.length > 0) {
+    const originalBodyLength = existingContent.replace(/^---\n[\s\S]*?\n---\n/, '').trim().length;
+    const newBodyLength = newContent.trim().length;
+    if (originalBodyLength > 100 && newBodyLength < originalBodyLength * 0.5) {
+      verificationWarnings.push(
+        `⚠️ CONTENT LOSS WARNING: File body shrank from ${originalBodyLength} to ${newBodyLength} chars (${Math.round((newBodyLength / originalBodyLength) * 100)}% of original). ` +
+          `If this was unintentional, restore from git: git checkout -- "${filePath}"`
+      );
+    }
+  }
+
+  // For edit strategy, verify old_string was replaced
+  if (strategy === 'edit' && args.old_string) {
+    const verificationBody = verificationContent.replace(/^---\n[\s\S]*?\n---\n/, '');
+    if (verificationBody.includes(args.old_string)) {
+      throw new Error(
+        `VERIFICATION FAILED: old_string still present in ${path.basename(filePath)} after edit. The replacement may not have been applied.`
+      );
+    }
+    if (!verificationBody.includes(content)) {
+      verificationWarnings.push(
+        `⚠️ EDIT WARNING: Replacement text not found verbatim in written file. This may indicate the content was modified during frontmatter processing.`
+      );
+    }
+  }
+
+  // 10. Track file access (CRITICAL - always happens, for both primary and secondary vaults)
   const action = fileExists ? 'edit' : 'create';
   context.trackFileAccess(filePath, action);
 
-  // 10. Return success
+  // 11. Return success
   const vaultType = isSecondaryVault ? `secondary vault file` : `${docType}`;
   const corruptedNote = frontmatterWasCorrupted
     ? `⚠️ Recovered from corrupted frontmatter (used frontmatter from new content)\n`
     : '';
+  const warningText =
+    verificationWarnings.length > 0 ? '\n' + verificationWarnings.join('\n') + '\n' : '';
   return {
     content: [
       {
@@ -549,7 +596,9 @@ export async function updateDocument(
           `✅ ${vaultType} updated: ${path.basename(filePath)}\n` +
           `Strategy: ${strategy}\n` +
           `Action: ${action}\n` +
+          `Verified: ✅ (${verificationContent.length} bytes)\n` +
           corruptedNote +
+          warningText +
           (isSecondaryVault ? `Vault: ${secondaryVault?.name}\n` : '') +
           (reason ? `Reason: ${reason}` : ''),
       },
