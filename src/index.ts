@@ -1716,6 +1716,15 @@ CONTENT STYLE: Be direct and concise. State the context in 2-3 sentences, list a
                 'Decision consideration acknowledgment (Decision 057). Required in Phase 2. ' +
                 'Either "none_warranted: [brief reason]" or "created: [slug1], [slug2]".',
             },
+            relevant_topics: {
+              type: 'array',
+              items: { type: 'string' },
+              description:
+                'AI-curated list of topic paths genuinely related to this session. ' +
+                'Only these topics are linked in the session file. ' +
+                'If omitted, all discovered topics are linked (backward compat). ' +
+                'Empty array means no topics are relevant.',
+            },
             _invoked_by_slash_command: {
               type: 'boolean',
               description:

@@ -612,7 +612,13 @@ export async function runPhase1Analysis(
           '   - **You MUST acknowledge this step** in the finalize call via `decision_review` parameter:\n' +
           '     - If creating decisions: `decision_review: "created: decision-slug-1, decision-slug-2"`\n' +
           '     - If no decision warranted: `decision_review: "none_warranted: [brief reason]"`\n\n' +
-          `${sessionCommits.length > 0 ? '6' : '5'}. **GENERATE HANDOFF NOTES** (Decision 052) - Use this prompt:\n\n` +
+          `${sessionCommits.length > 0 ? '6' : '5'}. **CURATE RELEVANT TOPICS** for session linking:\n` +
+          "   - After reviewing all commit-related and semantic topics, determine which are GENUINELY related to this session's work\n" +
+          '   - A topic is relevant if the session directly impacts, extends, or builds upon it\n' +
+          '   - A topic is NOT relevant if it merely shares keywords (e.g., "contrast" in CSS vs accessibility)\n' +
+          '   - Include the full path of each relevant topic in `relevant_topics` when finalizing\n' +
+          '   - Topics you updated via `update_document` will also be linked automatically\n\n' +
+          `${sessionCommits.length > 0 ? '7' : '6'}. **GENERATE HANDOFF NOTES** (Decision 052) - Use this prompt:\n\n` +
           '```\n' +
           generateHandoffPrompt({
             summary: args.summary,
@@ -624,7 +630,7 @@ export async function runPhase1Analysis(
             detectedRepo: detectedRepoInfo,
           }) +
           '\n```\n\n' +
-          `${sessionCommits.length > 0 ? '7' : '6'}. **FINALIZE SESSION** - Only when ALL documentation is current AND handoff is generated, call:\n\n` +
+          `${sessionCommits.length > 0 ? '8' : '7'}. **FINALIZE SESSION** - Only when ALL documentation is current AND handoff is generated, call:\n\n` +
           '```typescript\n' +
           'close_session({\n' +
           `  summary: "${summary}",\n` +
@@ -632,6 +638,7 @@ export async function runPhase1Analysis(
           '  finalize: true,\n' +
           '  handoff: "[paste generated handoff notes here]",  // REQUIRED (Decision 052)\n' +
           '  decision_review: "none_warranted: [brief reason]",  // REQUIRED (Decision 057) - or list created decision slugs\n' +
+          '  relevant_topics: ["/path/to/topic1.md", "/path/to/topic2.md"],  // Only topics genuinely related to this session\n' +
           `  session_data: ${JSON.stringify(sessionData, null, 2)}
 ` +
           '})\n' +
@@ -1403,6 +1410,40 @@ async function discoverRelatedDecisions(
 }
 
 /**
+ * Resolve AI-curated relevant_topics paths into { path, title } objects.
+ * Looks up each path in the candidate pools (discoveredTopics + commitRelatedTopics).
+ * For unknown paths, derives title from the file slug as a graceful fallback.
+ */
+function resolveRelevantTopics(
+  relevantPaths: string[],
+  discoveredTopics: Array<{ path: string; title: string }>,
+  commitRelatedTopics?: Array<{ path: string; title: string }>
+): Array<{ path: string; title: string }> {
+  // Build lookup map from all candidate pools
+  const candidateMap = new Map<string, string>();
+  for (const t of discoveredTopics) {
+    candidateMap.set(normalizePath(t.path), t.title);
+  }
+  if (commitRelatedTopics) {
+    for (const t of commitRelatedTopics) {
+      candidateMap.set(normalizePath(t.path), t.title);
+    }
+  }
+
+  return relevantPaths.map(p => {
+    const normalized = normalizePath(p);
+    const title = candidateMap.get(normalized);
+    if (title) {
+      return { path: p, title };
+    }
+    // Fallback: derive title from slug
+    const slug = path.basename(p, '.md');
+    const fallbackTitle = slug.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    return { path: p, title: fallbackTitle };
+  });
+}
+
+/**
  * Add discovered related topics to session file content
  * Finds or creates "## Related Topics" section and adds wiki links
  */
@@ -1914,9 +1955,25 @@ export async function runPhase2Finalization(
     }
   }
 
-  // Add discovered topics
-  if (discoveredTopics.length > 0) {
-    updatedContent = addRelatedTopicsToSession(updatedContent, discoveredTopics);
+  // Add topics: use AI-curated list if provided, otherwise fall back to all discovered (backward compat)
+  if (_args.relevant_topics !== undefined) {
+    logger.info('Using AI-curated relevant_topics:', {
+      curated: _args.relevant_topics.length,
+      discovered: discoveredTopics.length,
+      paths: _args.relevant_topics,
+    });
+  } else {
+    logger.info('No relevant_topics provided, falling back to all discovered topics:', {
+      count: discoveredTopics.length,
+    });
+  }
+  const topicsToLink =
+    _args.relevant_topics !== undefined
+      ? resolveRelevantTopics(_args.relevant_topics, discoveredTopics, data.commitRelatedTopics)
+      : discoveredTopics;
+
+  if (topicsToLink.length > 0) {
+    updatedContent = addRelatedTopicsToSession(updatedContent, topicsToLink);
   }
 
   // Add discovered decisions
@@ -2166,6 +2223,7 @@ export interface CloseSessionArgs {
   topic?: string;
   handoff?: string; // Optional in Phase 1, REQUIRED in Phase 2 (AI-generated via prompt, Decision 052)
   decision_review?: string; // Phase 2: acknowledgment of decision consideration (Decision 057)
+  relevant_topics?: string[]; // AI-curated list of topic paths genuinely related to this session
   _invoked_by_slash_command?: boolean;
   // Phase control for two-phase workflow (Decision 022)
   analyze_only?: boolean; // Phase 1: analyze commits, return suggestions

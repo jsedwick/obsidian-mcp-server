@@ -188,6 +188,15 @@ export const CloseSessionArgsSchema = z
         'Decision consideration acknowledgment (Decision 057). REQUIRED in Phase 2. ' +
           'Either "none_warranted: [reason]" or "created: [slug1], [slug2]".'
       ),
+    relevant_topics: z
+      .array(z.string())
+      .optional()
+      .describe(
+        'AI-curated list of topic paths genuinely related to this session. ' +
+          'Only these topics are linked in the session file. ' +
+          'If omitted, all discovered topics are linked (backward compat). ' +
+          'Empty array means no topics are relevant.'
+      ),
     _invoked_by_slash_command: z
       .boolean()
       .optional()

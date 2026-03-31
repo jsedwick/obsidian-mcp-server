@@ -1115,6 +1115,37 @@ describe('Validation Schemas', () => {
       });
     });
 
+    describe('close_session relevant_topics validation', () => {
+      it('should accept relevant_topics as array of strings', () => {
+        const args = {
+          summary: 'Test session',
+          relevant_topics: ['/path/to/topic1.md', '/path/to/topic2.md'],
+        };
+        expect(() => validateToolArgs('close_session', args)).not.toThrow();
+      });
+
+      it('should accept empty relevant_topics array', () => {
+        const args = {
+          summary: 'Test session',
+          relevant_topics: [],
+        };
+        expect(() => validateToolArgs('close_session', args)).not.toThrow();
+      });
+
+      it('should accept omitted relevant_topics (backward compat)', () => {
+        const args = { summary: 'Test session' };
+        expect(() => validateToolArgs('close_session', args)).not.toThrow();
+      });
+
+      it('should reject non-array relevant_topics', () => {
+        const args = {
+          summary: 'Test session',
+          relevant_topics: 'not-an-array',
+        };
+        expect(() => validateToolArgs('close_session', args)).toThrow();
+      });
+    });
+
     describe('update_document edit strategy requires old_string', () => {
       it('should reject edit without old_string', () => {
         expect(() =>

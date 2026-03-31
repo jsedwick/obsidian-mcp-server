@@ -55,7 +55,8 @@ type DocumentType =
   | 'user-reference'
   | 'accumulator'
   | 'task-list'
-  | 'workflow';
+  | 'workflow'
+  | 'persistent-issue';
 
 interface TypeRules {
   readonly: boolean;
@@ -80,6 +81,7 @@ const VALID_DOCUMENT_TYPES: ReadonlySet<string> = new Set([
   'accumulator',
   'task-list',
   'workflow',
+  'persistent-issue',
 ]);
 
 /**
@@ -104,6 +106,7 @@ function detectDocumentType(filePath: string, frontmatter: Record<string, unknow
   if (filePath.includes('/workflows/')) return 'workflow';
   if (filePath.endsWith('user-reference.md')) return 'user-reference';
   if (path.basename(filePath).startsWith('accumulator-')) return 'accumulator';
+  if (filePath.includes('/persistent-issues/')) return 'persistent-issue';
 
   throw new Error(`Unknown document type for: ${filePath}`);
 }
@@ -198,6 +201,13 @@ const TYPE_RULES: Record<DocumentType, TypeRules> = {
   },
 
   workflow: {
+    readonly: false,
+    appendOnly: false,
+    frontmatterUpdates: (fm): Record<string, unknown> => fm, // Preserve frontmatter as-is
+    validate: () => {}, // No special validation
+  },
+
+  'persistent-issue': {
     readonly: false,
     appendOnly: false,
     frontmatterUpdates: (fm): Record<string, unknown> => fm, // Preserve frontmatter as-is
