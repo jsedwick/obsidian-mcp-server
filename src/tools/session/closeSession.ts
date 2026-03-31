@@ -1595,7 +1595,9 @@ function addAccessedFilesLinksToSession(
     return sessionContent;
   }
 
-  // Filter to vault files only and categorize by type
+  // Filter to vault files that were edited or created (not just read for review)
+  // Reading a topic for commit-related review (Decision 041) should NOT create a link
+  // Only actual modifications indicate a real relationship worth linking
   const topicFiles: Array<{ path: string; slug: string; title: string }> = [];
   const decisionFiles: Array<{ path: string; slug: string; title: string; projectSlug: string }> =
     [];
@@ -1604,6 +1606,8 @@ function addAccessedFilesLinksToSession(
   for (const file of filesAccessed) {
     // Skip if not in vault
     if (!file.path.startsWith(vaultPath)) continue;
+    // Skip files that were only read — only link files that were actually modified
+    if (file.action === 'read') continue;
 
     const relativePath = file.path.substring(vaultPath.length + 1);
 

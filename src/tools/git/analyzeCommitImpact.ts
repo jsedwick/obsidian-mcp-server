@@ -124,10 +124,58 @@ export async function analyzeCommitImpact(
       : [];
 
     // Search for related topics and decisions based on commit content
-    const searchTerms = [
-      subject,
-      ...changedFiles.slice(0, 3).map(f => path.basename(f, path.extname(f))),
-    ];
+    // Filter out generic filenames that produce false-positive topic matches
+    const GENERIC_FILENAMES = new Set([
+      'app',
+      'index',
+      'main',
+      'utils',
+      'helpers',
+      'config',
+      'test',
+      'spec',
+      'lib',
+      'src',
+      'dist',
+      'build',
+      'types',
+      'models',
+      'routes',
+      'server',
+      'client',
+      'setup',
+      'init',
+      'common',
+      'constants',
+      'styles',
+      'theme',
+      'store',
+      'state',
+      'actions',
+      'reducers',
+      'middleware',
+      'api',
+      'db',
+      'mod',
+      'pkg',
+      'cmd',
+      'run',
+      'start',
+      'dev',
+      'prod',
+      'env',
+    ]);
+    const MIN_FILENAME_SEARCH_LENGTH = 4;
+
+    const fileSearchTerms = changedFiles
+      .slice(0, 3)
+      .map(f => path.basename(f, path.extname(f)))
+      .filter(
+        term =>
+          term.length >= MIN_FILENAME_SEARCH_LENGTH && !GENERIC_FILENAMES.has(term.toLowerCase())
+      );
+
+    const searchTerms = [subject, ...fileSearchTerms];
 
     const relatedContent: string[] = [];
     // Collect structured topic data for enforcement (Decision 041)
