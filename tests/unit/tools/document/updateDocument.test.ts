@@ -585,6 +585,33 @@ Original content in section two.`;
       expect(updated).toContain('goodbye universe');
       expect(updated).not.toContain('Hello world');
     });
+
+    it('should not false-positive when replacement contains old_string', async () => {
+      const filePath = path.join(vaultPath, 'topics/edit-superset.md');
+      await fs.mkdir(path.dirname(filePath), { recursive: true });
+      await fs.writeFile(
+        filePath,
+        '---\ncategory: topic\ntitle: Superset Test\n---\n- item 1\n- item 2',
+        'utf-8'
+      );
+
+      // Replace with content that contains the old_string as a subset
+      const result = await updateDocument(
+        {
+          file_path: filePath,
+          content: '- item 1\n- item 2\n- item 3',
+          strategy: 'edit',
+          old_string: '- item 1\n- item 2',
+          reason: 'Testing superset replacement',
+        },
+        context
+      );
+
+      expect(result.content[0].text).toContain('Verified: ✅');
+      expect(result.content[0].text).not.toContain('VERIFICATION FAILED');
+      const updated = await fs.readFile(filePath, 'utf-8');
+      expect(updated).toContain('- item 3');
+    });
   });
 
   describe('File Access Tracking', () => {

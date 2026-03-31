@@ -565,7 +565,9 @@ export async function updateDocument(
   // For edit strategy, verify old_string was replaced
   if (strategy === 'edit' && args.old_string) {
     const verificationBody = verificationContent.replace(/^---\n[\s\S]*?\n---\n/, '');
-    if (verificationBody.includes(args.old_string)) {
+    // Only check if old_string is gone when the replacement text doesn't contain it
+    // (e.g., appending rows to a table means old_string is a subset of new content)
+    if (!content.includes(args.old_string) && verificationBody.includes(args.old_string)) {
       throw new Error(
         `VERIFICATION FAILED: old_string still present in ${path.basename(filePath)} after edit. The replacement may not have been applied.`
       );
