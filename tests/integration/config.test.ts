@@ -115,12 +115,16 @@ describe('Configuration & Validation', () => {
   });
 
   describe('Config format parsing (structural)', () => {
-    it('should normalize paths by stripping trailing slashes', () => {
-      const normalizePath = (p: string): string => p.replace(/\/+$/, '');
+    it('should normalize paths by stripping trailing slashes and expanding tilde', () => {
+      const normalizePath = (p: string): string =>
+        p.replace(/^~(?=$|\/)/, process.env.HOME || '').replace(/\/+$/, '');
 
       expect(normalizePath('/path/to/vault/')).toBe('/path/to/vault');
       expect(normalizePath('/path/to/vault///')).toBe('/path/to/vault');
       expect(normalizePath('/path/to/vault')).toBe('/path/to/vault');
+      expect(normalizePath('~/Documents/vault')).toBe(`${process.env.HOME}/Documents/vault`);
+      expect(normalizePath('~/Documents/vault/')).toBe(`${process.env.HOME}/Documents/vault`);
+      expect(normalizePath('~')).toBe(process.env.HOME);
     });
 
     it('should handle new primaryVaults[] config format structure', () => {

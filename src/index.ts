@@ -132,7 +132,8 @@ function loadFullConfig(): FullServerConfig {
     path.join(process.env.HOME || '', '.config', '.obsidian-mcp.json'),
   ];
 
-  const normalizePath = (p: string): string => p.replace(/\/+$/, '');
+  const normalizePath = (p: string): string =>
+    p.replace(/^~(?=$|\/)/, process.env.HOME || '').replace(/\/+$/, '');
 
   for (const configPath of configPaths) {
     try {
