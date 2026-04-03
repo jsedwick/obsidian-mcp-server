@@ -32,6 +32,7 @@ import { DEFAULT_INDEX_CONFIG } from './models/IndexModels.js';
 import type { VaultConfig, VaultAuthority, VaultMode } from './models/Vault.js';
 import { LRUCache } from './utils/LRUCache.js';
 import { createLogger } from './utils/logger.js';
+import { annotateResultSize } from './utils/resultSizeAnnotation.js';
 
 const execAsync = promisify(exec);
 const logger = createLogger('MCPServer');
@@ -688,371 +689,378 @@ class ObsidianMCPServer {
           this.sessionStartTime = new Date();
         }
 
-        switch (name) {
-          case 'search_vault':
-            return await tools.searchVault(securedArgs as tools.SearchVaultArgs, {
-              vaultPath: this.config.primaryVault.path,
-              config: this.config,
-              embeddingConfig: this.embeddingConfig,
-              indexedSearches: this.indexedSearches,
-              indexBuilders: this.indexBuilders,
-              ensureVaultStructure: this.ensureVaultStructure.bind(this),
-              loadEmbeddingCache: this.loadEmbeddingCache.bind(this),
-              saveEmbeddingCache: this.saveEmbeddingCache.bind(this),
-              generateEmbedding: this.generateEmbedding.bind(this),
-              getOrCreateEmbedding: this.getOrCreateEmbedding.bind(this),
-              cosineSimilarity: this.cosineSimilarity.bind(this),
-              scoreSearchResult: this.scoreSearchResult.bind(this),
-              formatSearchResults: this.formatSearchResults.bind(this),
-              getAllVaults: this.getAllVaults.bind(this),
-            });
-
-          case 'create_topic_page':
-            return await tools.createTopicPage(securedArgs as tools.CreateTopicPageArgs, {
-              vaultPath: this.config.primaryVault.path,
-              currentSessionId: this.currentSessionId,
-              slugify: this.slugify.bind(this),
-              ensureVaultStructure: this.ensureVaultStructure.bind(this),
-              analyzeTopicContentInternal: this.analyzeTopicContentInternal.bind(this),
-              findRelatedProjects: this.findRelatedProjects.bind(this),
-              trackTopicCreation: topic => this.topicsCreated.push(topic),
-              trackFileAccess: this.trackFileAccess.bind(this),
-              searchVault: this.searchVaultWrapper.bind(this),
-            });
-
-          case 'create_decision':
-            return await tools.createDecision(securedArgs as tools.CreateDecisionArgs, {
-              vaultPath: this.config.primaryVault.path,
-              currentSessionId: this.currentSessionId,
-              slugify: this.slugify.bind(this),
-              ensureVaultStructure: this.ensureVaultStructure.bind(this),
-              findRelatedContentInText: this.findRelatedContentInText.bind(this),
-              trackDecisionCreation: decision => this.decisionsCreated.push(decision),
-              getRemoteUrl: (repoPath: string) => this.gitService.getRemoteUrl(repoPath),
-              trackFileAccess: this.trackFileAccess.bind(this),
-            });
-
-          case 'find_undocumented_decisions':
-            return await tools.findUndocumentedDecisions(
-              securedArgs as tools.FindUndocumentedDecisionsArgs,
-              {
+        const toolResult = await (async () => {
+          switch (name) {
+            case 'search_vault':
+              return await tools.searchVault(securedArgs as tools.SearchVaultArgs, {
                 vaultPath: this.config.primaryVault.path,
-              }
-            );
+                config: this.config,
+                embeddingConfig: this.embeddingConfig,
+                indexedSearches: this.indexedSearches,
+                indexBuilders: this.indexBuilders,
+                ensureVaultStructure: this.ensureVaultStructure.bind(this),
+                loadEmbeddingCache: this.loadEmbeddingCache.bind(this),
+                saveEmbeddingCache: this.saveEmbeddingCache.bind(this),
+                generateEmbedding: this.generateEmbedding.bind(this),
+                getOrCreateEmbedding: this.getOrCreateEmbedding.bind(this),
+                cosineSimilarity: this.cosineSimilarity.bind(this),
+                scoreSearchResult: this.scoreSearchResult.bind(this),
+                formatSearchResults: this.formatSearchResults.bind(this),
+                getAllVaults: this.getAllVaults.bind(this),
+              });
 
-          case 'get_session_context':
-            return await tools.getSessionContext(securedArgs as tools.GetSessionContextArgs, {
-              vaultPath: this.config.primaryVault.path,
-              currentSessionId: this.currentSessionId,
-              currentSessionFile: this.currentSessionFile,
-            });
-
-          case 'get_topic_context':
-            return await tools.getTopicContext(securedArgs as tools.GetTopicContextArgs, {
-              vaultPath: this.config.primaryVault.path,
-              slugify: this.slugify.bind(this),
-              trackFileAccess: this.trackFileAccess.bind(this),
-            });
-
-          case 'analyze_session_commits':
-            return await tools.analyzeSessionCommits(
-              securedArgs as tools.AnalyzeSessionCommitsArgs,
-              {
+            case 'create_topic_page':
+              return await tools.createTopicPage(securedArgs as tools.CreateTopicPageArgs, {
                 vaultPath: this.config.primaryVault.path,
-                filesAccessed: this.filesAccessed,
-                findGitRepos: this.findGitRepos.bind(this),
-                getRepoInfo: this.getRepoInfo.bind(this),
-                analyzeCommitImpact: this.analyzeCommitImpactWrapper.bind(this),
-                getSessionStartTime: this.getSessionStartTime.bind(this),
-              }
-            );
+                currentSessionId: this.currentSessionId,
+                slugify: this.slugify.bind(this),
+                ensureVaultStructure: this.ensureVaultStructure.bind(this),
+                analyzeTopicContentInternal: this.analyzeTopicContentInternal.bind(this),
+                findRelatedProjects: this.findRelatedProjects.bind(this),
+                trackTopicCreation: topic => this.topicsCreated.push(topic),
+                trackFileAccess: this.trackFileAccess.bind(this),
+                searchVault: this.searchVaultWrapper.bind(this),
+              });
 
-          case 'close_session':
-            return await tools.closeSession(securedArgs as tools.CloseSessionArgs, {
-              vaultPath: this.config.primaryVault.path,
-              allVaultPaths: fullConfig
-                ? [...fullConfig.allPrimaryVaults, ...fullConfig.allSecondaryVaults].map(
-                    v => v.path
-                  )
-                : [this.config.primaryVault.path, ...this.config.secondaryVaults.map(v => v.path)],
-              currentSessionId: this.currentSessionId,
-              filesAccessed: this.filesAccessed,
-              topicsCreated: this.topicsCreated,
-              decisionsCreated: this.decisionsCreated,
-              projectsCreated: this.projectsCreated,
-              ensureVaultStructure: this.ensureVaultStructure.bind(this),
-              findGitRepos: this.findGitRepos.bind(this),
-              getRepoInfo: this.getRepoInfo.bind(this),
-              createProjectPage: this.createProjectPageWrapper.bind(this),
-              findRelatedContentInText: this.findRelatedContentInText.bind(this),
-              vaultCustodian: this.vaultCustodianWrapper.bind(this),
-              recordCommit: this.recordCommitWrapper.bind(this),
-              analyzeCommitImpact: this.analyzeCommitImpactWrapper.bind(this),
-              updateDocument: this.updateDocumentWrapper.bind(this),
-              slugify: this.slugify.bind(this),
-              setCurrentSession: this.setCurrentSession.bind(this),
-              clearSessionState: this.clearSessionState.bind(this),
-              hasPhase1Completed: this.hasPhase1Completed.bind(this),
-              markPhase1Complete: this.markPhase1Complete.bind(this),
-              storePhase1SessionData: this.storePhase1SessionData.bind(this),
-              getStoredPhase1SessionData: this.getStoredPhase1SessionData.bind(this),
-              restoreSessionStateFromFile: this.restoreSessionStateFromFile.bind(this),
-              getMostRecentSessionDate: this.getMostRecentSessionDate.bind(this),
-              getSessionStartTime: this.getSessionStartTime.bind(this),
-              searchVault: this.searchVaultWrapper.bind(this),
-              linkedIssueSlug: this.linkedIssueSlug,
-            });
+            case 'create_decision':
+              return await tools.createDecision(securedArgs as tools.CreateDecisionArgs, {
+                vaultPath: this.config.primaryVault.path,
+                currentSessionId: this.currentSessionId,
+                slugify: this.slugify.bind(this),
+                ensureVaultStructure: this.ensureVaultStructure.bind(this),
+                findRelatedContentInText: this.findRelatedContentInText.bind(this),
+                trackDecisionCreation: decision => this.decisionsCreated.push(decision),
+                getRemoteUrl: (repoPath: string) => this.gitService.getRemoteUrl(repoPath),
+                trackFileAccess: this.trackFileAccess.bind(this),
+              });
 
-          case 'find_stale_topics':
-            return await tools.findStaleTopics(securedArgs as tools.FindStaleTopicsArgs, {
-              vaultPath: this.config.primaryVault.path,
-              ensureVaultStructure: this.ensureVaultStructure.bind(this),
-              getFileAgeDays: this.getFileAgeDays.bind(this),
-              slugify: this.slugify.bind(this),
-              archiveTopic: async (args: tools.ArchiveTopicArgs) =>
-                await tools.archiveTopic(args, {
+            case 'find_undocumented_decisions':
+              return await tools.findUndocumentedDecisions(
+                securedArgs as tools.FindUndocumentedDecisionsArgs,
+                {
                   vaultPath: this.config.primaryVault.path,
-                  slugify: this.slugify.bind(this),
-                  ensureVaultStructure: this.ensureVaultStructure.bind(this),
-                }),
-            });
+                }
+              );
 
-          case 'submit_topic_reviews':
-            return tools.submitTopicReviews(securedArgs as tools.SubmitTopicReviewsArgs, {
-              vaultPath: this.config.primaryVault.path,
-            });
+            case 'get_session_context':
+              return await tools.getSessionContext(securedArgs as tools.GetSessionContextArgs, {
+                vaultPath: this.config.primaryVault.path,
+                currentSessionId: this.currentSessionId,
+                currentSessionFile: this.currentSessionFile,
+              });
 
-          case 'archive_topic':
-            return await tools.archiveTopic(securedArgs as tools.ArchiveTopicArgs, {
-              vaultPath: this.config.primaryVault.path,
-              slugify: this.slugify.bind(this),
-              ensureVaultStructure: this.ensureVaultStructure.bind(this),
-            });
+            case 'get_topic_context':
+              return await tools.getTopicContext(securedArgs as tools.GetTopicContextArgs, {
+                vaultPath: this.config.primaryVault.path,
+                slugify: this.slugify.bind(this),
+                trackFileAccess: this.trackFileAccess.bind(this),
+              });
 
-          case 'list_recent_sessions':
-            return await tools.listRecentSessions(securedArgs as tools.ListRecentSessionsArgs, {
-              vaultPath: this.config.primaryVault.path,
-              ensureVaultStructure: this.ensureVaultStructure.bind(this),
-            });
+            case 'analyze_session_commits':
+              return await tools.analyzeSessionCommits(
+                securedArgs as tools.AnalyzeSessionCommitsArgs,
+                {
+                  vaultPath: this.config.primaryVault.path,
+                  filesAccessed: this.filesAccessed,
+                  findGitRepos: this.findGitRepos.bind(this),
+                  getRepoInfo: this.getRepoInfo.bind(this),
+                  analyzeCommitImpact: this.analyzeCommitImpactWrapper.bind(this),
+                  getSessionStartTime: this.getSessionStartTime.bind(this),
+                }
+              );
 
-          case 'list_recent_projects':
-            return await tools.listRecentProjects(securedArgs as tools.ListRecentProjectsArgs, {
-              vaultPath: this.config.primaryVault.path,
-            });
-
-          case 'track_file_access':
-            return tools.trackFileAccess(securedArgs as tools.TrackFileAccessArgs, {
-              filesAccessed: this.filesAccessed,
-            });
-
-          case 'detect_session_repositories':
-            return await tools.detectSessionRepositories(
-              securedArgs as tools.DetectSessionRepositoriesArgs,
-              {
+            case 'close_session':
+              return await tools.closeSession(securedArgs as tools.CloseSessionArgs, {
+                vaultPath: this.config.primaryVault.path,
+                allVaultPaths: fullConfig
+                  ? [...fullConfig.allPrimaryVaults, ...fullConfig.allSecondaryVaults].map(
+                      v => v.path
+                    )
+                  : [
+                      this.config.primaryVault.path,
+                      ...this.config.secondaryVaults.map(v => v.path),
+                    ],
                 currentSessionId: this.currentSessionId,
                 filesAccessed: this.filesAccessed,
+                topicsCreated: this.topicsCreated,
+                decisionsCreated: this.decisionsCreated,
+                projectsCreated: this.projectsCreated,
+                ensureVaultStructure: this.ensureVaultStructure.bind(this),
                 findGitRepos: this.findGitRepos.bind(this),
                 getRepoInfo: this.getRepoInfo.bind(this),
-              }
-            );
-
-          case 'restore_session_data':
-            return await tools.restoreSessionData(securedArgs as tools.RestoreSessionDataArgs, {
-              restoreSessionStateFromFile: this.restoreSessionStateFromFile.bind(this),
-            });
-
-          case 'link_session_to_repository':
-            return await tools.linkSessionToRepository(
-              securedArgs as tools.LinkSessionToRepositoryArgs,
-              {
-                currentSessionFile: this.currentSessionFile,
-                filesAccessed: this.filesAccessed,
-                gitService: this.gitService,
                 createProjectPage: this.createProjectPageWrapper.bind(this),
-              }
-            );
+                findRelatedContentInText: this.findRelatedContentInText.bind(this),
+                vaultCustodian: this.vaultCustodianWrapper.bind(this),
+                recordCommit: this.recordCommitWrapper.bind(this),
+                analyzeCommitImpact: this.analyzeCommitImpactWrapper.bind(this),
+                updateDocument: this.updateDocumentWrapper.bind(this),
+                slugify: this.slugify.bind(this),
+                setCurrentSession: this.setCurrentSession.bind(this),
+                clearSessionState: this.clearSessionState.bind(this),
+                hasPhase1Completed: this.hasPhase1Completed.bind(this),
+                markPhase1Complete: this.markPhase1Complete.bind(this),
+                storePhase1SessionData: this.storePhase1SessionData.bind(this),
+                getStoredPhase1SessionData: this.getStoredPhase1SessionData.bind(this),
+                restoreSessionStateFromFile: this.restoreSessionStateFromFile.bind(this),
+                getMostRecentSessionDate: this.getMostRecentSessionDate.bind(this),
+                getSessionStartTime: this.getSessionStartTime.bind(this),
+                searchVault: this.searchVaultWrapper.bind(this),
+                linkedIssueSlug: this.linkedIssueSlug,
+              });
 
-          case 'create_project_page':
-            return await tools.createProjectPage(securedArgs as tools.CreateProjectPageArgs, {
-              vaultPath: this.config.primaryVault.path,
-              gitService: this.gitService,
-              trackProjectCreation: project => this.projectsCreated.push(project),
-            });
-
-          case 'record_commit':
-            return await tools.recordCommit(securedArgs as tools.RecordCommitArgs, {
-              vaultPath: this.config.primaryVault.path,
-              gitService: this.gitService,
-              currentSessionId: this.currentSessionId,
-              currentSessionFile: this.currentSessionFile,
-            });
-
-          case 'toggle_embeddings':
-            return await tools.toggleEmbeddings(securedArgs as tools.ToggleEmbeddingsArgs, {
-              embeddingConfig: this.embeddingConfig,
-              embeddingToggleFile: this.embeddingToggleFile,
-              embeddingCache: this.embeddingCache,
-              setExtractor: extractor => {
-                this.extractor = extractor;
-              },
-              setEmbeddingInitPromise: promise => {
-                this.embeddingInitPromise = promise;
-              },
-            });
-
-          case 'vault_custodian':
-            return await tools.vaultCustodian(securedArgs as tools.VaultCustodianArgs, {
-              vaultPath: this.config.primaryVault.path,
-              ensureVaultStructure: this.ensureVaultStructure.bind(this),
-              findSessionFile: this.findSessionFile.bind(this),
-              secondaryVaults: this.config.secondaryVaults.map(v => ({
-                path: v.path,
-                name: v.name,
-              })),
-            });
-
-          case 'analyze_topic_content':
-            return await tools.analyzeTopicContent(securedArgs as tools.AnalyzeTopicContentArgs, {
-              searchVault: this.searchVaultWrapper.bind(this),
-            });
-
-          case 'analyze_commit_impact':
-            return await tools.analyzeCommitImpact(securedArgs as tools.AnalyzeCommitImpactArgs, {
-              vaultPath: this.config.primaryVault.path,
-              gitService: this.gitService,
-              searchVault: this.searchVaultWrapper.bind(this),
-            });
-
-          case 'get_memory_base':
-            // Clear session state when memory base is loaded (signals new session start)
-            // This ensures filesAccessed array is fresh for Phase 1 commit detection
-            this.clearSessionState();
-            // Set explicit session start time for two-phase /close workflow
-            this.sessionStartTime = new Date();
-            return await tools.getMemoryBase(
-              securedArgs as tools.GetMemoryBaseArgs,
-              this.config.primaryVault.path,
-              { sessionStartTime: this.sessionStartTime }
-            );
-
-          case 'append_to_accumulator':
-            return await tools.appendToAccumulator(securedArgs as tools.AppendToAccumulatorArgs, {
-              vaultPath: this.config.primaryVault.path,
-              trackFileAccess: this.trackFileAccess.bind(this),
-            });
-
-          case 'get_tasks_by_date':
-            return await tools.getTasksByDate(
-              securedArgs as tools.GetTasksByDateArgs,
-              this.config.primaryVault.path
-            );
-
-          case 'add_task':
-            return await tools.addTask(
-              securedArgs as tools.AddTaskArgs,
-              this.config.primaryVault.path
-            );
-
-          case 'complete_task':
-            return await tools.completeTask(
-              securedArgs as tools.CompleteTaskArgs,
-              this.config.primaryVault.path
-            );
-
-          case 'update_document':
-            return await tools.updateDocument(securedArgs as tools.UpdateDocumentArgs, {
-              vaultPath: this.config.primaryVault.path,
-              slugify: this.slugify.bind(this),
-              trackFileAccess: this.trackFileAccess.bind(this),
-              secondaryVaults: getAllVaults(),
-              ensureVaultStructure: this.ensureVaultStructure.bind(this),
-            });
-
-          case 'code_file':
-            return await tools.codeFile(securedArgs as tools.CodeFileArgs, {
-              vaultPath: this.config.primaryVault.path,
-              secondaryVaults: getAllVaults(),
-              trackFileAccess: this.trackFileAccess.bind(this),
-            });
-
-          case 'workflow':
-            return await tools.workflow(securedArgs as tools.WorkflowArgs, {
-              vaultPath: this.config.primaryVault.path,
-            });
-
-          case 'switch_mode': {
-            const { mode } = securedArgs as { mode: VaultMode };
-            const result = this.switchMode(mode);
-
-            // Format response
-            let responseText = result.message;
-            if (result.success) {
-              responseText += `\n\n**Current Mode:** ${result.currentMode}`;
-              responseText += `\n**Primary Vault:** ${this.config.primaryVault.name}`;
-              if (this.config.secondaryVaults.length > 0) {
-                responseText += `\n**Secondary Vaults:** ${this.config.secondaryVaults.map(v => v.name).join(', ')}`;
-              }
-            }
-
-            return {
-              content: [{ type: 'text', text: responseText }],
-            };
-          }
-
-          case 'get_current_mode': {
-            const modeSupported = isModeSupported();
-            const availableModes = getAvailableModes();
-
-            let responseText = `**Current Mode:** ${getCurrentMode()}`;
-            if (modeSupported) {
-              responseText += `\n**Available Modes:** ${availableModes.join(', ')}`;
-            } else {
-              responseText += `\n\n*Mode switching is not available. Your configuration uses the legacy format.*`;
-            }
-            responseText += `\n\n**Active Vaults:**`;
-            responseText += `\n- Primary: ${this.config.primaryVault.name} (${this.config.primaryVault.path})`;
-            for (const vault of this.config.secondaryVaults) {
-              responseText += `\n- Secondary: ${vault.name} (${vault.path})`;
-            }
-
-            return {
-              content: [{ type: 'text', text: responseText }],
-            };
-          }
-
-          case 'issue': {
-            const result = await tools.issue(securedArgs as tools.IssueArgs, {
-              vaultPath: this.config.primaryVault.path,
-              linkIssueToSession: (slug: string) => {
-                this.linkedIssueSlug = slug;
-              },
-              trackFileAccess: this.trackFileAccess.bind(this),
-            });
-            // If issue was loaded, track the link
-            if (result.linkedIssue) {
-              this.linkedIssueSlug = result.linkedIssue.slug;
-            }
-            return result;
-          }
-
-          case 'get_persistent_issues':
-            return await tools.getPersistentIssues(securedArgs as tools.GetPersistentIssuesArgs, {
-              vaultPath: this.config.primaryVault.path,
-            });
-
-          case 'update_persistent_issue':
-            return await tools.updatePersistentIssue(
-              securedArgs as tools.UpdatePersistentIssueArgs,
-              {
+            case 'find_stale_topics':
+              return await tools.findStaleTopics(securedArgs as tools.FindStaleTopicsArgs, {
                 vaultPath: this.config.primaryVault.path,
-                currentSessionId: this.currentSessionId || undefined,
-                trackFileAccess: this.trackFileAccess.bind(this),
-              }
-            );
+                ensureVaultStructure: this.ensureVaultStructure.bind(this),
+                getFileAgeDays: this.getFileAgeDays.bind(this),
+                slugify: this.slugify.bind(this),
+                archiveTopic: async (args: tools.ArchiveTopicArgs) =>
+                  await tools.archiveTopic(args, {
+                    vaultPath: this.config.primaryVault.path,
+                    slugify: this.slugify.bind(this),
+                    ensureVaultStructure: this.ensureVaultStructure.bind(this),
+                  }),
+              });
 
-          default:
-            throw new Error(`Unknown tool: ${name}`);
-        }
+            case 'submit_topic_reviews':
+              return tools.submitTopicReviews(securedArgs as tools.SubmitTopicReviewsArgs, {
+                vaultPath: this.config.primaryVault.path,
+              });
+
+            case 'archive_topic':
+              return await tools.archiveTopic(securedArgs as tools.ArchiveTopicArgs, {
+                vaultPath: this.config.primaryVault.path,
+                slugify: this.slugify.bind(this),
+                ensureVaultStructure: this.ensureVaultStructure.bind(this),
+              });
+
+            case 'list_recent_sessions':
+              return await tools.listRecentSessions(securedArgs as tools.ListRecentSessionsArgs, {
+                vaultPath: this.config.primaryVault.path,
+                ensureVaultStructure: this.ensureVaultStructure.bind(this),
+              });
+
+            case 'list_recent_projects':
+              return await tools.listRecentProjects(securedArgs as tools.ListRecentProjectsArgs, {
+                vaultPath: this.config.primaryVault.path,
+              });
+
+            case 'track_file_access':
+              return tools.trackFileAccess(securedArgs as tools.TrackFileAccessArgs, {
+                filesAccessed: this.filesAccessed,
+              });
+
+            case 'detect_session_repositories':
+              return await tools.detectSessionRepositories(
+                securedArgs as tools.DetectSessionRepositoriesArgs,
+                {
+                  currentSessionId: this.currentSessionId,
+                  filesAccessed: this.filesAccessed,
+                  findGitRepos: this.findGitRepos.bind(this),
+                  getRepoInfo: this.getRepoInfo.bind(this),
+                }
+              );
+
+            case 'restore_session_data':
+              return await tools.restoreSessionData(securedArgs as tools.RestoreSessionDataArgs, {
+                restoreSessionStateFromFile: this.restoreSessionStateFromFile.bind(this),
+              });
+
+            case 'link_session_to_repository':
+              return await tools.linkSessionToRepository(
+                securedArgs as tools.LinkSessionToRepositoryArgs,
+                {
+                  currentSessionFile: this.currentSessionFile,
+                  filesAccessed: this.filesAccessed,
+                  gitService: this.gitService,
+                  createProjectPage: this.createProjectPageWrapper.bind(this),
+                }
+              );
+
+            case 'create_project_page':
+              return await tools.createProjectPage(securedArgs as tools.CreateProjectPageArgs, {
+                vaultPath: this.config.primaryVault.path,
+                gitService: this.gitService,
+                trackProjectCreation: project => this.projectsCreated.push(project),
+              });
+
+            case 'record_commit':
+              return await tools.recordCommit(securedArgs as tools.RecordCommitArgs, {
+                vaultPath: this.config.primaryVault.path,
+                gitService: this.gitService,
+                currentSessionId: this.currentSessionId,
+                currentSessionFile: this.currentSessionFile,
+              });
+
+            case 'toggle_embeddings':
+              return await tools.toggleEmbeddings(securedArgs as tools.ToggleEmbeddingsArgs, {
+                embeddingConfig: this.embeddingConfig,
+                embeddingToggleFile: this.embeddingToggleFile,
+                embeddingCache: this.embeddingCache,
+                setExtractor: extractor => {
+                  this.extractor = extractor;
+                },
+                setEmbeddingInitPromise: promise => {
+                  this.embeddingInitPromise = promise;
+                },
+              });
+
+            case 'vault_custodian':
+              return await tools.vaultCustodian(securedArgs as tools.VaultCustodianArgs, {
+                vaultPath: this.config.primaryVault.path,
+                ensureVaultStructure: this.ensureVaultStructure.bind(this),
+                findSessionFile: this.findSessionFile.bind(this),
+                secondaryVaults: this.config.secondaryVaults.map(v => ({
+                  path: v.path,
+                  name: v.name,
+                })),
+              });
+
+            case 'analyze_topic_content':
+              return await tools.analyzeTopicContent(securedArgs as tools.AnalyzeTopicContentArgs, {
+                searchVault: this.searchVaultWrapper.bind(this),
+              });
+
+            case 'analyze_commit_impact':
+              return await tools.analyzeCommitImpact(securedArgs as tools.AnalyzeCommitImpactArgs, {
+                vaultPath: this.config.primaryVault.path,
+                gitService: this.gitService,
+                searchVault: this.searchVaultWrapper.bind(this),
+              });
+
+            case 'get_memory_base':
+              // Clear session state when memory base is loaded (signals new session start)
+              // This ensures filesAccessed array is fresh for Phase 1 commit detection
+              this.clearSessionState();
+              // Set explicit session start time for two-phase /close workflow
+              this.sessionStartTime = new Date();
+              return await tools.getMemoryBase(
+                securedArgs as tools.GetMemoryBaseArgs,
+                this.config.primaryVault.path,
+                { sessionStartTime: this.sessionStartTime }
+              );
+
+            case 'append_to_accumulator':
+              return await tools.appendToAccumulator(securedArgs as tools.AppendToAccumulatorArgs, {
+                vaultPath: this.config.primaryVault.path,
+                trackFileAccess: this.trackFileAccess.bind(this),
+              });
+
+            case 'get_tasks_by_date':
+              return await tools.getTasksByDate(
+                securedArgs as tools.GetTasksByDateArgs,
+                this.config.primaryVault.path
+              );
+
+            case 'add_task':
+              return await tools.addTask(
+                securedArgs as tools.AddTaskArgs,
+                this.config.primaryVault.path
+              );
+
+            case 'complete_task':
+              return await tools.completeTask(
+                securedArgs as tools.CompleteTaskArgs,
+                this.config.primaryVault.path
+              );
+
+            case 'update_document':
+              return await tools.updateDocument(securedArgs as tools.UpdateDocumentArgs, {
+                vaultPath: this.config.primaryVault.path,
+                slugify: this.slugify.bind(this),
+                trackFileAccess: this.trackFileAccess.bind(this),
+                secondaryVaults: getAllVaults(),
+                ensureVaultStructure: this.ensureVaultStructure.bind(this),
+              });
+
+            case 'code_file':
+              return await tools.codeFile(securedArgs as tools.CodeFileArgs, {
+                vaultPath: this.config.primaryVault.path,
+                secondaryVaults: getAllVaults(),
+                trackFileAccess: this.trackFileAccess.bind(this),
+              });
+
+            case 'workflow':
+              return await tools.workflow(securedArgs as tools.WorkflowArgs, {
+                vaultPath: this.config.primaryVault.path,
+              });
+
+            case 'switch_mode': {
+              const { mode } = securedArgs as { mode: VaultMode };
+              const result = this.switchMode(mode);
+
+              // Format response
+              let responseText = result.message;
+              if (result.success) {
+                responseText += `\n\n**Current Mode:** ${result.currentMode}`;
+                responseText += `\n**Primary Vault:** ${this.config.primaryVault.name}`;
+                if (this.config.secondaryVaults.length > 0) {
+                  responseText += `\n**Secondary Vaults:** ${this.config.secondaryVaults.map(v => v.name).join(', ')}`;
+                }
+              }
+
+              return {
+                content: [{ type: 'text', text: responseText }],
+              };
+            }
+
+            case 'get_current_mode': {
+              const modeSupported = isModeSupported();
+              const availableModes = getAvailableModes();
+
+              let responseText = `**Current Mode:** ${getCurrentMode()}`;
+              if (modeSupported) {
+                responseText += `\n**Available Modes:** ${availableModes.join(', ')}`;
+              } else {
+                responseText += `\n\n*Mode switching is not available. Your configuration uses the legacy format.*`;
+              }
+              responseText += `\n\n**Active Vaults:**`;
+              responseText += `\n- Primary: ${this.config.primaryVault.name} (${this.config.primaryVault.path})`;
+              for (const vault of this.config.secondaryVaults) {
+                responseText += `\n- Secondary: ${vault.name} (${vault.path})`;
+              }
+
+              return {
+                content: [{ type: 'text', text: responseText }],
+              };
+            }
+
+            case 'issue': {
+              const result = await tools.issue(securedArgs as tools.IssueArgs, {
+                vaultPath: this.config.primaryVault.path,
+                linkIssueToSession: (slug: string) => {
+                  this.linkedIssueSlug = slug;
+                },
+                trackFileAccess: this.trackFileAccess.bind(this),
+              });
+              // If issue was loaded, track the link
+              if (result.linkedIssue) {
+                this.linkedIssueSlug = result.linkedIssue.slug;
+              }
+              return result;
+            }
+
+            case 'get_persistent_issues':
+              return await tools.getPersistentIssues(securedArgs as tools.GetPersistentIssuesArgs, {
+                vaultPath: this.config.primaryVault.path,
+              });
+
+            case 'update_persistent_issue':
+              return await tools.updatePersistentIssue(
+                securedArgs as tools.UpdatePersistentIssueArgs,
+                {
+                  vaultPath: this.config.primaryVault.path,
+                  currentSessionId: this.currentSessionId || undefined,
+                  trackFileAccess: this.trackFileAccess.bind(this),
+                }
+              );
+
+            default:
+              throw new Error(`Unknown tool: ${name}`);
+          }
+        })();
+
+        return annotateResultSize(toolResult);
       } catch (error) {
         // Enhanced error handling with special formatting for validation errors
         let errorMessage: string;
