@@ -32,8 +32,6 @@ import { DEFAULT_INDEX_CONFIG } from './models/IndexModels.js';
 import type { VaultConfig, VaultAuthority, VaultMode } from './models/Vault.js';
 import { LRUCache } from './utils/LRUCache.js';
 import { createLogger } from './utils/logger.js';
-import { annotateResultSize } from './utils/resultSizeAnnotation.js';
-
 const execAsync = promisify(exec);
 const logger = createLogger('MCPServer');
 
@@ -1060,7 +1058,7 @@ class ObsidianMCPServer {
           }
         })();
 
-        return annotateResultSize(toolResult);
+        return toolResult;
       } catch (error) {
         // Enhanced error handling with special formatting for validation errors
         let errorMessage: string;
@@ -1489,7 +1487,7 @@ class ObsidianMCPServer {
   // ==================== End Embedding Methods ====================
 
   private getTools(): Tool[] {
-    return [
+    const toolDefs: Tool[] = [
       {
         name: 'search_vault',
         description:
@@ -2437,6 +2435,14 @@ CONTENT STYLE: Be direct and concise. State the context in 2-3 sentences, list a
         },
       },
     ];
+
+    // Annotate all tool definitions with maxResultSizeChars so Claude Code
+    // allows large MCP results through without truncation (up to 500K chars).
+    // This must be on the tool definition, not the tool result.
+    return toolDefs.map(tool => ({
+      ...tool,
+      _meta: { 'anthropic/maxResultSizeChars': 500_000 },
+    }));
   }
 
   private async ensureVaultStructure(): Promise<void> {
