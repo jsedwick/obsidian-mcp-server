@@ -1,36 +1,45 @@
 /**
- * SessionStateFile - Persistent session state to vault markdown file
+ * SessionStateFile - Per-session recovery files for crash recovery
  *
- * This service persists session state incrementally to a markdown file
- * in the vault root, enabling recovery when the MCP server restarts or crashes.
+ * Persists session state to individual JSON files in .obsidian-mcp/recovery/,
+ * enabling recovery when the MCP server restarts or crashes. Each session gets
+ * its own file keyed by session start timestamp, allowing concurrent sessions
+ * to coexist without clobbering each other's recovery data.
  *
  * Extends Decision 048's context truncation recovery to cover server-level state loss.
  *
- * The file is:
+ * Each recovery file is:
  * - Created fresh when /mb runs (new session starts)
  * - Updated incrementally as files are accessed
  * - Updated with Phase 1 data when close_session Phase 1 completes
  * - Read for recovery if MCP server state is lost
+ * - Deleted on successful session close (Phase 2 complete)
  *
- * Related: Decision 048 (context truncation recovery)
+ * Related: Decision 048 (context truncation recovery), Decision 054 (persistent state)
  */
 
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { createLogger } from '../../utils/logger.js';
-import { formatLocalDateTime } from '../../utils/dateFormat.js';
+import { formatLocalDateTime, formatFilesafeTimestamp } from '../../utils/dateFormat.js';
 import type { FileAccess } from '../../models/Session.js';
 
 const logger = createLogger('SessionStateFile');
 
 /** Schema version for migration support */
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 
-/** File name in vault root */
-const SESSION_STATE_FILENAME = 'session-state.md';
+/** Recovery directory within .obsidian-mcp */
+const RECOVERY_DIR = '.obsidian-mcp/recovery';
+
+/** Legacy filename to clean up */
+const LEGACY_FILENAME = 'session-state.md';
 
 /** Debounce interval for file access writes (ms) */
 const DEBOUNCE_INTERVAL = 500;
+
+/** Stale file threshold (24 hours) */
+const STALE_THRESHOLD_MS = 24 * 60 * 60 * 1000;
 
 /**
  * State that can be restored from the file
@@ -46,42 +55,63 @@ export interface RestoredSessionState {
 }
 
 /**
- * Service for persisting and recovering session state
+ * Service for persisting and recovering session state via per-session JSON files
  */
 export class SessionStateFile {
-  private filePath: string;
+  private vaultPath: string;
+  private recoveryDir: string;
+  private filePath: string | null = null;
   private debounceTimer: ReturnType<typeof globalThis.setTimeout> | null = null;
   private pendingFileAccesses: FileAccess[] = [];
 
   constructor(vaultPath: string) {
-    this.filePath = path.join(vaultPath, SESSION_STATE_FILENAME);
-    logger.info('SessionStateFile initialized', { filePath: this.filePath });
+    this.vaultPath = vaultPath;
+    this.recoveryDir = path.join(vaultPath, RECOVERY_DIR);
+    logger.info('SessionStateFile initialized', { recoveryDir: this.recoveryDir });
   }
 
   /**
-   * Initialize a fresh session state file (called on /mb)
+   * Initialize a fresh session recovery file (called on /mb)
    *
    * @param sessionStart - Session start time
    */
   async initialize(sessionStart: Date): Promise<void> {
+    const timestamp = formatFilesafeTimestamp(sessionStart);
     const now = formatLocalDateTime(sessionStart);
 
-    const content = this.generateTemplate({
-      schemaVersion: SCHEMA_VERSION,
-      sessionStart: now,
-      lastUpdated: now,
-      phase1Completed: false,
-      filesAccessed: [],
-      phase1SessionData: null,
-    });
-
     try {
-      await fs.writeFile(this.filePath, content, 'utf-8');
-      logger.info('Session state file initialized', { sessionStart: now });
+      // Ensure recovery directory exists
+      await fs.mkdir(this.recoveryDir, { recursive: true });
+
+      // Set file path for this session
+      this.filePath = path.join(this.recoveryDir, `session-${timestamp}.json`);
+
+      const state: RestoredSessionState = {
+        schemaVersion: SCHEMA_VERSION,
+        sessionStart: now,
+        lastUpdated: now,
+        phase1Completed: false,
+        filesAccessed: [],
+        phase1SessionData: null,
+      };
+
+      await this.writeState(state);
+      logger.info('Session recovery file initialized', {
+        filePath: this.filePath,
+        sessionStart: now,
+      });
     } catch (error) {
       // Log but don't fail - session state persistence is an optimization
-      logger.warn('Failed to initialize session state file', { error });
+      logger.warn('Failed to initialize session recovery file', { error });
     }
+
+    // Fire-and-forget cleanup tasks
+    this.cleanupStaleFiles().catch(err => {
+      logger.debug('Failed to clean up stale recovery files', { error: err });
+    });
+    this.cleanupLegacyFile().catch(err => {
+      logger.debug('Failed to clean up legacy session-state.md', { error: err });
+    });
   }
 
   /**
@@ -90,6 +120,11 @@ export class SessionStateFile {
    * @param entry - File access entry
    */
   trackFileAccess(entry: FileAccess): void {
+    if (!this.filePath) {
+      logger.debug('Skipping file access tracking - no recovery file initialized');
+      return;
+    }
+
     this.pendingFileAccesses.push(entry);
 
     // Clear existing timer
@@ -107,7 +142,7 @@ export class SessionStateFile {
    * Flush pending file accesses to disk
    */
   private async flushFileAccesses(): Promise<void> {
-    if (this.pendingFileAccesses.length === 0) {
+    if (this.pendingFileAccesses.length === 0 || !this.filePath) {
       return;
     }
 
@@ -115,25 +150,17 @@ export class SessionStateFile {
     this.pendingFileAccesses = [];
 
     try {
-      // Read current file
-      const content = await fs.readFile(this.filePath, 'utf-8');
-
-      // Parse and update
-      const state = this.parseFile(content);
+      const state = await this.readState();
       if (!state) {
-        logger.warn('Failed to parse session state file for update');
+        logger.warn('Failed to read recovery file for update');
         return;
       }
 
-      // Add new file accesses
       state.filesAccessed.push(...toFlush);
       state.lastUpdated = formatLocalDateTime(new Date());
 
-      // Write updated content
-      const updatedContent = this.generateTemplate(state);
-      await fs.writeFile(this.filePath, updatedContent, 'utf-8');
-
-      logger.debug('Flushed file accesses to session state', { count: toFlush.length });
+      await this.writeState(state);
+      logger.debug('Flushed file accesses to recovery file', { count: toFlush.length });
     } catch (error) {
       // Log but don't fail
       logger.warn('Failed to flush file accesses', { error, count: toFlush.length });
@@ -146,6 +173,11 @@ export class SessionStateFile {
    * @param data - Complete Phase 1 session data
    */
   async storePhase1Data(data: unknown): Promise<void> {
+    if (!this.filePath) {
+      logger.warn('Cannot store Phase 1 data - no recovery file initialized');
+      return;
+    }
+
     try {
       // Flush any pending file accesses first
       if (this.debounceTimer) {
@@ -154,13 +186,9 @@ export class SessionStateFile {
       }
       await this.flushFileAccesses();
 
-      // Read current file
-      const content = await fs.readFile(this.filePath, 'utf-8');
-
-      // Parse and update
-      const state = this.parseFile(content);
+      const state = await this.readState();
       if (!state) {
-        logger.warn('Failed to parse session state file for Phase 1 update');
+        logger.warn('Failed to read recovery file for Phase 1 update');
         return;
       }
 
@@ -168,212 +196,182 @@ export class SessionStateFile {
       state.phase1SessionData = data;
       state.lastUpdated = formatLocalDateTime(new Date());
 
-      // Write updated content
-      const updatedContent = this.generateTemplate(state);
-      await fs.writeFile(this.filePath, updatedContent, 'utf-8');
-
-      logger.info('Phase 1 session data stored to file');
+      await this.writeState(state);
+      logger.info('Phase 1 session data stored to recovery file');
     } catch (error) {
       logger.warn('Failed to store Phase 1 data', { error });
     }
   }
 
   /**
-   * Restore session state from file
+   * Restore session state from the most recent recovery file
    *
    * @returns Restored state or null if not available
    */
   async restore(): Promise<RestoredSessionState | null> {
     try {
-      const content = await fs.readFile(this.filePath, 'utf-8');
-      const state = this.parseFile(content);
+      // Scan recovery directory for files
+      let files: string[];
+      try {
+        files = await fs.readdir(this.recoveryDir);
+      } catch (error) {
+        const err = error as { code?: string };
+        if (err.code === 'ENOENT') {
+          logger.debug('Recovery directory does not exist');
+          return null;
+        }
+        throw error;
+      }
 
-      if (!state) {
-        logger.warn('Failed to parse session state file for restore');
+      // Filter to session JSON files and sort descending (newest first)
+      const recoveryFiles = files
+        .filter(f => f.startsWith('session-') && f.endsWith('.json'))
+        .sort()
+        .reverse();
+
+      if (recoveryFiles.length === 0) {
+        logger.debug('No recovery files found');
         return null;
       }
 
-      // Check schema version
-      if (state.schemaVersion > SCHEMA_VERSION) {
-        logger.warn('Session state file has newer schema version', {
-          fileVersion: state.schemaVersion,
-          currentVersion: SCHEMA_VERSION,
-        });
-        return null;
+      // Try each file starting from newest
+      for (const file of recoveryFiles) {
+        const filePath = path.join(this.recoveryDir, file);
+        try {
+          const content = await fs.readFile(filePath, 'utf-8');
+          const state = JSON.parse(content) as RestoredSessionState;
+
+          if (state.schemaVersion > SCHEMA_VERSION) {
+            logger.warn('Recovery file has newer schema version', {
+              file,
+              fileVersion: state.schemaVersion,
+              currentVersion: SCHEMA_VERSION,
+            });
+            continue;
+          }
+
+          // Set filePath so subsequent operations use this file
+          this.filePath = filePath;
+
+          logger.info('Session state restored from recovery file', {
+            file,
+            sessionStart: state.sessionStart,
+            filesAccessedCount: state.filesAccessed.length,
+            phase1Completed: state.phase1Completed,
+          });
+
+          return state;
+        } catch (error) {
+          logger.warn('Failed to parse recovery file, trying next', { file, error });
+          continue;
+        }
       }
 
-      logger.info('Session state restored from file', {
-        sessionStart: state.sessionStart,
-        filesAccessedCount: state.filesAccessed.length,
-        phase1Completed: state.phase1Completed,
-      });
+      logger.warn('No valid recovery files found');
+      return null;
+    } catch (error) {
+      logger.warn('Failed to restore session state', { error });
+      return null;
+    }
+  }
 
-      return state;
+  /**
+   * Delete this session's recovery file (called on successful session close)
+   */
+  async deleteRecoveryFile(): Promise<void> {
+    if (!this.filePath) {
+      return;
+    }
+
+    try {
+      await fs.unlink(this.filePath);
+      logger.info('Recovery file deleted', { filePath: this.filePath });
+      this.filePath = null;
     } catch (error) {
       const err = error as { code?: string };
-      if (err.code === 'ENOENT') {
-        logger.debug('Session state file does not exist');
-      } else {
-        logger.warn('Failed to restore session state', { error });
+      if (err.code !== 'ENOENT') {
+        logger.warn('Failed to delete recovery file', { error, filePath: this.filePath });
       }
+    }
+  }
+
+  /**
+   * Write state to JSON file
+   */
+  private async writeState(state: RestoredSessionState): Promise<void> {
+    if (!this.filePath) {
+      return;
+    }
+    await fs.writeFile(this.filePath, JSON.stringify(state, null, 2), 'utf-8');
+  }
+
+  /**
+   * Read state from current JSON file
+   */
+  private async readState(): Promise<RestoredSessionState | null> {
+    if (!this.filePath) {
       return null;
     }
-  }
 
-  /**
-   * Generate markdown file content from state
-   */
-  private generateTemplate(state: RestoredSessionState): string {
-    const filesTable = this.generateFilesTable(state.filesAccessed);
-    const phase1Json = JSON.stringify(state.phase1SessionData, null, 2);
-
-    return `---
-schema_version: ${state.schemaVersion}
-session_start: "${state.sessionStart}"
-last_updated: "${state.lastUpdated}"
-phase1_completed: ${state.phase1Completed}
----
-
-# Session State
-
-This file tracks the current session state for recovery purposes.
-It is overwritten at the start of each new session when /mb runs.
-
-## Files Accessed
-
-${filesTable}
-
-## Phase 1 Data
-
-\`\`\`json
-${phase1Json}
-\`\`\`
-`;
-  }
-
-  /**
-   * Generate markdown table for files accessed
-   */
-  private generateFilesTable(files: FileAccess[]): string {
-    if (files.length === 0) {
-      return '| Path | Action | Timestamp |\n|------|--------|-----------|';
-    }
-
-    const rows = files.map(f => `| ${f.path} | ${f.action} | ${f.timestamp} |`);
-    return `| Path | Action | Timestamp |\n|------|--------|-----------|
-${rows.join('\n')}`;
-  }
-
-  /**
-   * Parse markdown file content to extract state
-   */
-  private parseFile(content: string): RestoredSessionState | null {
     try {
-      // Extract frontmatter
-      const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
-      if (!frontmatterMatch) {
-        return null;
-      }
-
-      const frontmatter = frontmatterMatch[1];
-      const schemaVersion = this.extractFrontmatterValue(frontmatter, 'schema_version', '1');
-      const sessionStart = this.extractFrontmatterValue(frontmatter, 'session_start', '');
-      const lastUpdated = this.extractFrontmatterValue(frontmatter, 'last_updated', '');
-      const phase1Completed = this.extractFrontmatterValue(
-        frontmatter,
-        'phase1_completed',
-        'false'
-      );
-
-      // Extract files accessed table
-      const filesAccessed = this.parseFilesTable(content);
-
-      // Extract Phase 1 JSON
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-      const phase1SessionData = this.parsePhase1Json(content);
-
-      return {
-        schemaVersion: parseInt(schemaVersion, 10),
-        sessionStart: sessionStart.replace(/"/g, ''),
-        lastUpdated: lastUpdated.replace(/"/g, ''),
-        phase1Completed: phase1Completed === 'true',
-
-        filesAccessed,
-        phase1SessionData,
-      };
+      const content = await fs.readFile(this.filePath, 'utf-8');
+      return JSON.parse(content) as RestoredSessionState;
     } catch (error) {
-      logger.warn('Error parsing session state file', { error });
+      logger.warn('Failed to read recovery file', { error, filePath: this.filePath });
       return null;
     }
   }
 
   /**
-   * Extract a value from YAML frontmatter
+   * Remove recovery files older than 24 hours
    */
-  private extractFrontmatterValue(frontmatter: string, key: string, defaultValue: string): string {
-    const regex = new RegExp(`^${key}:\\s*(.+)$`, 'm');
-    const match = frontmatter.match(regex);
-    return match ? match[1].trim() : defaultValue;
-  }
+  private async cleanupStaleFiles(): Promise<void> {
+    try {
+      const files = await fs.readdir(this.recoveryDir);
+      const now = Date.now();
 
-  /**
-   * Parse the files accessed table from markdown
-   */
-  private parseFilesTable(content: string): FileAccess[] {
-    const files: FileAccess[] = [];
+      for (const file of files) {
+        if (!file.startsWith('session-') || !file.endsWith('.json')) continue;
 
-    // Find the table section
-    const tableMatch = content.match(/## Files Accessed\n\n([\s\S]*?)(?=\n## |$)/);
-    if (!tableMatch) {
-      return files;
-    }
+        const filePath = path.join(this.recoveryDir, file);
 
-    const tableContent = tableMatch[1];
-    const lines = tableContent.split('\n');
+        // Don't delete our own file
+        if (filePath === this.filePath) continue;
 
-    // Skip header and separator rows
-    for (let i = 2; i < lines.length; i++) {
-      const line = lines[i].trim();
-      if (!line || !line.startsWith('|')) continue;
-
-      // Parse table row: | path | action | timestamp |
-      const parts = line
-        .split('|')
-        .map(p => p.trim())
-        .filter(p => p);
-      if (parts.length >= 3) {
-        files.push({
-          path: parts[0],
-          action: parts[1] as FileAccess['action'],
-          timestamp: parts[2],
-        });
+        const stat = await fs.stat(filePath);
+        if (now - stat.mtimeMs > STALE_THRESHOLD_MS) {
+          await fs.unlink(filePath);
+          logger.info('Deleted stale recovery file', { file });
+        }
+      }
+    } catch (error) {
+      const err = error as { code?: string };
+      if (err.code !== 'ENOENT') {
+        logger.debug('Failed to clean up stale recovery files', { error });
       }
     }
-
-    return files;
   }
 
   /**
-   * Parse the Phase 1 JSON block from markdown
+   * Remove legacy session-state.md from vault root
    */
-  // eslint-disable-next-line @typescript-eslint/no-redundant-type-constituents, @typescript-eslint/no-explicit-any
-  private parsePhase1Json(content: string): any | null {
-    const jsonMatch = content.match(/## Phase 1 Data\n\n```json\n([\s\S]*?)\n```/);
-    if (!jsonMatch) {
-      return null;
-    }
-
+  private async cleanupLegacyFile(): Promise<void> {
+    const legacyPath = path.join(this.vaultPath, LEGACY_FILENAME);
     try {
-      return JSON.parse(jsonMatch[1]);
-    } catch {
-      return null;
+      await fs.unlink(legacyPath);
+      logger.info('Deleted legacy session-state.md', { path: legacyPath });
+    } catch (error) {
+      const err = error as { code?: string };
+      if (err.code !== 'ENOENT') {
+        logger.debug('Failed to delete legacy session-state.md', { error });
+      }
     }
   }
 
   /**
    * Get the file path for testing/debugging
    */
-  getFilePath(): string {
+  getFilePath(): string | null {
     return this.filePath;
   }
 }

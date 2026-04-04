@@ -78,6 +78,24 @@ export function formatLocalDateTimeFriendly(date: Date): string {
 }
 
 /**
+ * Format a Date as a filesystem-safe timestamp string.
+ * Example: "2026-04-04T12-50-17-123" (colons replaced with hyphens, includes milliseconds)
+ *
+ * Used for unique per-session recovery filenames where colons are invalid.
+ */
+export function formatFilesafeTimestamp(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  const seconds = String(date.getSeconds()).padStart(2, '0');
+  const millis = String(date.getMilliseconds()).padStart(3, '0');
+
+  return `${year}-${month}-${day}T${hours}-${minutes}-${seconds}-${millis}`;
+}
+
+/**
  * Get current date in local timezone (YYYY-MM-DD).
  * Convenience function to replace `new Date().toISOString().split('T')[0]`
  */

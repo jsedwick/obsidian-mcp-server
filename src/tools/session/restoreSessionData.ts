@@ -1,11 +1,11 @@
 /**
  * Tool: restore_session_data
  *
- * Description: Recover session state from session-state.md when MCP server
- * state is lost (restart, crash). This extends Decision 048's context
+ * Description: Recover session state from per-session recovery files when MCP
+ * server state is lost (restart, crash). This extends Decision 048's context
  * truncation recovery to cover server-level state loss.
  *
- * The tool reads session-state.md from the vault root and restores:
+ * The tool reads the most recent recovery file from .obsidian-mcp/recovery/ and restores:
  * - Session start time
  * - Files accessed during session
  * - Phase 1 session data (if available)
@@ -35,7 +35,7 @@ export interface RestoreSessionDataContext {
 }
 
 /**
- * Restore session state from session-state.md file
+ * Restore session state from recovery file
  */
 export async function restoreSessionData(
   _args: RestoreSessionDataArgs,
@@ -53,7 +53,7 @@ export async function restoreSessionData(
             'No session state file found or file could not be parsed.\n\n' +
             'This can happen if:\n' +
             '- No session has been started (run /mb first)\n' +
-            '- The session-state.md file was deleted\n' +
+            '- The recovery file was deleted\n' +
             '- The file is corrupted\n\n' +
             'To start a fresh session, run /mb.',
         },
@@ -75,7 +75,7 @@ export async function restoreSessionData(
           `**Last Updated:** ${restored.lastUpdated}\n` +
           `**Files Accessed:** ${restored.filesAccessed.length}\n` +
           `**Phase 1 Status:** ${phase1Status}\n\n` +
-          'Server memory has been restored from session-state.md.\n' +
+          'Server memory has been restored from recovery file.\n' +
           'You can now continue with Phase 2 if Phase 1 was completed.',
       },
     ],

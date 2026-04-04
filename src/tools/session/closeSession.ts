@@ -2395,7 +2395,7 @@ export async function closeSession(
             '   Does NOT need _invoked_by_slash_command (only Phase 1 does)\n\n' +
             'Recovery attempted:\n' +
             '- Memory state: not available\n' +
-            '- File-based (session-state.md): not available or Phase 1 incomplete\n\n' +
+            '- File-based (recovery file): not available or Phase 1 incomplete\n\n' +
             'Try running restore_session_data first, or re-run /close to start fresh.\n\n' +
             'Example Phase 2 call:\n' +
             'close_session({\n' +

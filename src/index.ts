@@ -929,9 +929,9 @@ class ObsidianMCPServer {
             case 'get_memory_base':
               // Clear session state when memory base is loaded (signals new session start)
               // This ensures filesAccessed array is fresh for Phase 1 commit detection
-              this.clearSessionState();
               // Set explicit session start time for two-phase /close workflow
               this.sessionStartTime = new Date();
+              this.clearSessionState(this.sessionStartTime);
               return await tools.getMemoryBase(
                 securedArgs as tools.GetMemoryBaseArgs,
                 this.config.primaryVault.path,
@@ -1988,7 +1988,7 @@ CONTENT STYLE: Be direct and concise. State the context in 2-3 sentences, list a
       {
         name: 'restore_session_data',
         description:
-          'Recover session state from session-state.md when MCP server state is lost (restart, crash). ' +
+          'Recover session state from recovery file when MCP server state is lost (restart, crash). ' +
           'Restores session start time, files accessed, and Phase 1 session data if available. ' +
           'Use this to recover from server restarts between Phase 1 and Phase 2 of the /close workflow.',
         inputSchema: {
@@ -2707,7 +2707,7 @@ Check the sessions/ directory for recent conversations.
   }
 
   /**
-   * Restore session state from session-state.md file (Decision 054)
+   * Restore session state from recovery file (Decision 054)
    * Used when MCP server state is lost (restart, crash) but file persists.
    * Returns the Phase 1 session data if available and restores memory state.
    */
@@ -2733,7 +2733,7 @@ Check the sessions/ directory for recent conversations.
     return restored;
   }
 
-  private clearSessionState(): void {
+  private clearSessionState(sessionStart?: Date): void {
     this.filesAccessed = [];
     this.topicsCreated = [];
     this.decisionsCreated = [];
@@ -2742,13 +2742,26 @@ Check the sessions/ directory for recent conversations.
     this.phase1Completed = false;
     this.phase1SessionData = null;
 
-    // Initialize session state file for new session (Decision 054)
-    // Fire-and-forget - don't block on file I/O
-    this.sessionStateFile.initialize(new Date()).catch(error => {
-      logger.warn('Failed to initialize session state file', {
-        error: error instanceof Error ? error.message : String(error),
+    if (sessionStart) {
+      // New session starting - delete old recovery file and initialize new one
+      this.sessionStateFile.deleteRecoveryFile().catch(error => {
+        logger.warn('Failed to delete previous recovery file', {
+          error: error instanceof Error ? error.message : String(error),
+        });
       });
-    });
+      this.sessionStateFile.initialize(sessionStart).catch(error => {
+        logger.warn('Failed to initialize session recovery file', {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
+    } else {
+      // Session ended (Phase 2 success) - just clean up recovery file
+      this.sessionStateFile.deleteRecoveryFile().catch(error => {
+        logger.warn('Failed to delete recovery file after session close', {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
+    }
   }
 
   /**
