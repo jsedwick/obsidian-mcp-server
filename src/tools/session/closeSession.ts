@@ -2694,10 +2694,13 @@ export async function closeSession(
 
   // Build session content using template
   // Use the first working directory as the primary CWD for session-to-project matching
-  const primaryWorkingDirectory = args.working_directories?.[0]
-    ?.replace(/^Working directory:\s*/i, '')
-    .replace(/^Additional working directories?:\s*/i, '')
-    .trim();
+  // Falls back to process.cwd() so sessions always have a working_directory in frontmatter
+  const fallbackCwd = process.env.PWD || process.cwd();
+  const primaryWorkingDirectory =
+    args.working_directories?.[0]
+      ?.replace(/^Working directory:\s*/i, '')
+      .replace(/^Additional working directories?:\s*/i, '')
+      .trim() || fallbackCwd;
 
   const sessionContent = generateSessionTemplate({
     sessionId,
