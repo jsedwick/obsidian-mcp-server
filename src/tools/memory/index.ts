@@ -7,7 +7,11 @@
  */
 
 export { getMemoryBase } from './getMemoryBase.js';
-export type { GetMemoryBaseArgs, GetMemoryBaseResult } from './getMemoryBase.js';
+export type {
+  GetMemoryBaseArgs,
+  GetMemoryBaseResult,
+  GetMemoryBaseStructuredResult,
+} from './getMemoryBase.js';
 
 export { appendToAccumulator } from './appendToAccumulator.js';
 export type { AppendToAccumulatorArgs, AppendToAccumulatorResult } from './appendToAccumulator.js';

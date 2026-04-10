@@ -2238,6 +2238,86 @@ CONTENT STYLE: Be direct and concise. State the context in 2-3 sentences, list a
             },
           },
         },
+        outputSchema: {
+          type: 'object',
+          properties: {
+            session_start_time: {
+              type: 'string',
+              description: 'Session start timestamp in local timezone format',
+            },
+            has_user_reference: {
+              type: 'boolean',
+              description: 'Whether user-reference.md was found and loaded',
+            },
+            handoffs: {
+              type: 'array',
+              description: 'Recent session handoff notes for continuity',
+              items: {
+                type: 'object',
+                properties: {
+                  session_id: {
+                    type: 'string',
+                    description: 'Session filename (without .md extension)',
+                  },
+                  content: {
+                    type: 'string',
+                    description: 'Handoff notes content',
+                  },
+                },
+                required: ['session_id', 'content'],
+              },
+            },
+            correction_rules: {
+              type: 'array',
+              description: 'Condensed correction rules from accumulator-corrections.md',
+              items: {
+                type: 'object',
+                properties: {
+                  title: {
+                    type: 'string',
+                    description: 'Correction rule title',
+                  },
+                  bullets: {
+                    type: 'array',
+                    items: { type: 'string' },
+                    description: 'Prevention action items',
+                  },
+                },
+                required: ['title', 'bullets'],
+              },
+            },
+            persistent_issues: {
+              type: 'array',
+              description: 'Active persistent issues with priorities',
+              items: {
+                type: 'object',
+                properties: {
+                  slug: {
+                    type: 'string',
+                    description: 'Issue slug (filename without .md)',
+                  },
+                  priority: {
+                    type: 'string',
+                    enum: ['high', 'medium', 'low'],
+                    description: 'Issue priority level',
+                  },
+                },
+                required: ['slug', 'priority'],
+              },
+            },
+            section_count: {
+              type: 'integer',
+              description: 'Total number of sections loaded',
+            },
+          },
+          required: [
+            'has_user_reference',
+            'handoffs',
+            'correction_rules',
+            'persistent_issues',
+            'section_count',
+          ],
+        },
       },
       {
         name: 'append_to_accumulator',

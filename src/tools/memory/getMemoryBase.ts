@@ -36,7 +36,7 @@ async function extractRecentHandoffs(
   vaultPath: string,
   maxSessions = 3,
   workingDirectory?: string
-): Promise<string> {
+): Promise<{ text: string; structured: GetMemoryBaseStructuredHandoff[] }> {
   try {
     const sessionsPath = path.join(vaultPath, 'sessions');
 
@@ -119,7 +119,8 @@ async function extractRecentHandoffs(
       orderedSessionPaths = allSessionFiles.slice(0, maxSessions).map(f => f.path);
     }
 
-    const handoffs: string[] = [];
+    const handoffTexts: string[] = [];
+    const structuredHandoffs: GetMemoryBaseStructuredHandoff[] = [];
 
     for (const sessionPath of orderedSessionPaths) {
       try {
@@ -135,7 +136,11 @@ async function extractRecentHandoffs(
           // Skip empty or placeholder handoffs
           if (handoffText && handoffText !== '_No handoff notes_') {
             const sessionName = path.basename(sessionPath, '.md');
-            handoffs.push(`**${sessionName}**\n${handoffText}`);
+            handoffTexts.push(`**${sessionName}**\n${handoffText}`);
+            structuredHandoffs.push({
+              session_id: sessionName,
+              content: handoffText,
+            });
           }
         }
       } catch {
@@ -144,13 +149,16 @@ async function extractRecentHandoffs(
       }
     }
 
-    if (handoffs.length === 0) {
-      return '';
+    if (handoffTexts.length === 0) {
+      return { text: '', structured: [] };
     }
 
-    return `## Recent Handoffs\n\n${handoffs.join('\n\n---\n\n')}`;
+    return {
+      text: `## Recent Handoffs\n\n${handoffTexts.join('\n\n---\n\n')}`,
+      structured: structuredHandoffs,
+    };
   } catch {
-    return '';
+    return { text: '', structured: [] };
   }
 }
 
@@ -162,17 +170,19 @@ async function extractRecentHandoffs(
  * - persistent-issues/*.md for active issues
  * - Parses frontmatter for priority
  */
-async function loadActivePersistentIssues(vaultPath: string): Promise<string> {
+async function loadActivePersistentIssues(
+  vaultPath: string
+): Promise<{ text: string; structured: GetMemoryBaseStructuredIssue[] }> {
   try {
     const issuesDir = path.join(vaultPath, 'persistent-issues');
     const files = await fs.readdir(issuesDir);
     const mdFiles = files.filter(f => f.endsWith('.md'));
 
     if (mdFiles.length === 0) {
-      return '';
+      return { text: '', structured: [] };
     }
 
-    const issues: Array<{ slug: string; priority: string }> = [];
+    const issues: GetMemoryBaseStructuredIssue[] = [];
 
     for (const file of mdFiles) {
       try {
@@ -201,19 +211,19 @@ async function loadActivePersistentIssues(vaultPath: string): Promise<string> {
     }
 
     if (issues.length === 0) {
-      return '';
+      return { text: '', structured: [] };
     }
 
-    let result = `## Active Persistent Issues (${issues.length})\n\n`;
+    let text = `## Active Persistent Issues (${issues.length})\n\n`;
     for (const issue of issues) {
-      result += `- **${issue.slug}** (${issue.priority})\n`;
+      text += `- **${issue.slug}** (${issue.priority})\n`;
     }
-    result += `\nUse \`/issue <slug>\` to load issue context and link this session.`;
+    text += `\nUse \`/issue <slug>\` to load issue context and link this session.`;
 
-    return result;
+    return { text, structured: issues };
   } catch {
     // Directory doesn't exist or can't be read
-    return '';
+    return { text: '', structured: [] };
   }
 }
 
@@ -222,7 +232,10 @@ async function loadActivePersistentIssues(vaultPath: string): Promise<string> {
  * Extracts title + "How to prevent" bullets from each correction entry
  * for a compact, directive format that stays effective in context
  */
-async function loadCondensedCorrectionRules(vaultPath: string, filename: string): Promise<string> {
+async function loadCondensedCorrectionRules(
+  vaultPath: string,
+  filename: string
+): Promise<{ text: string; structured: GetMemoryBaseStructuredCorrection[] }> {
   try {
     const filePath = path.join(vaultPath, filename);
     const content = await fs.readFile(filePath, 'utf-8');
@@ -231,10 +244,11 @@ async function loadCondensedCorrectionRules(vaultPath: string, filename: string)
     const entries = content.split(/(?=^## )/m).filter(e => e.trim().startsWith('## 🚫'));
 
     if (entries.length === 0) {
-      return '';
+      return { text: '', structured: [] };
     }
 
-    const rules: string[] = [];
+    const ruleTexts: string[] = [];
+    const structuredRules: GetMemoryBaseStructuredCorrection[] = [];
     for (const entry of entries) {
       // Extract title (strip emoji prefix and date suffix)
       const titleMatch = entry.match(/^## 🚫\s+(.+?)(?:\s*-\s*\d{4}-\d{2}-\d{2})?\s*$/m);
@@ -244,20 +258,52 @@ async function loadCondensedCorrectionRules(vaultPath: string, filename: string)
       const preventMatch = entry.match(/\*\*How to prevent:\*\*\n((?:- .+\n?)*)/);
 
       if (title && preventMatch) {
-        const bullets = preventMatch[1].trim();
-        rules.push(`**${title}:**\n${bullets}`);
+        const bulletsText = preventMatch[1].trim();
+        ruleTexts.push(`**${title}:**\n${bulletsText}`);
+        structuredRules.push({
+          title,
+          bullets: bulletsText
+            .split('\n')
+            .map(b => b.replace(/^- /, '').trim())
+            .filter(Boolean),
+        });
       }
     }
 
-    return rules.join('\n\n');
+    return { text: ruleTexts.join('\n\n'), structured: structuredRules };
   } catch {
     // File doesn't exist or can't be read
-    return '';
+    return { text: '', structured: [] };
   }
+}
+
+export interface GetMemoryBaseStructuredHandoff {
+  session_id: string;
+  content: string;
+}
+
+export interface GetMemoryBaseStructuredCorrection {
+  title: string;
+  bullets: string[];
+}
+
+export interface GetMemoryBaseStructuredIssue {
+  slug: string;
+  priority: string;
+}
+
+export interface GetMemoryBaseStructuredResult {
+  session_start_time?: string;
+  has_user_reference: boolean;
+  handoffs: GetMemoryBaseStructuredHandoff[];
+  correction_rules: GetMemoryBaseStructuredCorrection[];
+  persistent_issues: GetMemoryBaseStructuredIssue[];
+  section_count: number;
 }
 
 export interface GetMemoryBaseResult {
   content: Array<{ type: string; text: string }>;
+  structuredContent?: GetMemoryBaseStructuredResult;
 }
 
 export async function getMemoryBase(
@@ -286,8 +332,8 @@ export async function getMemoryBase(
   const corrections = await loadCondensedCorrectionRules(vaultPath, 'accumulator-corrections.md');
 
   let crossSessionKnowledge = '';
-  if (corrections) {
-    crossSessionKnowledge = `## ⚠️ Correction Rules\n\n${corrections}`;
+  if (corrections.text) {
+    crossSessionKnowledge = `## ⚠️ Correction Rules\n\n${corrections.text}`;
   }
 
   // Load active persistent issues (Decision 048)
@@ -295,27 +341,46 @@ export async function getMemoryBase(
 
   // Build layered context: Session start -> User reference -> Handoffs -> Corrections -> Issues
   const sections = [];
+  let sectionCount = 0;
 
   // Add session start time for context recovery (fallback if MCP server state is lost)
   // Use local timezone format for user-friendly display
-  if (context?.sessionStartTime) {
-    sections.push(`SESSION_START_TIME: ${formatLocalDateTime(context.sessionStartTime)}`);
+  const sessionStartTimeStr = context?.sessionStartTime
+    ? formatLocalDateTime(context.sessionStartTime)
+    : undefined;
+  if (sessionStartTimeStr) {
+    sections.push(`SESSION_START_TIME: ${sessionStartTimeStr}`);
+    sectionCount++;
   }
 
   if (userRefContent) {
     sections.push(userRefContent);
+    sectionCount++;
   }
-  if (recentHandoffs) {
-    sections.push(recentHandoffs);
+  if (recentHandoffs.text) {
+    sections.push(recentHandoffs.text);
+    sectionCount++;
   }
   if (crossSessionKnowledge) {
     sections.push(crossSessionKnowledge);
+    sectionCount++;
   }
-  if (persistentIssues) {
-    sections.push(persistentIssues);
+  if (persistentIssues.text) {
+    sections.push(persistentIssues.text);
+    sectionCount++;
   }
 
   const fullContent = sections.join('\n\n---\n\n');
+
+  // Build structured content (required by outputSchema)
+  const structuredContent: GetMemoryBaseStructuredResult = {
+    ...(sessionStartTimeStr ? { session_start_time: sessionStartTimeStr } : {}),
+    has_user_reference: !!userRefContent,
+    handoffs: recentHandoffs.structured,
+    correction_rules: corrections.structured,
+    persistent_issues: persistentIssues.structured,
+    section_count: sectionCount,
+  };
 
   return {
     content: [
@@ -324,5 +389,6 @@ export async function getMemoryBase(
         text: fullContent,
       },
     ],
+    structuredContent,
   };
 }
