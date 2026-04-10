@@ -67,6 +67,40 @@ export async function workflow(
 }
 
 /**
+ * Recursively collect all .md files from a directory, returning paths relative to the base dir.
+ */
+async function collectWorkflowFiles(dir: string, baseDir: string): Promise<WorkflowFile[]> {
+  const results: WorkflowFile[] = [];
+  const entries = await fs.readdir(dir, { withFileTypes: true });
+
+  for (const entry of entries) {
+    const fullPath = path.join(dir, entry.name);
+
+    if (entry.isDirectory()) {
+      const nested = await collectWorkflowFiles(fullPath, baseDir);
+      results.push(...nested);
+    } else if (entry.isFile() && entry.name.endsWith('.md')) {
+      const relativePath = path.relative(baseDir, fullPath);
+      const name = relativePath.replace(/\.md$/, '');
+      const content = await fs.readFile(fullPath, 'utf-8');
+
+      let description: string | undefined;
+      const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
+      if (frontmatterMatch) {
+        const descMatch = frontmatterMatch[1].match(/description:\s*(.+)/);
+        if (descMatch) {
+          description = descMatch[1].trim();
+        }
+      }
+
+      results.push({ name, filename: entry.name, filePath: fullPath, description });
+    }
+  }
+
+  return results;
+}
+
+/**
  * Execute a specific workflow
  */
 async function executeWorkflow(
@@ -76,14 +110,11 @@ async function executeWorkflow(
   const workflowFile = path.join(workflowsDir, `${workflowName}.md`);
 
   try {
-    // Check if workflow file exists
     await fs.access(workflowFile);
   } catch {
-    // Try to find similar workflow names for helpful error message
     try {
-      const entries = await fs.readdir(workflowsDir);
-      const mdFiles = entries.filter(f => f.endsWith('.md'));
-      const available = mdFiles.map(f => f.replace('.md', '')).join(', ');
+      const allWorkflows = await collectWorkflowFiles(workflowsDir, workflowsDir);
+      const available = allWorkflows.map(w => w.name).join(', ');
 
       return {
         content: [
@@ -105,10 +136,7 @@ async function executeWorkflow(
     }
   }
 
-  // Read workflow file
   const content = await fs.readFile(workflowFile, 'utf-8');
-
-  // Remove frontmatter if present
   const contentWithoutFrontmatter = content.replace(/^---\n[\s\S]*?\n---\n/, '');
 
   return {
@@ -125,36 +153,7 @@ async function executeWorkflow(
  * List all available workflows
  */
 async function listWorkflows(workflowsDir: string): Promise<WorkflowResult> {
-  // Read all .md files from workflows directory
-  const workflowFiles: WorkflowFile[] = [];
-  const entries = await fs.readdir(workflowsDir, { withFileTypes: true });
-
-  for (const entry of entries) {
-    if (entry.isFile() && entry.name.endsWith('.md')) {
-      const filePath = path.join(workflowsDir, entry.name);
-      const content = await fs.readFile(filePath, 'utf-8');
-
-      // Parse frontmatter to get description
-      const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
-      let description: string | undefined;
-
-      if (frontmatterMatch) {
-        const frontmatter = frontmatterMatch[1];
-        const descMatch = frontmatter.match(/description:\s*(.+)/);
-        if (descMatch) {
-          description = descMatch[1].trim();
-        }
-      }
-
-      const name = entry.name.replace('.md', '');
-      workflowFiles.push({
-        name,
-        filename: entry.name,
-        filePath,
-        description,
-      });
-    }
-  }
+  const workflowFiles = await collectWorkflowFiles(workflowsDir, workflowsDir);
 
   if (workflowFiles.length === 0) {
     return {
@@ -167,10 +166,8 @@ async function listWorkflows(workflowsDir: string): Promise<WorkflowResult> {
     };
   }
 
-  // Sort alphabetically by name
   workflowFiles.sort((a, b) => a.name.localeCompare(b.name));
 
-  // Format output
   let resultText = `Found ${workflowFiles.length} workflow(s):\n\n`;
 
   workflowFiles.forEach((w, idx) => {
