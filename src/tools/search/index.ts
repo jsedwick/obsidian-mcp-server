@@ -10,6 +10,7 @@ export {
   searchVault,
   type SearchVaultArgs,
   type SearchVaultResult,
+  type SearchVaultStructuredResult,
 } from './searchVault.js';
 
 export {

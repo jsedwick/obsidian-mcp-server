@@ -1,33 +1,43 @@
 {
   "primaryVaults": [
     {
-      "path": "/Users/jsedwick/Documents/Obsidian/AI-Work",
+      "path": "~/Documents/Obsidian/AI-Work",
       "name": "AI-Work",
       "mode": "work"
     },
     {
-      "path": "/Users/jsedwick/Documents/Obsidian/AI-Home",
+      "path": "~/Documents/Obsidian/AI-Home",
       "name": "AI-Home",
       "mode": "personal"
     }
   ],
   "secondaryVaults": [
     {
-      "path": "/Users/jsedwick/Documents/Obsidian/Work",
+      "path": "~/Documents/Obsidian/Work",
       "name": "Work",
       "authority": "curated",
       "mode": "work"
     },
     {
-      "path": "/Users/jsedwick/Documents/Obsidian/Home",
+      "path": "~/Documents/Obsidian/Home",
       "name": "Home",
       "authority": "curated",
       "mode": "personal"
+    },
+    {
+      "path": "~/Documents/Obsidian/TDX",
+      "name": "TDX",
+      "mode": "work",
+      "authority": "curated"
     }
   ],
-  "security": {                                                                                               
-    "accessControl": {                                                                                        
-      "allowedPaths": ["/Users/jsedwick/.claude", "/Users/jsedwick/Projects", "/Users/jsedwick/Sites"]
-    }                                                                                                         
-  } 
+  "security": {
+    "accessControl": {
+      "allowedPaths": [
+        "~/.claude",
+        "~/Projects",
+        "~/Sites"
+      ]
+    }
+  }
 }

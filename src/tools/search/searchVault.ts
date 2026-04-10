@@ -29,8 +29,41 @@ export interface SearchVaultArgs {
   auto_retry?: boolean;
 }
 
+export interface SearchVaultStructuredResult {
+  query: string;
+  total_count: number;
+  showing: number;
+  detail_level: string;
+  results: Array<{
+    rank: number;
+    file: string;
+    date?: string;
+    semantic_score?: number;
+    vault?: string;
+    snippets: string[];
+  }>;
+  retry?: {
+    broadened_query: string;
+    reason: string;
+    results: Array<{
+      rank: number;
+      file: string;
+      date?: string;
+      semantic_score?: number;
+      vault?: string;
+      snippets: string[];
+    }>;
+  };
+  metadata: {
+    semantic_reranked: boolean;
+    vaults_searched: number;
+    retry_exhausted: boolean;
+  };
+}
+
 export interface SearchVaultResult {
   content: Array<{ type: string; text: string }>;
+  structuredContent?: SearchVaultStructuredResult;
 }
 
 export async function searchVault(
@@ -92,12 +125,16 @@ export async function searchVault(
             broadenedQuery: string;
             reason: string;
             formattedText: string;
+            structuredResults: SearchVaultStructuredResult['results'];
           }
         | {
             exhausted: true;
             reason: string;
           }
-    ) => { content: Array<{ type: string; text: string }> };
+    ) => {
+      content: Array<{ type: string; text: string }>;
+      structuredContent?: SearchVaultStructuredResult;
+    };
     getAllVaults: () => Array<{ path: string; name: string }>;
   }
 ): Promise<SearchVaultResult> {
@@ -657,6 +694,7 @@ async function executeRetryIfNeeded(
       broadenedQuery: string;
       reason: string;
       formattedText: string;
+      structuredResults: SearchVaultStructuredResult['results'];
     }
   | {
       exhausted: true;
@@ -689,7 +727,12 @@ async function executeRetryIfNeeded(
     );
     const result = await tryRetrySearch(broadened, baseRetryArgs, context);
     if (result) {
-      return { broadenedQuery: broadened, reason: decision.reason, formattedText: result };
+      return {
+        broadenedQuery: broadened,
+        reason: decision.reason,
+        formattedText: result.text,
+        structuredResults: result.structuredResults,
+      };
     }
     logger.info('Broadened query also found no results, trying next strategy');
   } else {
@@ -712,7 +755,8 @@ async function executeRetryIfNeeded(
         return {
           broadenedQuery: term,
           reason: `${decision.reason}, individual term search`,
-          formattedText: result,
+          formattedText: result.text,
+          structuredResults: result.structuredResults,
         };
       }
     }
@@ -734,7 +778,8 @@ async function executeRetryIfNeeded(
       return {
         broadenedQuery: `${args.query} (broader search)`,
         reason: `${decision.reason}, relaxed filters`,
-        formattedText: result,
+        formattedText: result.text,
+        structuredResults: result.structuredResults,
       };
     }
   }
@@ -744,19 +789,22 @@ async function executeRetryIfNeeded(
 }
 
 /**
- * Execute a single retry search and return the formatted text, or null if no results found.
+ * Execute a single retry search and return formatted text + structured results, or null if no results found.
  */
 async function tryRetrySearch(
   query: string,
   baseArgs: SearchVaultArgs,
   context: Parameters<typeof searchVault>[1]
-): Promise<string | null> {
+): Promise<{ text: string; structuredResults: SearchVaultStructuredResult['results'] } | null> {
   const retryResult = await searchVault({ ...baseArgs, query }, context);
   const retryText = retryResult.content[0]?.text || '';
   if (retryText.startsWith('No results found')) {
     return null;
   }
-  return retryText;
+  return {
+    text: retryText,
+    structuredResults: retryResult.structuredContent?.results ?? [],
+  };
 }
 
 /**

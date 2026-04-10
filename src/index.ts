@@ -141,9 +141,19 @@ function loadFullConfig(): FullServerConfig {
 
       if (!config || typeof config !== 'object') continue;
 
-      // Extract security config if present
+      // Extract security config if present (normalize paths to expand tildes)
       if ('security' in config && config.security && typeof config.security === 'object') {
         securityConfig = config.security as Partial<SecurityConfig>;
+        if (securityConfig?.accessControl) {
+          if (securityConfig.accessControl.allowedPaths) {
+            securityConfig.accessControl.allowedPaths =
+              securityConfig.accessControl.allowedPaths.map(normalizePath);
+          }
+          if (securityConfig.accessControl.deniedPaths) {
+            securityConfig.accessControl.deniedPaths =
+              securityConfig.accessControl.deniedPaths.map(normalizePath);
+          }
+        }
       }
 
       // Check for new format: primaryVaults array
@@ -1544,6 +1554,99 @@ class ObsidianMCPServer {
           },
           required: ['query'],
         },
+        outputSchema: {
+          type: 'object',
+          properties: {
+            query: { type: 'string', description: 'The original search query' },
+            total_count: {
+              type: 'integer',
+              description: 'Total number of matches before limiting',
+            },
+            showing: {
+              type: 'integer',
+              description: 'Number of results returned in this response',
+            },
+            detail_level: {
+              type: 'string',
+              enum: ['minimal', 'summary', 'detailed', 'full'],
+              description: 'The detail level used for this response',
+            },
+            results: {
+              type: 'array',
+              description: 'Ranked search results',
+              items: {
+                type: 'object',
+                properties: {
+                  rank: { type: 'integer', description: 'Result rank (1-based)' },
+                  file: { type: 'string', description: 'File path relative to vault root' },
+                  date: { type: 'string', description: 'Document date if available' },
+                  semantic_score: {
+                    type: 'number',
+                    description: 'Semantic similarity score (0-1) if embeddings enabled',
+                  },
+                  vault: {
+                    type: 'string',
+                    description: 'Vault name (only present for secondary vault results)',
+                  },
+                  snippets: {
+                    type: 'array',
+                    items: { type: 'string' },
+                    description: 'Matching text snippets from the document',
+                  },
+                },
+                required: ['rank', 'file', 'snippets'],
+              },
+            },
+            retry: {
+              type: 'object',
+              description: 'Auto-retry results if primary results were poor',
+              properties: {
+                broadened_query: {
+                  type: 'string',
+                  description: 'The broadened/modified query used for retry',
+                },
+                reason: { type: 'string', description: 'Why the retry was triggered' },
+                results: {
+                  type: 'array',
+                  description: 'Results from the retry search',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      rank: { type: 'integer' },
+                      file: { type: 'string' },
+                      date: { type: 'string' },
+                      semantic_score: { type: 'number' },
+                      vault: { type: 'string' },
+                      snippets: { type: 'array', items: { type: 'string' } },
+                    },
+                    required: ['rank', 'file', 'snippets'],
+                  },
+                },
+              },
+              required: ['broadened_query', 'reason', 'results'],
+            },
+            metadata: {
+              type: 'object',
+              description: 'Search metadata',
+              properties: {
+                semantic_reranked: {
+                  type: 'boolean',
+                  description: 'Whether results were re-ranked using semantic similarity',
+                },
+                vaults_searched: {
+                  type: 'integer',
+                  description: 'Number of vaults searched',
+                },
+                retry_exhausted: {
+                  type: 'boolean',
+                  description: 'Whether all automatic retry strategies were exhausted',
+                },
+              },
+              required: ['semantic_reranked', 'vaults_searched', 'retry_exhausted'],
+            },
+          },
+          required: ['query', 'total_count', 'showing', 'detail_level', 'results', 'metadata'],
+        },
       },
       {
         name: 'create_topic_page',
@@ -2879,12 +2982,27 @@ Check the sessions/ directory for recent conversations.
           broadenedQuery: string;
           reason: string;
           formattedText: string;
+          structuredResults: tools.SearchVaultStructuredResult['results'];
         }
       | {
           exhausted: true;
           reason: string;
         }
-  ): { content: Array<{ type: string; text: string }> } {
+  ): {
+    content: Array<{ type: string; text: string }>;
+    structuredContent?: tools.SearchVaultStructuredResult;
+  } {
+    // Build structured content for all cases (required by outputSchema)
+    const buildStructuredResults = (resultSet: typeof results, snippetLimit: number) =>
+      resultSet.map((r, idx) => ({
+        rank: idx + 1,
+        file: r.file,
+        ...(r.date ? { date: r.date } : {}),
+        ...(r.semanticScore !== undefined ? { semantic_score: r.semanticScore } : {}),
+        ...(r.vault && r.vault !== this.config.primaryVault.name ? { vault: r.vault } : {}),
+        snippets: r.matches.slice(0, snippetLimit).map(m => this.cleanObsidianMarkdown(m.trim())),
+      }));
+
     if (results.length === 0) {
       let text = `No results found for "${query}".`;
       // Even with zero primary results, retry may have found something
@@ -2896,6 +3014,18 @@ Check the sessions/ directory for recent conversations.
       if (retryData && 'exhausted' in retryData) {
         text += this.buildRetryDirective(query);
       }
+      const structuredContent: tools.SearchVaultStructuredResult = {
+        query,
+        total_count: 0,
+        showing: 0,
+        detail_level: detail,
+        results: [],
+        metadata: {
+          semantic_reranked: hasSemanticSearch,
+          vaults_searched: 1 + this.config.secondaryVaults.length,
+          retry_exhausted: retryData ? 'exhausted' in retryData : false,
+        },
+      };
       return {
         content: [
           {
@@ -2903,6 +3033,7 @@ Check the sessions/ directory for recent conversations.
             text,
           },
         ],
+        structuredContent,
       };
     }
 
@@ -3023,6 +3154,38 @@ Check the sessions/ directory for recent conversations.
       resultText += this.buildRetryDirective(query);
     }
 
+    // Determine snippet limit based on detail level (mirrors text formatting)
+    const snippetLimitMap: Record<string, number> = {
+      [ResponseDetail.MINIMAL]: 0,
+      [ResponseDetail.SUMMARY]: 3,
+      [ResponseDetail.DETAILED]: 5,
+      [ResponseDetail.FULL]: Infinity,
+    };
+    const snippetLimit = snippetLimitMap[detail] ?? 3;
+
+    // Build structured content (required by outputSchema)
+    const structuredContent: tools.SearchVaultStructuredResult = {
+      query,
+      total_count: totalCount,
+      showing: results.length,
+      detail_level: detail,
+      results: buildStructuredResults(results, snippetLimit),
+      metadata: {
+        semantic_reranked: hasSemanticSearch,
+        vaults_searched: 1 + this.config.secondaryVaults.length,
+        retry_exhausted: retryData ? 'exhausted' in retryData : false,
+      },
+    };
+
+    // Add retry data to structured content if present
+    if (retryData && 'formattedText' in retryData) {
+      structuredContent.retry = {
+        broadened_query: retryData.broadenedQuery,
+        reason: retryData.reason,
+        results: retryData.structuredResults,
+      };
+    }
+
     return {
       content: [
         {
@@ -3030,6 +3193,7 @@ Check the sessions/ directory for recent conversations.
           text: resultText,
         },
       ],
+      structuredContent,
     };
   }
 
