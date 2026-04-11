@@ -1869,6 +1869,159 @@ CONTENT STYLE: Be direct and concise. State the context in 2-3 sentences, list a
           },
           required: ['summary'],
         },
+        outputSchema: {
+          type: 'object',
+          description:
+            'Discriminated union on `phase`. Phase 1 returns commit analysis and topics for review. Phase 2 returns session finalization results.',
+          properties: {
+            phase: {
+              type: 'integer',
+              enum: [1, 2],
+              description: 'Which phase produced this result (1 = analysis, 2 = finalization)',
+            },
+            // Phase 1 fields
+            session_id: {
+              type: 'string',
+              description: 'Generated session ID (both phases)',
+            },
+            session_file: {
+              type: 'string',
+              description: 'Path to session markdown file (both phases)',
+            },
+            detected_repo: {
+              type: ['object', 'null'],
+              description: 'Detected git repository info (both phases)',
+              properties: {
+                name: { type: 'string' },
+                path: { type: 'string' },
+                branch: { type: 'string' },
+              },
+              required: ['name', 'path'],
+            },
+            commit_count: {
+              type: 'integer',
+              description: 'Phase 1: Number of commits detected during session',
+            },
+            commits: {
+              type: 'array',
+              description: 'Phase 1: Per-commit analysis with related topics and decisions',
+              items: {
+                type: 'object',
+                properties: {
+                  hash: { type: 'string', description: 'Short commit hash (12 chars)' },
+                  related_topics: {
+                    type: 'array',
+                    items: {
+                      type: 'object',
+                      properties: {
+                        path: { type: 'string' },
+                        title: { type: 'string' },
+                        relevance: { type: 'string' },
+                      },
+                      required: ['path', 'title', 'relevance'],
+                    },
+                  },
+                  related_decisions: {
+                    type: 'array',
+                    items: {
+                      type: 'object',
+                      properties: {
+                        path: { type: 'string' },
+                        title: { type: 'string' },
+                        relevance: { type: 'string' },
+                      },
+                      required: ['path', 'title', 'relevance'],
+                    },
+                  },
+                },
+                required: ['hash', 'related_topics', 'related_decisions'],
+              },
+            },
+            topics_for_review: {
+              type: 'array',
+              description: 'Phase 1: Commit-related topics requiring review (Decision 041)',
+              items: {
+                type: 'object',
+                properties: {
+                  path: { type: 'string' },
+                  title: { type: 'string' },
+                  source: { type: 'string', enum: ['commit', 'semantic'] },
+                  commit_hash: { type: 'string' },
+                  relevance: { type: 'string' },
+                },
+                required: ['path', 'title', 'source'],
+              },
+            },
+            semantic_topics_for_review: {
+              type: 'array',
+              description: 'Phase 1: Semantically-related topics requiring review (Decision 042)',
+              items: {
+                type: 'object',
+                properties: {
+                  path: { type: 'string' },
+                  title: { type: 'string' },
+                  source: { type: 'string', enum: ['commit', 'semantic'] },
+                },
+                required: ['path', 'title', 'source'],
+              },
+            },
+            session_data: {
+              type: 'object',
+              description: 'Phase 1: Opaque session state to pass back in Phase 2 finalize call',
+            },
+            // Phase 2 fields
+            topics_linked: {
+              type: 'array',
+              description: 'Phase 2: Topics linked to the session',
+              items: {
+                type: 'object',
+                properties: {
+                  slug: { type: 'string' },
+                  title: { type: 'string' },
+                },
+                required: ['slug', 'title'],
+              },
+            },
+            decisions_linked: {
+              type: 'array',
+              description: 'Phase 2: Decisions linked to the session',
+              items: {
+                type: 'object',
+                properties: {
+                  slug: { type: 'string' },
+                  title: { type: 'string' },
+                },
+                required: ['slug', 'title'],
+              },
+            },
+            projects_linked: {
+              type: 'array',
+              description: 'Phase 2: Projects linked to the session',
+              items: {
+                type: 'object',
+                properties: {
+                  slug: { type: 'string' },
+                  name: { type: 'string' },
+                },
+                required: ['slug', 'name'],
+              },
+            },
+            files_accessed_count: {
+              type: 'integer',
+              description: 'Phase 2: Total number of files accessed during the session',
+            },
+            validation_warnings: {
+              type: 'array',
+              description: 'Phase 2: Summary validation warnings',
+              items: { type: 'string' },
+            },
+            has_custodian_findings: {
+              type: 'boolean',
+              description: 'Phase 2: Whether vault custodian found issues',
+            },
+          },
+          required: ['phase', 'session_id', 'session_file'],
+        },
       },
       {
         name: 'find_stale_topics',

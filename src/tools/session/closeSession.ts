@@ -551,6 +551,46 @@ export async function runPhase1Analysis(
     'If creating: Use `create_decision` with context, alternatives, rationale, and consequences.\n' +
     'If not: No action required (no strategic choices made).';
 
+  // Build Phase 1 structured content
+  const structuredContent: CloseSessionPhase1Structured = {
+    phase: 1,
+    session_id: sessionId,
+    session_file: sessionFile,
+    detected_repo: detectedRepoInfo
+      ? {
+          name: detectedRepoInfo.name,
+          path: detectedRepoInfo.path,
+          branch: detectedRepoInfo.branch,
+        }
+      : null,
+    commit_count: sessionCommits.length,
+    commits: sessionCommits.map(hash => {
+      const shortHash = hash.substring(0, 12);
+      return {
+        hash: shortHash,
+        related_topics: commitRelatedTopics
+          .filter(t => t.commitHash === shortHash)
+          .map(t => ({ path: t.path, title: t.title, relevance: t.relevance })),
+        related_decisions: commitRelatedDecisions
+          .filter(d => d.commitHash === shortHash)
+          .map(d => ({ path: d.path, title: d.title, relevance: d.relevance })),
+      };
+    }),
+    topics_for_review: commitRelatedTopics.map(t => ({
+      path: t.path,
+      title: t.title,
+      source: 'commit' as const,
+      commit_hash: t.commitHash,
+      relevance: t.relevance,
+    })),
+    semantic_topics_for_review: semanticTopicsForReview.map(t => ({
+      path: t.path,
+      title: t.title,
+      source: 'semantic' as const,
+    })),
+    session_data: sessionData,
+  };
+
   return {
     content: [
       {
@@ -649,6 +689,7 @@ export async function runPhase1Analysis(
             : '**Skip updates ONLY if** you have verified that no semantic topics need updating after reading each one.'),
       },
     ],
+    structuredContent,
   };
 }
 
@@ -2131,6 +2172,26 @@ export async function runPhase2Finalization(
     lines.push(`Files accessed: ${data.filesAccessed.length}`);
   }
 
+  // Build Phase 2 structured content
+  const structuredContent: CloseSessionPhase2Structured = {
+    phase: 2,
+    session_id: data.sessionId,
+    session_file: data.sessionFile,
+    topics_linked: data.topicsCreated.map(t => ({ slug: t.slug, title: t.title })),
+    decisions_linked: data.decisionsCreated.map(d => ({ slug: d.slug, title: d.title })),
+    projects_linked: data.projectsCreated.map(p => ({ slug: p.slug, name: p.name })),
+    files_accessed_count: data.filesAccessed.length,
+    detected_repo: data.detectedRepoInfo
+      ? {
+          name: data.detectedRepoInfo.name,
+          path: data.detectedRepoInfo.path,
+          branch: data.detectedRepoInfo.branch,
+        }
+      : null,
+    validation_warnings: validationWarnings,
+    has_custodian_findings: vaultCustodianReport.length > 0,
+  };
+
   return {
     content: [
       {
@@ -2143,6 +2204,7 @@ export async function runPhase2Finalization(
           vaultCustodianReport,
       },
     ],
+    structuredContent,
   };
 }
 
@@ -2281,11 +2343,73 @@ export interface SessionData {
   }>;
 }
 
+// Structured result interfaces for outputSchema support
+
+export interface CloseSessionStructuredCommit {
+  hash: string;
+  related_topics: Array<{
+    path: string;
+    title: string;
+    relevance: string;
+  }>;
+  related_decisions: Array<{
+    path: string;
+    title: string;
+    relevance: string;
+  }>;
+}
+
+export interface CloseSessionStructuredReviewTopic {
+  path: string;
+  title: string;
+  source: 'commit' | 'semantic';
+  commit_hash?: string;
+  relevance?: string;
+}
+
+export interface CloseSessionPhase1Structured {
+  phase: 1;
+  session_id: string;
+  session_file: string;
+  detected_repo: {
+    name: string;
+    path: string;
+    branch?: string;
+  } | null;
+  commit_count: number;
+  commits: CloseSessionStructuredCommit[];
+  topics_for_review: CloseSessionStructuredReviewTopic[];
+  semantic_topics_for_review: CloseSessionStructuredReviewTopic[];
+  session_data: SessionData;
+}
+
+export interface CloseSessionPhase2Structured {
+  phase: 2;
+  session_id: string;
+  session_file: string;
+  topics_linked: Array<{ slug: string; title: string }>;
+  decisions_linked: Array<{ slug: string; title: string }>;
+  projects_linked: Array<{ slug: string; name: string }>;
+  files_accessed_count: number;
+  detected_repo: {
+    name: string;
+    path: string;
+    branch?: string;
+  } | null;
+  validation_warnings: string[];
+  has_custodian_findings: boolean;
+}
+
+export type CloseSessionStructuredResult =
+  | CloseSessionPhase1Structured
+  | CloseSessionPhase2Structured;
+
 export interface CloseSessionResult {
   content: Array<{
     type: string;
     text: string;
   }>;
+  structuredContent?: CloseSessionStructuredResult;
 }
 
 interface CloseSessionContext {
