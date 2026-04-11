@@ -2666,7 +2666,7 @@ CONTENT STYLE: Be direct and concise. State the context in 2-3 sentences, list a
       {
         name: 'update_document',
         description:
-          'Unified type-aware document update tool for all vault file modifications. Automatically tracks file access (ensuring vault_custodian processes changes), enforces type-specific rules (read-only, append-only), and updates frontmatter metadata. Works for topics, decisions, projects, user-reference, accumulators, and task lists. ALWAYS use this instead of Edit/Write for vault files during Phase 1 documentation updates.',
+          'Unified type-aware document update tool for all vault file modifications. Automatically tracks file access (ensuring vault_custodian processes changes), enforces type-specific rules (read-only, append-only), and updates frontmatter metadata. Works for topics, decisions, projects, user-reference, accumulators, and task lists. ALWAYS use this instead of Edit/Write for vault files. For TOPICS: ALWAYS read the full document (get_topic_context) before updating to avoid adding duplicate or repetitive content. The tool detects and blocks duplicate content on append (>50% overlap), and returns document section structure after every topic update.',
         inputSchema: {
           type: 'object',
           properties: {

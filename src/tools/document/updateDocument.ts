@@ -287,6 +287,64 @@ async function assessTopicRelevance(content: string): Promise<RelevanceAssessmen
 }
 
 /**
+ * Detect duplicate content between existing and new text.
+ * Compares normalized lines to find overlap. Used to prevent
+ * repetitive entries when appending to topics.
+ */
+function detectDuplicateContent(
+  existingBody: string,
+  newBody: string
+): { overlapPercentage: number; duplicateLines: string[] } {
+  const normalize = (line: string): string =>
+    line
+      .trim()
+      .toLowerCase()
+      .replace(/[*_`[\]()#>]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+  const extractLines = (text: string): string[] =>
+    text
+      .split('\n')
+      .map(normalize)
+      .filter(l => l.length > 25);
+
+  const existingLines = extractLines(existingBody);
+  const newLines = extractLines(newBody);
+
+  if (newLines.length === 0) {
+    return { overlapPercentage: 0, duplicateLines: [] };
+  }
+
+  const existingSet = new Set(existingLines);
+  const duplicates = newLines.filter(line => existingSet.has(line));
+
+  return {
+    overlapPercentage: (duplicates.length / newLines.length) * 100,
+    duplicateLines: [...new Set(duplicates)],
+  };
+}
+
+/**
+ * Extract document structure (section headers) for topic update responses.
+ * Gives the caller visibility into the full document layout after updates.
+ */
+function extractDocumentStructure(body: string): string {
+  const headers = body
+    .split('\n')
+    .filter(line => /^#{1,4}\s+/.test(line))
+    .map(line => {
+      const match = line.match(/^(#{1,4})\s+(.+)/);
+      if (!match) return line;
+      const indent = '  '.repeat(match[1].length - 1);
+      return `${indent}${match[2]}`;
+    });
+
+  if (headers.length === 0) return '';
+  return '\nDocument sections:\n' + headers.join('\n');
+}
+
+/**
  * Main update_document tool implementation
  */
 export async function updateDocument(
@@ -422,11 +480,32 @@ export async function updateDocument(
 
   // 5. Build new content based on strategy
   let newContent: string;
+  const verificationWarnings: string[] = [];
 
   if (strategy === 'append') {
     // Append new content to existing (strip frontmatter from both)
     const existingWithoutFm = existingContent.replace(/^---\n[\s\S]*?\n---\n/, '');
     const contentWithoutFm = content.replace(/^---\n[\s\S]*?\n---\n/, '');
+
+    // Duplicate content detection for topic appends
+    if (docType === 'topic' && fileExists) {
+      const overlap = detectDuplicateContent(existingWithoutFm, contentWithoutFm);
+      if (overlap.overlapPercentage > 50) {
+        throw new Error(
+          `DUPLICATE CONTENT BLOCKED: ${Math.round(overlap.overlapPercentage)}% of content being appended already exists in ${path.basename(filePath)}. ` +
+            `Read the full document with get_topic_context before appending, and only add genuinely new information.\n` +
+            `Duplicate lines (first 3): ${overlap.duplicateLines.slice(0, 3).join(' | ')}${overlap.duplicateLines.length > 3 ? ' ...' : ''}`
+        );
+      }
+      if (overlap.overlapPercentage > 25) {
+        verificationWarnings.push(
+          `⚠️ DUPLICATE CONTENT WARNING: ${Math.round(overlap.overlapPercentage)}% of appended content already exists in document. ` +
+            `${overlap.duplicateLines.length} line(s) are duplicates. ` +
+            `Read the full document before appending to avoid repetition.`
+        );
+      }
+    }
+
     newContent = existingWithoutFm.trim() + '\n\n' + contentWithoutFm.trim();
   } else if (strategy === 'edit') {
     // Search-and-replace: find old_string in existing content and replace with content
@@ -544,7 +623,6 @@ export async function updateDocument(
 
   // 9. Post-write verification — read file back and validate integrity
   const verificationContent = await fs.readFile(filePath, 'utf-8');
-  const verificationWarnings: string[] = [];
 
   if (!verificationContent || verificationContent.trim().length === 0) {
     throw new Error(
@@ -600,6 +678,10 @@ export async function updateDocument(
     : '';
   const warningText =
     verificationWarnings.length > 0 ? '\n' + verificationWarnings.join('\n') + '\n' : '';
+  const structureText =
+    docType === 'topic'
+      ? extractDocumentStructure(verificationContent.replace(/^---\n[\s\S]*?\n---\n/, ''))
+      : '';
   return {
     content: [
       {
@@ -611,6 +693,7 @@ export async function updateDocument(
           `Verified: ✅ (${verificationContent.length} bytes)\n` +
           corruptedNote +
           warningText +
+          (structureText ? structureText + '\n' : '') +
           (isSecondaryVault ? `Vault: ${secondaryVault?.name}\n` : '') +
           (reason ? `Reason: ${reason}` : ''),
       },
