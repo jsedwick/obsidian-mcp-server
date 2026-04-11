@@ -1774,6 +1774,46 @@ CONTENT STYLE: Be direct and concise. State the context in 2-3 sentences, list a
             },
           },
         },
+        outputSchema: {
+          type: 'object',
+          properties: {
+            session_id: {
+              type: 'string',
+              description: 'Session identifier (filename without .md extension)',
+            },
+            date: {
+              type: 'string',
+              description: 'Session date (YYYY-MM-DD)',
+            },
+            status: {
+              type: 'string',
+              description: 'Session status (e.g., completed, active)',
+            },
+            topics: {
+              type: 'array',
+              description: 'Topics associated with this session',
+              items: { type: 'string' },
+            },
+            decisions: {
+              type: 'array',
+              description: 'Decisions made during this session',
+              items: { type: 'string' },
+            },
+            working_directory: {
+              type: 'string',
+              description: 'Primary working directory for this session (if recorded)',
+            },
+            file_path: {
+              type: 'string',
+              description: 'Absolute path to the session file',
+            },
+            body: {
+              type: 'string',
+              description: 'Session content after frontmatter',
+            },
+          },
+          required: ['session_id', 'date', 'status', 'topics', 'decisions', 'file_path', 'body'],
+        },
       },
       {
         name: 'get_topic_context',
@@ -1788,6 +1828,49 @@ CONTENT STYLE: Be direct and concise. State the context in 2-3 sentences, list a
             },
           },
           required: ['topic'],
+        },
+        outputSchema: {
+          type: 'object',
+          properties: {
+            title: {
+              type: 'string',
+              description: 'Topic title from frontmatter',
+            },
+            slug: {
+              type: 'string',
+              description: 'URL-safe slug used as filename',
+            },
+            category: {
+              type: 'string',
+              description: 'Document category (e.g., topic)',
+            },
+            created: {
+              type: 'string',
+              description: 'Creation date (YYYY-MM-DD)',
+            },
+            last_reviewed: {
+              type: 'string',
+              description: 'Last review date (YYYY-MM-DD)',
+            },
+            tags: {
+              type: 'array',
+              description: 'Tags associated with this topic',
+              items: { type: 'string' },
+            },
+            review_count: {
+              type: 'number',
+              description: 'Number of times this topic has been reviewed',
+            },
+            file_path: {
+              type: 'string',
+              description: 'Absolute path to the topic file',
+            },
+            body: {
+              type: 'string',
+              description: 'Topic content after frontmatter',
+            },
+          },
+          required: ['title', 'slug', 'category', 'tags', 'review_count', 'file_path', 'body'],
         },
       },
       {

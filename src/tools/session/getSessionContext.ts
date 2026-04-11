@@ -11,17 +11,91 @@ export interface GetSessionContextArgs {
   session_id?: string;
 }
 
+export interface GetSessionContextStructuredResult {
+  session_id: string;
+  date: string;
+  status: string;
+  topics: string[];
+  decisions: string[];
+  working_directory?: string;
+  file_path: string;
+  body: string;
+}
+
 export interface GetSessionContextResult {
   content: Array<{
     type: string;
     text: string;
   }>;
+  structuredContent?: GetSessionContextStructuredResult;
 }
 
 interface GetSessionContextContext {
   vaultPath: string;
   currentSessionId: string | null;
   currentSessionFile: string | null;
+}
+
+/**
+ * Parse session frontmatter into structured fields.
+ */
+function parseSessionFrontmatter(
+  content: string,
+  sessionId: string,
+  filePath: string
+): { structured: GetSessionContextStructuredResult; body: string } {
+  const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
+
+  if (!frontmatterMatch) {
+    return {
+      structured: {
+        session_id: sessionId,
+        date: '',
+        status: '',
+        topics: [],
+        decisions: [],
+        file_path: filePath,
+        body: content,
+      },
+      body: content,
+    };
+  }
+
+  const fm = frontmatterMatch[1];
+  const body = frontmatterMatch[2];
+
+  const getField = (name: string): string => {
+    const match = fm.match(new RegExp(`^${name}:\\s*"?([^"\\n]*)"?`, 'm'));
+    return match ? match[1].trim() : '';
+  };
+
+  const getArrayField = (name: string): string[] => {
+    const match = fm.match(new RegExp(`^${name}:\\s*\\[([^\\]]*)\\]`, 'm'));
+    if (match) {
+      return match[1]
+        .split(',')
+        .map(s => s.trim().replace(/^["']|["']$/g, ''))
+        .filter(Boolean);
+    }
+    return [];
+  };
+
+  const structured: GetSessionContextStructuredResult = {
+    session_id: getField('session_id') || sessionId,
+    date: getField('date'),
+    status: getField('status'),
+    topics: getArrayField('topics'),
+    decisions: getArrayField('decisions'),
+    file_path: filePath,
+    body,
+  };
+
+  const workingDir = getField('working_directory');
+  if (workingDir) {
+    structured.working_directory = workingDir;
+  }
+
+  return { structured, body };
 }
 
 export async function getSessionContext(
@@ -66,6 +140,7 @@ export async function getSessionContext(
   }
 
   const content = await fs.readFile(sessionFile, 'utf-8');
+  const { structured } = parseSessionFrontmatter(content, sessionId, sessionFile);
 
   return {
     content: [
@@ -74,5 +149,6 @@ export async function getSessionContext(
         text: `Session context for ${sessionId}:\n\n${content}`,
       },
     ],
+    structuredContent: structured,
   };
 }

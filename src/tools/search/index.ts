@@ -17,4 +17,5 @@ export {
   getTopicContext,
   type GetTopicContextArgs,
   type GetTopicContextResult,
+  type GetTopicContextStructuredResult,
 } from './getTopicContext.js';

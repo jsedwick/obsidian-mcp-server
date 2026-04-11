@@ -17,7 +17,11 @@ export { closeSession } from './closeSession.js';
 export type { CloseSessionArgs, CloseSessionResult, SessionData } from './closeSession.js';
 
 export { getSessionContext } from './getSessionContext.js';
-export type { GetSessionContextArgs, GetSessionContextResult } from './getSessionContext.js';
+export type {
+  GetSessionContextArgs,
+  GetSessionContextResult,
+  GetSessionContextStructuredResult,
+} from './getSessionContext.js';
 
 export { listRecentSessions } from './listRecentSessions.js';
 export type { ListRecentSessionsArgs, ListRecentSessionsResult } from './listRecentSessions.js';
