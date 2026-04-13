@@ -98,14 +98,8 @@ export class Logger {
       }
     } else {
       // Console-based logging (for CLI/testing)
-      // WARNING: This will break JSON-RPC in MCP mode
-      if (level === LogLevel.ERROR) {
-        console.error(formatted);
-      } else if (level === LogLevel.WARN) {
-        console.warn(formatted);
-      } else {
-        console.log(formatted);
-      }
+      // Always use stderr to avoid corrupting JSON-RPC on stdout
+      console.error(formatted);
     }
   }
 
