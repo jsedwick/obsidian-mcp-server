@@ -447,8 +447,8 @@ export async function searchVault(
   // Special case: If zero keyword matches but embeddings enabled, do pure semantic search
   if (queryEmbedding && context.embeddingConfig.enabled && results.length === 0) {
     const useSmartSearch = context.embeddingConfig.enableSmartSearch !== false;
-    console.log(
-      `[Search] Zero keyword matches, performing ${useSmartSearch ? 'smart' : 'standard'} semantic search`
+    logger.info(
+      `Zero keyword matches, performing ${useSmartSearch ? 'smart' : 'standard'} semantic search`
     );
 
     // Hard limit to prevent unbounded memory growth on large vaults
