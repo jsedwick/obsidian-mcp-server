@@ -113,6 +113,46 @@ The hook file /.config/old-hook.sh no longer exists.
     expect(context.archiveTopic).toHaveBeenCalled();
   });
 
+  it('should not false-positive archive when markers are inside code fences', async () => {
+    // Reproduces the bug where example paths and markers inside ``` blocks
+    // were counted as real obsolescence evidence (3 false positives in one session)
+    const topicPath = path.join(vaultPath, 'topics', 'code-example-topic.md');
+    await fs.writeFile(
+      topicPath,
+      `---
+title: "Code Example Topic"
+created: "2025-06-01"
+review_count: 1
+---
+
+# Code Example Topic
+
+This topic documents how to write hook scripts.
+
+## Example
+
+\`\`\`typescript
+// This approach is deprecated and no longer used.
+// CRITICAL ISSUE was RESOLVED in December.
+// The hook file /.config/old-hook.sh no longer exists.
+// Lessons Learned from the experiment concluded last month.
+assess_topic_relevance({
+  topic_name: "example",
+  update_intent: "test"
+})
+\`\`\`
+
+All markers above are inside a code fence and should not trigger archiving.
+`,
+      'utf-8'
+    );
+
+    await findStaleTopics({}, context);
+
+    // archiveTopic should NOT have been called — all markers are inside code fences
+    expect(context.archiveTopic).not.toHaveBeenCalled();
+  });
+
   it('should limit to top 10 oldest topics', async () => {
     // Create 12 topics
     for (let i = 0; i < 12; i++) {

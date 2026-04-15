@@ -239,9 +239,12 @@ interface RelevanceAssessment {
 async function assessTopicRelevance(content: string): Promise<RelevanceAssessment> {
   const evidence: string[] = [];
 
+  // Strip code fences — paths and markers inside examples are not real signals
+  const strippedContent = content.replace(/```[^\n]*\n[\s\S]*?```/g, '');
+
   // 1. Check for hook/script files mentioned in content
   const hookFilePattern = /\/\.(?:config|claude)\/[^\s]+\.sh/g;
-  const hookFiles = content.match(hookFilePattern) || [];
+  const hookFiles = strippedContent.match(hookFilePattern) || [];
 
   for (const hookFile of hookFiles) {
     try {
@@ -252,22 +255,22 @@ async function assessTopicRelevance(content: string): Promise<RelevanceAssessmen
   }
 
   // 2. Check for deprecation/superseded markers in content
-  if (/deprecated|superseded|abandoned|no longer (?:used|exists?)/i.test(content)) {
+  if (/deprecated|superseded|abandoned|no longer (?:used|exists?)/i.test(strippedContent)) {
     evidence.push('Content explicitly mentions deprecation or abandonment');
   }
 
   // 3. Check for "resolved" markers indicating final state
-  if (/(?:ISSUE|CRITICAL ISSUE).*(?:RESOLVED|resolved)/i.test(content)) {
+  if (/(?:ISSUE|CRITICAL ISSUE).*(?:RESOLVED|resolved)/i.test(strippedContent)) {
     evidence.push('Content indicates issue was resolved (final state)');
   }
 
   // 4. Check for experiment conclusion markers
-  if (/Lessons Learned|experiment concluded/i.test(content)) {
+  if (/Lessons Learned|experiment concluded/i.test(strippedContent)) {
     evidence.push('Content indicates experiment or approach concluded');
   }
 
   // 5. Check for explicit "no longer" language
-  if (/no longer (?:relevant|applicable|needed|necessary)/i.test(content)) {
+  if (/no longer (?:relevant|applicable|needed|necessary)/i.test(strippedContent)) {
     evidence.push('Content states it is no longer relevant');
   }
 
