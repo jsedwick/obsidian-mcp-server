@@ -684,6 +684,11 @@ export const WorkflowArgsSchema = z.object({
     .describe('Internal parameter - must be true to invoke this tool. Only set by slash commands.'),
 });
 
+// list_vault_monitors
+export const ListVaultMonitorsArgsSchema = z.object({
+  // No arguments needed — discovers from current vault's monitors/ directory
+});
+
 /**
  * ISSUES TOOLS (3 tools)
  */
@@ -795,6 +800,7 @@ export const ValidationSchemas = {
 
   // Workflow tools
   workflow: WorkflowArgsSchema,
+  list_vault_monitors: ListVaultMonitorsArgsSchema,
 
   // Issues tools
   issue: IssueArgsSchema,

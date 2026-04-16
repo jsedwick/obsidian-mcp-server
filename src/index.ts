@@ -993,6 +993,11 @@ class ObsidianMCPServer {
                 vaultPath: this.config.primaryVault.path,
               });
 
+            case 'list_vault_monitors':
+              return await tools.listVaultMonitors(securedArgs as tools.ListVaultMonitorsArgs, {
+                vaultPath: this.config.primaryVault.path,
+              });
+
             case 'switch_mode': {
               const { mode } = securedArgs as { mode: VaultMode };
               const result = this.switchMode(mode);
@@ -2751,6 +2756,16 @@ CONTENT STYLE: Be direct and concise. State the context in 2-3 sentences, list a
               default: false,
             },
           },
+          required: [],
+        },
+      },
+      {
+        name: 'list_vault_monitors',
+        description:
+          "Discover monitor definitions stored in the vault's monitors/ directory. Returns an array of monitor definitions (name, description, command, persistent, timeout_ms) ready to arm via Claude Code's Monitor tool. Monitors can use companion .sh scripts or inline commands in the markdown body.",
+        inputSchema: {
+          type: 'object',
+          properties: {},
           required: [],
         },
       },
