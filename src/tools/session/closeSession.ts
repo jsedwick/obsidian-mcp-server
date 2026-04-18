@@ -2297,6 +2297,10 @@ export interface CloseSessionArgs {
   // Session start time override - fallback if MCP server state was lost
   // Claude extracts this from context (SESSION_START_TIME: ...) and passes it back
   session_start_override?: string; // ISO 8601 timestamp
+  // Explicit repository override - bypasses auto-detection scoring
+  // Use when the edited repo is a subdirectory of a working directory and
+  // would be shadowed by higher-scored working-directory repos under auto-detect
+  detected_repo_override?: string; // Absolute path to Git repository
 }
 
 /**
@@ -2618,179 +2622,219 @@ export async function closeSession(
   // This allows the project to be included in the session's Projects section
   let detectedRepoInfo: { path: string; name: string; branch?: string; remote?: string } | null =
     null;
-  // Always attempt repo detection using hybrid approach:
+
+  // Priority 0: Explicit override — caller named the repo, skip scoring entirely.
+  // Validation errors here throw (loud) rather than falling through to auto-detect,
+  // since the override signals explicit user intent.
+  if (args.detected_repo_override) {
+    const overridePath = args.detected_repo_override.trim();
+    const gitDir = path.join(overridePath, '.git');
+    try {
+      await fs.access(gitDir);
+    } catch {
+      throw new Error(`detected_repo_override path is not a Git repository: ${overridePath}`);
+    }
+    const info = await context.getRepoInfo(overridePath);
+    detectedRepoInfo = {
+      path: overridePath,
+      name: info.name,
+      branch: info.branch,
+      remote: info.remote ?? undefined,
+    };
+    try {
+      await context.createProjectPage({ repo_path: overridePath });
+      try {
+        const userRefPath = path.join(context.vaultPath, 'user-reference.md');
+        const description = args.topic ? `\n- **Description:** ${args.topic}` : '';
+        const currentProjectContent = `## Current Project\n\n- **Project Name:** ${info.name}\n- **Last Updated:** ${dateStr}${description}`;
+        await context.updateDocument({
+          file_path: userRefPath,
+          content: currentProjectContent,
+          strategy: 'section-edit',
+        });
+      } catch (_error) {
+        // Silent failure - user reference update is non-critical
+      }
+    } catch (_error) {
+      // Project creation failure shouldn't block close
+    }
+  }
+
+  // Priority 1-3 (skipped when override already set detectedRepoInfo):
   // 1. Use working_directories parameter if provided (AI-specific, e.g., Claude Code)
   // 2. Infer from filesAccessed if available (AI-agnostic, MCP tool usage)
   // 3. Fall back to process.cwd() as last resort
-  try {
-    const fallbackCwd = process.env.PWD || process.cwd();
+  if (!detectedRepoInfo) {
+    try {
+      const fallbackCwd = process.env.PWD || process.cwd();
 
-    let searchDirs: string[];
-    if (args.working_directories?.length) {
-      // Priority 1: AI provided working directories (Claude Code)
-      // Sanitize: strip common prefixes from <env> context display format
-      searchDirs = args.working_directories.map(dir => {
-        return dir
-          .replace(/^Working directory:\s*/i, '') // "Working directory: /path"
-          .replace(/^Additional working directories?:\s*/i, '') // "Additional working directories: /path"
-          .trim();
-      });
-    } else {
-      // Priority 2: Infer from file access patterns (AI-agnostic)
-      const inferredDirs = await inferWorkingDirectoriesFromFileAccess(context.filesAccessed);
-      if (inferredDirs.length > 0) {
-        searchDirs = inferredDirs;
+      let searchDirs: string[];
+      if (args.working_directories?.length) {
+        // Priority 1: AI provided working directories (Claude Code)
+        // Sanitize: strip common prefixes from <env> context display format
+        searchDirs = args.working_directories.map(dir => {
+          return dir
+            .replace(/^Working directory:\s*/i, '') // "Working directory: /path"
+            .replace(/^Additional working directories?:\s*/i, '') // "Additional working directories: /path"
+            .trim();
+        });
       } else {
-        // Priority 3: Fall back to MCP server's cwd
-        searchDirs = [fallbackCwd];
-      }
-    }
-
-    // DEBUG: Log repo detection inputs
-    logger.debug('searchDirs:', { searchDirs });
-    logger.debug('filesAccessed:', {
-      filesAccessed: context.filesAccessed.map(f => ({ path: f.path, action: f.action })),
-    });
-
-    // Search all working directories for Git repos
-    const allRepoPaths = new Set<string>();
-    for (const dir of searchDirs) {
-      try {
-        const repos = await context.findGitRepos(dir);
-        logger.debug(`findGitRepos(${dir}) returned:`, { repos });
-        repos.forEach(r => allRepoPaths.add(r));
-      } catch (err) {
-        logger.debug(`findGitRepos(${dir}) error:`, { error: String(err) });
-        // Skip directories that can't be searched
-      }
-    }
-    let repoPaths = Array.from(allRepoPaths);
-    logger.debug('allRepoPaths (before vault filter):', { repoPaths });
-    logger.debug('allVaultPaths:', { allVaultPaths: context.allVaultPaths });
-
-    // Filter out repositories inside vault directories (they're just for syncing markdown)
-    repoPaths = repoPaths.filter(repoPath => {
-      const isInVault = context.allVaultPaths.some(
-        vaultPath => repoPath === vaultPath || repoPath.startsWith(vaultPath + path.sep)
-      );
-      if (isInVault) {
-        logger.debug('Filtering out repo in vault:', { repoPath });
-      }
-      return !isInVault;
-    });
-    logger.debug('repoPaths (after vault filter):', { repoPaths });
-
-    if (repoPaths.length > 0) {
-      const candidates: RepoCandidate[] = [];
-
-      for (const repoPath of repoPaths) {
-        let score = 0;
-        const reasons: string[] = [];
-
-        const filesInRepo = context.filesAccessed.filter(f => f.path.startsWith(repoPath));
-        logger.debug(`Scoring repo ${repoPath}:`, { filesInRepoCount: filesInRepo.length });
-        if (filesInRepo.length === 0) {
-          logger.debug('No files match. Sample file paths:', {
-            samplePaths: context.filesAccessed.slice(0, 3).map(f => f.path),
-          });
-        }
-        const editedFiles = filesInRepo.filter(f => f.action === 'edit' || f.action === 'create');
-        const readFiles = filesInRepo.filter(f => f.action === 'read');
-
-        if (editedFiles.length > 0) {
-          score += editedFiles.length * 10;
-          reasons.push(`${editedFiles.length} file(s) modified`);
-        }
-
-        if (readFiles.length > 0) {
-          score += readFiles.length * 5;
-          reasons.push(`${readFiles.length} file(s) read`);
-        }
-
-        if (sessionId) {
-          const repoName = path.basename(repoPath);
-          if (sessionId.toLowerCase().includes(repoName.toLowerCase())) {
-            score += 20;
-            reasons.push('Session topic matches repo name');
-          }
-        }
-
-        // Score based on relationship to Claude Code's working directories
-        for (const workDir of searchDirs) {
-          if (repoPath === workDir) {
-            score += 15;
-            reasons.push('Repo is a working directory');
-            break;
-          } else if (workDir.startsWith(repoPath)) {
-            score += 8;
-            reasons.push('Working directory is within this repo');
-            break;
-          } else if (repoPath.startsWith(workDir)) {
-            score += 5;
-            reasons.push('Repo is subdirectory of working directory');
-            break;
-          }
-        }
-
-        logger.debug(`Repo ${repoPath} final score:`, { score, reasons: reasons.join(', ') });
-
-        if (score > 0 || repoPaths.length === 1) {
-          const info = await context.getRepoInfo(repoPath);
-          candidates.push({
-            path: repoPath,
-            name: info.name,
-            score,
-            reasons,
-            branch: info.branch,
-            remote: info.remote,
-          });
+        // Priority 2: Infer from file access patterns (AI-agnostic)
+        const inferredDirs = await inferWorkingDirectoriesFromFileAccess(context.filesAccessed);
+        if (inferredDirs.length > 0) {
+          searchDirs = inferredDirs;
+        } else {
+          // Priority 3: Fall back to MCP server's cwd
+          searchDirs = [fallbackCwd];
         }
       }
 
-      candidates.sort((a, b) => b.score - a.score);
-      logger.debug('Final candidates:', {
-        candidates: candidates.map(c => ({ name: c.name, score: c.score, reasons: c.reasons })),
+      // DEBUG: Log repo detection inputs
+      logger.debug('searchDirs:', { searchDirs });
+      logger.debug('filesAccessed:', {
+        filesAccessed: context.filesAccessed.map(f => ({ path: f.path, action: f.action })),
       });
 
-      if (candidates.length > 0) {
-        const topCandidate = candidates[0];
+      // Search all working directories for Git repos
+      const allRepoPaths = new Set<string>();
+      for (const dir of searchDirs) {
+        try {
+          const repos = await context.findGitRepos(dir);
+          logger.debug(`findGitRepos(${dir}) returned:`, { repos });
+          repos.forEach(r => allRepoPaths.add(r));
+        } catch (err) {
+          logger.debug(`findGitRepos(${dir}) error:`, { error: String(err) });
+          // Skip directories that can't be searched
+        }
+      }
+      let repoPaths = Array.from(allRepoPaths);
+      logger.debug('allRepoPaths (before vault filter):', { repoPaths });
+      logger.debug('allVaultPaths:', { allVaultPaths: context.allVaultPaths });
 
-        // High confidence - automatically create project page
-        if (candidates.length === 1 || topCandidate.score > (candidates[1]?.score || 0) * 2) {
-          try {
-            detectedRepoInfo = {
-              path: topCandidate.path,
-              name: topCandidate.name,
-              branch: topCandidate.branch,
-              remote: topCandidate.remote ?? undefined,
-            };
-            await context.createProjectPage({ repo_path: topCandidate.path });
+      // Filter out repositories inside vault directories (they're just for syncing markdown)
+      repoPaths = repoPaths.filter(repoPath => {
+        const isInVault = context.allVaultPaths.some(
+          vaultPath => repoPath === vaultPath || repoPath.startsWith(vaultPath + path.sep)
+        );
+        if (isInVault) {
+          logger.debug('Filtering out repo in vault:', { repoPath });
+        }
+        return !isInVault;
+      });
+      logger.debug('repoPaths (after vault filter):', { repoPaths });
 
-            // Auto-update current project in user reference
+      if (repoPaths.length > 0) {
+        const candidates: RepoCandidate[] = [];
+
+        for (const repoPath of repoPaths) {
+          let score = 0;
+          const reasons: string[] = [];
+
+          const filesInRepo = context.filesAccessed.filter(f => f.path.startsWith(repoPath));
+          logger.debug(`Scoring repo ${repoPath}:`, { filesInRepoCount: filesInRepo.length });
+          if (filesInRepo.length === 0) {
+            logger.debug('No files match. Sample file paths:', {
+              samplePaths: context.filesAccessed.slice(0, 3).map(f => f.path),
+            });
+          }
+          const editedFiles = filesInRepo.filter(f => f.action === 'edit' || f.action === 'create');
+          const readFiles = filesInRepo.filter(f => f.action === 'read');
+
+          if (editedFiles.length > 0) {
+            score += editedFiles.length * 10;
+            reasons.push(`${editedFiles.length} file(s) modified`);
+          }
+
+          if (readFiles.length > 0) {
+            score += readFiles.length * 5;
+            reasons.push(`${readFiles.length} file(s) read`);
+          }
+
+          if (sessionId) {
+            const repoName = path.basename(repoPath);
+            if (sessionId.toLowerCase().includes(repoName.toLowerCase())) {
+              score += 20;
+              reasons.push('Session topic matches repo name');
+            }
+          }
+
+          // Score based on relationship to Claude Code's working directories
+          for (const workDir of searchDirs) {
+            if (repoPath === workDir) {
+              score += 15;
+              reasons.push('Repo is a working directory');
+              break;
+            } else if (workDir.startsWith(repoPath)) {
+              score += 8;
+              reasons.push('Working directory is within this repo');
+              break;
+            } else if (repoPath.startsWith(workDir)) {
+              score += 5;
+              reasons.push('Repo is subdirectory of working directory');
+              break;
+            }
+          }
+
+          logger.debug(`Repo ${repoPath} final score:`, { score, reasons: reasons.join(', ') });
+
+          if (score > 0 || repoPaths.length === 1) {
+            const info = await context.getRepoInfo(repoPath);
+            candidates.push({
+              path: repoPath,
+              name: info.name,
+              score,
+              reasons,
+              branch: info.branch,
+              remote: info.remote,
+            });
+          }
+        }
+
+        candidates.sort((a, b) => b.score - a.score);
+        logger.debug('Final candidates:', {
+          candidates: candidates.map(c => ({ name: c.name, score: c.score, reasons: c.reasons })),
+        });
+
+        if (candidates.length > 0) {
+          const topCandidate = candidates[0];
+
+          // High confidence - automatically create project page
+          if (candidates.length === 1 || topCandidate.score > (candidates[1]?.score || 0) * 2) {
             try {
-              const userRefPath = path.join(context.vaultPath, 'user-reference.md');
-              const description = args.topic ? `\n- **Description:** ${args.topic}` : '';
-              const currentProjectContent = `## Current Project
+              detectedRepoInfo = {
+                path: topCandidate.path,
+                name: topCandidate.name,
+                branch: topCandidate.branch,
+                remote: topCandidate.remote ?? undefined,
+              };
+              await context.createProjectPage({ repo_path: topCandidate.path });
+
+              // Auto-update current project in user reference
+              try {
+                const userRefPath = path.join(context.vaultPath, 'user-reference.md');
+                const description = args.topic ? `\n- **Description:** ${args.topic}` : '';
+                const currentProjectContent = `## Current Project
 
 - **Project Name:** ${topCandidate.name}
 - **Last Updated:** ${dateStr}${description}`;
 
-              await context.updateDocument({
-                file_path: userRefPath,
-                content: currentProjectContent,
-                strategy: 'section-edit',
-              });
+                await context.updateDocument({
+                  file_path: userRefPath,
+                  content: currentProjectContent,
+                  strategy: 'section-edit',
+                });
+              } catch (_error) {
+                // Silent failure - user reference update is non-critical
+              }
             } catch (_error) {
-              // Silent failure - user reference update is non-critical
+              // If project creation fails, continue anyway
             }
-          } catch (_error) {
-            // If project creation fails, continue anyway
           }
         }
       }
+    } catch (_error) {
+      // Silently fail - repo detection is optional
     }
-  } catch (_error) {
-    // Silently fail - repo detection is optional
   }
 
   // Build topics list from created content

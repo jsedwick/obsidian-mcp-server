@@ -35,7 +35,7 @@ const PATH_FIELDS: Record<string, string[]> = {
   create_project_page: ['repo_path'],
   create_decision: ['repo_path'],
   vault_custodian: ['files_to_check'],
-  close_session: ['working_directories'],
+  close_session: ['working_directories', 'detected_repo_override'],
   detect_session_repositories: ['working_directories'],
 };
 

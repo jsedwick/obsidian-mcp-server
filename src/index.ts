@@ -1954,6 +1954,14 @@ CONTENT STYLE: Be direct and concise. State the context in 2-3 sentences, list a
                 'ISO 8601 timestamp of session start. Fallback if MCP server state was lost. ' +
                 'Extract from context (SESSION_START_TIME: ...) emitted by /mb.',
             },
+            detected_repo_override: {
+              type: 'string',
+              description:
+                'Absolute path to the Git repository to link to this session. When provided, ' +
+                'bypasses auto-detection scoring entirely. Use when the edited repo is a ' +
+                'subdirectory of a working directory and would otherwise be shadowed by the ' +
+                '"clear winner" gate in auto-detect.',
+            },
           },
           required: ['summary'],
         },

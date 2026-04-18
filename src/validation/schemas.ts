@@ -226,6 +226,16 @@ export const CloseSessionArgsSchema = z
         'ISO 8601 timestamp of session start. Extracted from context (SESSION_START_TIME: ...) ' +
           'as fallback when MCP server state is lost.'
       ),
+    // Explicit repository override - bypasses auto-detection scoring
+    detected_repo_override: z
+      .string()
+      .optional()
+      .describe(
+        'Absolute path to the Git repository to link to this session. When provided, bypasses ' +
+          'auto-detection scoring entirely. Use when the edited repo is a subdirectory of a working ' +
+          'directory (scored lower than top-level working-directory repos) and would otherwise be ' +
+          'shadowed by the "clear winner" gate.'
+      ),
   })
   .refine(
     data => {
