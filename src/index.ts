@@ -2770,7 +2770,7 @@ CONTENT STYLE: Be direct and concise. State the context in 2-3 sentences, list a
       {
         name: 'list_vault_monitors',
         description:
-          "Discover monitor definitions stored in the vault's monitors/ directory. Returns an array of monitor definitions (name, description, command, persistent, timeout_ms) ready to arm via Claude Code's Monitor tool. Monitors can use companion .sh scripts or inline commands in the markdown body.",
+          "Discover monitor definitions stored in the vault's monitors/ directory. Returns an array of monitor definitions (name, description, command, persistent, timeout_ms) ready to arm via Claude Code's Monitor tool. Monitors can use companion .sh scripts or inline commands in the markdown body. Monitors with `enabled: false` in frontmatter are omitted (default is enabled).",
         inputSchema: {
           type: 'object',
           properties: {},

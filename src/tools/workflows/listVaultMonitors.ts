@@ -2,10 +2,12 @@
  * Tool: list_vault_monitors
  *
  * Discovers monitor definitions stored in the vault's monitors/ directory.
- * Each monitor is a .md file with frontmatter (description, persistent, timeout_ms)
- * and either:
+ * Each monitor is a .md file with frontmatter (description, persistent, timeout_ms,
+ * enabled) and either:
  *   - A companion .sh script (same basename) for complex monitors
  *   - An inline shell command in the markdown body for simple monitors
+ *
+ * Monitors with `enabled: false` in frontmatter are skipped (default is enabled).
  *
  * Returns monitor definitions ready to arm via Claude Code's Monitor tool.
  */
@@ -125,6 +127,7 @@ async function collectMonitorFiles(monitorsDir: string): Promise<MonitorDefiniti
  *   - description (required): Human-readable description for notifications
  *   - persistent (optional, default: false): Run for session lifetime
  *   - timeout_ms (optional, default: 300000): Timeout for non-persistent monitors
+ *   - enabled (optional, default: true): When false, the monitor is skipped
  *
  * Command resolution (in priority order):
  *   1. Companion .sh file: monitors/{name}.sh (used as `bash /path/to/script.sh`)
@@ -150,6 +153,12 @@ function parseMonitorFile(
     return null; // Description is required
   }
   const description = descMatch[1].trim();
+
+  // Extract enabled (optional, default: true). Skip disabled monitors.
+  const enabledMatch = frontmatter.match(/enabled:\s*(true|false)/);
+  if (enabledMatch && enabledMatch[1] === 'false') {
+    return null;
+  }
 
   // Extract persistent (optional, default: false)
   const persistentMatch = frontmatter.match(/persistent:\s*(true|false)/);
