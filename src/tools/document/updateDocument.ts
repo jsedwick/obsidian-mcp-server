@@ -537,16 +537,16 @@ export async function updateDocument(
 
     newContent = existingWithoutFm.replace(args.old_string, content);
   } else if (strategy === 'replace') {
-    // For new files, preserve frontmatter from provided content
-    if (!fileExists) {
-      const newFmMatch = content.match(/^---\n([\s\S]*?)\n---/);
-      if (newFmMatch) {
-        try {
-          const newFm = yaml.parse(newFmMatch[1]) as Record<string, unknown>;
-          frontmatter = { ...frontmatter, ...newFm };
-        } catch {
-          // Invalid YAML in new content frontmatter — ignore, use defaults
-        }
+    // Merge frontmatter from new content for both new and existing files.
+    // Per-type `frontmatterUpdates` rules still run afterward and can override
+    // fields they consider tool-managed (e.g., topic `last_reviewed`).
+    const newFmMatch = content.match(/^---\n([\s\S]*?)\n---/);
+    if (newFmMatch) {
+      try {
+        const newFm = yaml.parse(newFmMatch[1]) as Record<string, unknown>;
+        frontmatter = { ...frontmatter, ...newFm };
+      } catch {
+        // Invalid YAML in new content frontmatter — ignore, use defaults
       }
     }
     // Strip frontmatter from content body

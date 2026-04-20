@@ -461,6 +461,49 @@ Original content`;
       expect(updated).toContain('Replaced content');
     });
 
+    it('should allow updating frontmatter number field on decisions via replace strategy', async () => {
+      const filePath = path.join(vaultPath, 'decisions/test-project/059-renamed.md');
+      await fs.mkdir(path.dirname(filePath), { recursive: true });
+      await fs.writeFile(
+        filePath,
+        `---
+number: "001"
+category: decision
+title: Test Decision
+date: 2026-04-20
+status: accepted
+---
+# Decision 001: Test Decision
+
+Original body.`,
+        'utf-8'
+      );
+
+      await updateDocument(
+        {
+          file_path: filePath,
+          content: `---
+number: "059"
+category: decision
+title: Test Decision
+date: 2026-04-20
+status: accepted
+---
+# Decision 059: Test Decision
+
+Original body.`,
+          strategy: 'replace',
+          reason: 'Renumber after relocation between project slugs',
+        },
+        context
+      );
+
+      const updated = await fs.readFile(filePath, 'utf-8');
+      expect(updated).toMatch(/number:\s*["']?059["']?/);
+      expect(updated).not.toMatch(/number:\s*["']?001["']?/);
+      expect(updated).toContain('# Decision 059: Test Decision');
+    });
+
     it('should handle section-edit for user-reference', async () => {
       const filePath = path.join(vaultPath, 'user-reference.md');
       const content = `---
