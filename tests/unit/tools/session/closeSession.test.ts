@@ -824,6 +824,88 @@ describe('closeSession - Two-Phase Workflow', () => {
     });
   });
 
+  describe('Repository Detection - Tiebreakers (tied working_directories)', () => {
+    let repoA: string;
+    let repoB: string;
+
+    beforeEach(async () => {
+      repoA = await createTestGitRepo({ name: 'tied-repo-a', initialCommit: 'init-a' });
+      repoB = await createTestGitRepo({ name: 'tied-repo-b', initialCommit: 'init-b' });
+    });
+
+    afterEach(async () => {
+      await cleanupTestGitRepo(repoA);
+      await cleanupTestGitRepo(repoB);
+    });
+
+    it('breaks a working-directory tie by picking the repo with session-window commits', async () => {
+      // Session start AFTER the initial commits so neither initial commit is in-window
+      const sessionStart = new Date();
+      context.getSessionStartTime = vi.fn().mockReturnValue(sessionStart);
+
+      // Wait so the session-window commit gets a strictly later timestamp than sessionStart
+      await new Promise(resolve => setTimeout(resolve, 1100));
+
+      // Only repoB gets a commit during the session window
+      await createTestCommit(repoB, {
+        message: 'session-window commit',
+        files: { 'feature.ts': 'export {};' },
+      });
+
+      context.findGitRepos = vi.fn().mockImplementation(async (dir: string) => {
+        if (dir === repoA) return [repoA];
+        if (dir === repoB) return [repoB];
+        return [];
+      });
+      context.getRepoInfo = vi.fn().mockImplementation(async (p: string) => ({
+        name: path.basename(p),
+        branch: 'main',
+        remote: null,
+      }));
+      context.createProjectPage = vi.fn().mockResolvedValue({ content: [] });
+
+      const args: CloseSessionArgs = {
+        summary: 'Test tied detection',
+        working_directories: [repoA, repoB], // both score 15 → tied
+        _invoked_by_slash_command: true,
+      };
+
+      await closeSession(args, context);
+
+      // repoB has the in-window commit → tiebreaker picks it
+      expect(context.createProjectPage).toHaveBeenCalledWith({ repo_path: repoB });
+      expect(context.createProjectPage).not.toHaveBeenCalledWith({ repo_path: repoA });
+    });
+
+    it('falls back to primary working directory when commit tiebreaker is inconclusive', async () => {
+      // No sessionStartTime → findSessionCommits returns [] for everyone → CWD tiebreaker fires
+      context.getSessionStartTime = vi.fn().mockReturnValue(null);
+
+      context.findGitRepos = vi.fn().mockImplementation(async (dir: string) => {
+        if (dir === repoA) return [repoA];
+        if (dir === repoB) return [repoB];
+        return [];
+      });
+      context.getRepoInfo = vi.fn().mockImplementation(async (p: string) => ({
+        name: path.basename(p),
+        branch: 'main',
+        remote: null,
+      }));
+      context.createProjectPage = vi.fn().mockResolvedValue({ content: [] });
+
+      const args: CloseSessionArgs = {
+        summary: 'Test CWD fallback',
+        working_directories: [repoA, repoB], // repoA is primary CWD
+        _invoked_by_slash_command: true,
+      };
+
+      await closeSession(args, context);
+
+      expect(context.createProjectPage).toHaveBeenCalledWith({ repo_path: repoA });
+      expect(context.createProjectPage).not.toHaveBeenCalledWith({ repo_path: repoB });
+    });
+  });
+
   describe('Two-Phase Workflow Integration', () => {
     let testRepoPath: string;
 

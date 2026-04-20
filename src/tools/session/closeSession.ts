@@ -2869,17 +2869,78 @@ export async function closeSession(
 
         if (candidates.length > 0) {
           const topCandidate = candidates[0];
+          let chosenCandidate: RepoCandidate | null = null;
 
-          // High confidence - automatically create project page
+          // High confidence: single candidate or clear winner (>2x second place)
           if (candidates.length === 1 || topCandidate.score > (candidates[1]?.score || 0) * 2) {
+            chosenCandidate = topCandidate;
+          } else {
+            // Strict tie at the top — break it. Common case: every passed
+            // working_directory scores 15 ("Repo is a working directory") and
+            // the clear-winner gate fails because all candidates tie.
+            const tiedTop = candidates.filter(c => c.score === topCandidate.score);
+
+            // Recompute sessionStartTime here (mirrors runPhase1Analysis logic)
+            // so we can ask "which tied repo got commits during this session?"
+            let sessionStartTime = context.getSessionStartTime();
+            if (!sessionStartTime && args.session_start_override) {
+              try {
+                const parsed = new Date(args.session_start_override);
+                if (!isNaN(parsed.getTime())) {
+                  sessionStartTime = parsed;
+                }
+              } catch {
+                // ignore — sessionStartTime stays null, commit tiebreaker becomes a no-op
+              }
+            }
+
+            // Primary tiebreaker: most session-window commits wins
+            const commitCounts = await Promise.all(
+              tiedTop.map(async c => {
+                try {
+                  const commits = await findSessionCommits(c.path, sessionStartTime);
+                  return { candidate: c, count: commits.length };
+                } catch {
+                  return { candidate: c, count: 0 };
+                }
+              })
+            );
+            const maxCount = Math.max(...commitCounts.map(x => x.count));
+            if (maxCount > 0) {
+              const winners = commitCounts.filter(x => x.count === maxCount);
+              if (winners.length === 1) {
+                chosenCandidate = winners[0].candidate;
+                logger.debug('Tiebreaker resolved by session-window commits:', {
+                  chosen: chosenCandidate.name,
+                  commits: maxCount,
+                });
+              }
+            }
+
+            // Secondary tiebreaker: prefer candidate matching the primary
+            // working directory (Claude Code's CWD by convention)
+            if (!chosenCandidate && searchDirs.length > 0) {
+              const primaryWorkDir = searchDirs[0];
+              const cwdMatch = tiedTop.find(c => c.path === primaryWorkDir);
+              if (cwdMatch) {
+                chosenCandidate = cwdMatch;
+                logger.debug('Tiebreaker resolved by primary working directory:', {
+                  chosen: chosenCandidate.name,
+                  primaryWorkDir,
+                });
+              }
+            }
+          }
+
+          if (chosenCandidate) {
             try {
               detectedRepoInfo = {
-                path: topCandidate.path,
-                name: topCandidate.name,
-                branch: topCandidate.branch,
-                remote: topCandidate.remote ?? undefined,
+                path: chosenCandidate.path,
+                name: chosenCandidate.name,
+                branch: chosenCandidate.branch,
+                remote: chosenCandidate.remote ?? undefined,
               };
-              await context.createProjectPage({ repo_path: topCandidate.path });
+              await context.createProjectPage({ repo_path: chosenCandidate.path });
 
               // Auto-update current project in user reference
               try {
@@ -2887,7 +2948,7 @@ export async function closeSession(
                 const description = args.topic ? `\n- **Description:** ${args.topic}` : '';
                 const currentProjectContent = `## Current Project
 
-- **Project Name:** ${topCandidate.name}
+- **Project Name:** ${chosenCandidate.name}
 - **Last Updated:** ${dateStr}${description}`;
 
                 await context.updateDocument({
