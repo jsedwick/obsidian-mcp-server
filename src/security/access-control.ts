@@ -40,6 +40,24 @@ const PATH_FIELDS: Record<string, string[]> = {
 };
 
 /**
+ * Tool/field pairs whose array entries are FILTERED on a per-entry basis
+ * instead of rejecting the whole call. Use this for fields that are pure
+ * search hints — disallowed entries get dropped (with a warning) and the
+ * tool proceeds with the remaining valid entries.
+ *
+ * `working_directories` qualifies because it is only used as input to
+ * Git-repo discovery (findGitRepos); the discovered repo path and any
+ * `detected_repo_override` are validated separately as actual write targets.
+ * Rejecting the entire call when one entry happens to be a parent dir
+ * (e.g. /Users/jsedwick/Documents/Obsidian) blocks legitimate Claude Code
+ * workflows that pass several working dirs at once.
+ */
+const FILTER_FIELDS: Record<string, Set<string>> = {
+  close_session: new Set(['working_directories']),
+  detect_session_repositories: new Set(['working_directories']),
+};
+
+/**
  * Tools that intentionally operate outside vault boundaries.
  * These get the broader allowlist (vault paths + allowedPaths).
  */
@@ -64,6 +82,7 @@ export function validateAccess(ctx: SecurityContext, config: AccessControlConfig
 
   for (const fieldName of fields) {
     const rawValue = ctx.args[fieldName];
+    const isFilterMode = FILTER_FIELDS[ctx.toolName]?.has(fieldName) === true;
 
     // Collect paths to check — handle both single strings and arrays of strings
     const pathsToCheck: string[] = [];
@@ -82,10 +101,13 @@ export function validateAccess(ctx: SecurityContext, config: AccessControlConfig
       ? [...ctx.vaultPaths, ...config.allowedPaths]
       : [...ctx.vaultPaths];
 
+    const survivors: string[] = [];
+
     for (const rawPath of pathsToCheck) {
       const resolvedPath = resolvePath(rawPath, config.resolveSymlinks);
 
-      // Check denied paths first (deny takes precedence)
+      // Check denied paths first (deny takes precedence). Deny always rejects —
+      // even filter-mode fields must not silently scan a denied path.
       if (isDenied(resolvedPath, config.deniedPaths, config.deniedPatterns)) {
         logger.warn('Access denied by deny list', {
           tool: ctx.toolName,
@@ -102,6 +124,15 @@ export function validateAccess(ctx: SecurityContext, config: AccessControlConfig
 
       // Check if path falls within any allowed root
       if (!isUnderAllowedRoot(resolvedPath, allowedRoots)) {
+        if (isFilterMode) {
+          logger.warn('Filtered out path outside allowed roots', {
+            tool: ctx.toolName,
+            field: fieldName,
+            path: rawPath,
+            resolvedPath,
+          });
+          continue;
+        }
         logger.warn('Access denied: path outside allowed roots', {
           tool: ctx.toolName,
           field: fieldName,
@@ -115,6 +146,14 @@ export function validateAccess(ctx: SecurityContext, config: AccessControlConfig
           path: rawPath,
         });
       }
+
+      survivors.push(rawPath);
+    }
+
+    // For filter-mode array fields, replace the original arg with the
+    // filtered subset so downstream tool code only sees allowed entries.
+    if (isFilterMode && Array.isArray(rawValue)) {
+      ctx.args[fieldName] = survivors;
     }
   }
 }

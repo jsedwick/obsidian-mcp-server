@@ -38,6 +38,28 @@ vi.mock('../../../../src/utils/logger.js', () => ({
   })),
 }));
 
+/**
+ * Well-formed sessionContent fixture. Must include ## Summary, ## Handoff, and
+ * ## Files Accessed sections (with non-empty Summary/Handoff bodies) to satisfy
+ * closeSession's structural validation and post-write integrity check.
+ */
+const VALID_SESSION_CONTENT = [
+  '# Session: test',
+  '',
+  '## Summary',
+  '',
+  'Test summary body.',
+  '',
+  '## Handoff',
+  '',
+  'Test handoff body.',
+  '',
+  '## Files Accessed',
+  '',
+  '_No files tracked_',
+  '',
+].join('\n');
+
 describe('closeSession - Two-Phase Workflow', () => {
   let vaultPath: string;
   let context: SessionToolsContext;
@@ -389,7 +411,7 @@ describe('closeSession - Two-Phase Workflow', () => {
         phase: 1, // Phase 1 output
         sessionId: '2025-01-15_14-30-00',
         sessionFile: path.join(vaultPath, 'sessions/2025-01/2025-01-15_14-30-00.md'),
-        sessionContent: '# Test session content',
+        sessionContent: VALID_SESSION_CONTENT,
         dateStr: '2025-01-15',
         monthDir: path.join(vaultPath, 'sessions/2025-01'),
         detectedRepoInfo: {
@@ -424,7 +446,8 @@ describe('closeSession - Two-Phase Workflow', () => {
       expect(fileExists).toBe(true);
 
       const fileContent = await fs.readFile(sessionData.sessionFile, 'utf-8');
-      expect(fileContent).toBe('# Test session content');
+      expect(fileContent).toContain('## Summary');
+      expect(fileContent).toContain('Test summary body.');
 
       // Verify result
       expect(result.content).toHaveLength(1);
@@ -451,7 +474,7 @@ describe('closeSession - Two-Phase Workflow', () => {
       const sessionData: SessionData = {
         sessionId: '2025-01-15_14-30-00',
         sessionFile,
-        sessionContent: '# Test session',
+        sessionContent: VALID_SESSION_CONTENT,
         dateStr: '2025-01-15',
         monthDir: path.join(vaultPath, 'sessions/2025-01'),
         detectedRepoInfo: null,
@@ -484,7 +507,7 @@ describe('closeSession - Two-Phase Workflow', () => {
       const sessionData: SessionData = {
         sessionId: '2025-01-15_14-30-00',
         sessionFile: path.join(vaultPath, 'sessions/2025-01/2025-01-15_14-30-00.md'),
-        sessionContent: '# Test',
+        sessionContent: VALID_SESSION_CONTENT,
         dateStr: '2025-01-15',
         monthDir: path.join(vaultPath, 'sessions/2025-01'),
         detectedRepoInfo: null,
@@ -535,7 +558,7 @@ describe('closeSession - Two-Phase Workflow', () => {
         phase: 1,
         sessionId: '2025-01-15_14-30-00',
         sessionFile: path.join(vaultPath, 'sessions/2025-01/2025-01-15_14-30-00.md'),
-        sessionContent: '# Test session content',
+        sessionContent: VALID_SESSION_CONTENT,
         dateStr: '2025-01-15',
         monthDir: path.join(vaultPath, 'sessions/2025-01'),
         detectedRepoInfo: null,
@@ -588,7 +611,7 @@ describe('closeSession - Two-Phase Workflow', () => {
         phase: 1,
         sessionId: '2025-01-15_14-30-00',
         sessionFile: path.join(vaultPath, 'sessions/2025-01/2025-01-15_14-30-00.md'),
-        sessionContent: '# Test session content',
+        sessionContent: VALID_SESSION_CONTENT,
         dateStr: '2025-01-15',
         monthDir: path.join(vaultPath, 'sessions/2025-01'),
         detectedRepoInfo: null,
@@ -652,7 +675,88 @@ describe('closeSession - Two-Phase Workflow', () => {
         // Missing session_data
       };
 
-      await expect(closeSession(args, context)).rejects.toThrow('session_data is missing');
+      await expect(closeSession(args, context)).rejects.toThrow(
+        'session_data is missing or incomplete'
+      );
+    });
+
+    it('should reject Phase 2 when sessionContent lacks required section headers (stub fabrication)', async () => {
+      const stubSessionData: SessionData = {
+        phase: 1,
+        sessionId: '2025-01-15_14-30-00',
+        sessionFile: path.join(vaultPath, 'sessions/2025-01/2025-01-15_14-30-00.md'),
+        // Fabricated stub: frontmatter-only, no ## Summary / ## Handoff / ## Files Accessed
+        sessionContent: '---\ncategory: session\n---\n\n# Session: stub\n',
+        dateStr: '2025-01-15',
+        monthDir: path.join(vaultPath, 'sessions/2025-01'),
+        detectedRepoInfo: null,
+        topicsCreated: [],
+        decisionsCreated: [],
+        projectsCreated: [],
+        filesAccessed: [],
+        filesToCheck: [],
+        repoDetectionMessage: '',
+      };
+
+      const args: CloseSessionArgs = {
+        summary: 'Test',
+        finalize: true,
+        _invoked_by_slash_command: true,
+        session_data: stubSessionData,
+      };
+
+      await expect(closeSession(args, context)).rejects.toThrow('sessionContent is malformed');
+    });
+
+    it('should prefer memory-stored Phase 1 data over caller-supplied session_data', async () => {
+      const authenticData: SessionData = {
+        phase: 1,
+        sessionId: '2025-01-15_authentic',
+        sessionFile: path.join(vaultPath, 'sessions/2025-01/2025-01-15_authentic.md'),
+        sessionContent: VALID_SESSION_CONTENT,
+        dateStr: '2025-01-15',
+        monthDir: path.join(vaultPath, 'sessions/2025-01'),
+        detectedRepoInfo: null,
+        topicsCreated: [],
+        decisionsCreated: [],
+        projectsCreated: [],
+        filesAccessed: [],
+        filesToCheck: [],
+        repoDetectionMessage: '',
+      };
+      context.storePhase1SessionData!(authenticData);
+
+      const stubCallerData: SessionData = {
+        ...authenticData,
+        sessionId: '2025-01-15_stub',
+        sessionFile: path.join(vaultPath, 'sessions/2025-01/2025-01-15_stub.md'),
+        sessionContent: '---\n---\n', // stub that would normally fail structural check
+      };
+
+      const args: CloseSessionArgs = {
+        summary: 'Test',
+        finalize: true,
+        _invoked_by_slash_command: true,
+        session_data: stubCallerData,
+      };
+
+      await fs.mkdir(authenticData.monthDir, { recursive: true });
+
+      // Should succeed because authentic data from memory overrides the caller stub.
+      // The stub would have failed the structural check; success = memory was preferred.
+      await closeSession(args, context);
+
+      // Authentic session file should exist, stub file should not
+      const authenticExists = await fs
+        .access(authenticData.sessionFile)
+        .then(() => true)
+        .catch(() => false);
+      const stubExists = await fs
+        .access(stubCallerData.sessionFile)
+        .then(() => true)
+        .catch(() => false);
+      expect(authenticExists).toBe(true);
+      expect(stubExists).toBe(false);
     });
 
     it('should create monthly session directory structure', async () => {

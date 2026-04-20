@@ -111,15 +111,53 @@ describe('access-control', () => {
       expect(() => validateAccess(ctx, config)).not.toThrow();
     });
 
-    it('blocks any path in array that violates access rules', () => {
+    it('filters out array entries outside allowed roots for working_directories (does not throw)', () => {
+      const config: AccessControlConfig = {
+        ...DEFAULT_ACCESS_CONTROL_CONFIG,
+        allowedPaths: ['/Users/test/projects'],
+      };
+      const args = {
+        working_directories: ['/Users/test/projects/app', '/Users/jsedwick/Documents/Obsidian'],
+      };
+      const ctx = makeCtx('close_session', args);
+      expect(() => validateAccess(ctx, config)).not.toThrow();
+      expect(args.working_directories).toEqual(['/Users/test/projects/app']);
+    });
+
+    it('still rejects working_directories entries that match a deny pattern', () => {
+      const config: AccessControlConfig = {
+        ...DEFAULT_ACCESS_CONTROL_CONFIG,
+        allowedPaths: ['/Users/test/projects'],
+        deniedPatterns: ['**/secrets'],
+      };
+      const ctx = makeCtx('close_session', {
+        working_directories: ['/Users/test/projects/app', '/Users/test/projects/secrets'],
+      });
+      expect(() => validateAccess(ctx, config)).toThrow(SecurityError);
+    });
+
+    it('rejects detected_repo_override outside allowed roots (write target, not filtered)', () => {
       const config: AccessControlConfig = {
         ...DEFAULT_ACCESS_CONTROL_CONFIG,
         allowedPaths: ['/Users/test/projects'],
       };
       const ctx = makeCtx('close_session', {
-        working_directories: ['/Users/test/projects/app', '/etc/shadow'],
+        detected_repo_override: '/Users/jsedwick/Documents/Obsidian',
       });
       expect(() => validateAccess(ctx, config)).toThrow(SecurityError);
+    });
+
+    it('filters working_directories for detect_session_repositories too', () => {
+      const config: AccessControlConfig = {
+        ...DEFAULT_ACCESS_CONTROL_CONFIG,
+        allowedPaths: ['/Users/test/projects'],
+      };
+      const args = {
+        working_directories: ['/some/random/path', '/Users/test/projects/app'],
+      };
+      const ctx = makeCtx('detect_session_repositories', args);
+      expect(() => validateAccess(ctx, config)).not.toThrow();
+      expect(args.working_directories).toEqual(['/Users/test/projects/app']);
     });
   });
 

@@ -36,6 +36,45 @@ function normalizePath(filePath: string): string {
   }
 }
 
+/** Marker used by the post-write integrity check so the catch handler can preserve state. */
+const POST_WRITE_INTEGRITY_FAILURE = 'POST_WRITE_INTEGRITY_FAILURE';
+
+/**
+ * Strip XML-style tool-call serialization tokens (`<parameter>`,
+ * `<invoke>`, `<function_calls>`, and their closing tags) that can leak
+ * into caller-supplied free-form fields. Without this, leaked tokens
+ * are templated verbatim into the session markdown.
+ */
+function stripToolCallLeaks(s: string | undefined): string {
+  return (s || '').replace(/<\/?(parameter|invoke|function_calls)\b[^>]*>/g, '').trimEnd();
+}
+
+const REQUIRED_SESSION_HEADERS = ['## Summary', '## Handoff', '## Files Accessed'] as const;
+
+/**
+ * Check whether a Phase 1 sessionContent contains the structural headers the
+ * template always emits. Absence of any of these is a strong signal that the
+ * caller synthesized a stub (e.g. after context truncation) rather than
+ * passing the authentic Phase 1 output.
+ */
+function isStructurallyValidSessionContent(sessionContent: string): boolean {
+  return REQUIRED_SESSION_HEADERS.every(header => sessionContent.includes(header));
+}
+
+/**
+ * Extract the body of a ## H2 section (the text between the header and the next
+ * ## header or EOF). Returns '' if the header is absent. Caller passes the
+ * exact header string (e.g. '## Summary').
+ */
+function extractSectionBody(content: string, header: string): string {
+  const idx = content.indexOf(header);
+  if (idx < 0) return '';
+  const afterHeader = content.slice(idx + header.length);
+  const nextHeader = afterHeader.search(/\n## /);
+  const body = nextHeader < 0 ? afterHeader : afterHeader.slice(0, nextHeader);
+  return body.replace(/^\s*\n/, '');
+}
+
 /**
  * Build context for handoff generation (Decision 052).
  * Structures session data into markdown format for AI analysis.
@@ -2033,6 +2072,27 @@ export async function runPhase2Finalization(
   await fs.writeFile(data.sessionFile, updatedContent);
   data.sessionContent = updatedContent;
 
+  // Post-write integrity check: re-read the file and assert the Summary and
+  // Handoff sections actually contain content. If they don't, we've written a
+  // broken session file and must fail loudly so state (including the recovery
+  // JSON) is preserved for retry. See POST_WRITE_INTEGRITY_FAILURE handling
+  // in closeSession()'s catch block.
+  const writtenContent = await fs.readFile(data.sessionFile, 'utf-8');
+  const summaryBody = extractSectionBody(writtenContent, '## Summary').trim();
+  const handoffBody = extractSectionBody(writtenContent, '## Handoff').trim();
+  if (!summaryBody || !handoffBody) {
+    await fs.unlink(data.sessionFile).catch(() => {
+      // Best-effort cleanup; if it fails, the next /close will notice the
+      // file-already-exists guard and we'd rather preserve the broken file
+      // than mask the real error.
+    });
+    throw new Error(
+      `${POST_WRITE_INTEGRITY_FAILURE}: Session file written but ## Summary ` +
+        `or ## Handoff body is empty. File removed; recovery state preserved ` +
+        `so /close can be retried. File was: ${data.sessionFile}`
+    );
+  }
+
   context.setCurrentSession(data.sessionId, data.sessionFile);
 
   // Record session commits (Phase 2 step 3)
@@ -2484,55 +2544,64 @@ export async function closeSession(
     );
   }
 
+  // Sanitize free-form caller-supplied fields. The model occasionally leaks
+  // tool-call XML tokens into these strings; left unchecked, they get
+  // templated verbatim into the session markdown's Summary/Handoff sections.
+  args.summary = stripToolCallLeaks(args.summary);
+  if (args.handoff !== undefined) {
+    args.handoff = stripToolCallLeaks(args.handoff);
+  }
+
   await context.ensureVaultStructure();
 
-  // Validate session_data is present and complete if finalizing
-  // Decision 048: Fallback to stored session_data if context was truncated
-  // Decision 054: Extended fallback to file-based recovery if memory also lost
-  //              Also handles malformed session_data (missing required fields)
-  const isSessionDataMissing = !args.session_data;
-  const isSessionDataMalformed =
-    args.session_data &&
-    (!args.session_data.sessionContent ||
-      !args.session_data.sessionId ||
-      !args.session_data.sessionFile);
-  const needsRecovery = args.finalize && (isSessionDataMissing || isSessionDataMalformed);
-
-  if (needsRecovery) {
-    const recoveryReason = isSessionDataMalformed
-      ? 'session_data is malformed (missing required fields)'
-      : 'session_data is missing';
-
-    // Try memory-based recovery first (Decision 048)
+  // Resolve session_data for Phase 2 finalization.
+  //
+  // Authoritative-source ordering (fixes fabricated-stub bug):
+  //   1. In-memory Phase 1 state (Decision 048)
+  //   2. Per-session recovery JSON (Decision 054)
+  //   3. args.session_data passed by the caller
+  //
+  // The caller's session_data is used only as a last resort. If Phase 1 ran
+  // at all, either (1) or (2) will have captured its output, and that output
+  // is trusted over anything the caller hands us. This prevents context
+  // truncation from causing a fabricated sessionContent stub (just frontmatter)
+  // to clobber the real Summary and Handoff written by Phase 1.
+  if (args.finalize) {
     const storedData = context.getStoredPhase1SessionData();
     if (storedData) {
-      // Recovered from MCP server state after context truncation
       args.session_data = storedData;
     } else {
-      // Decision 054: Try file-based recovery (handles MCP server restart)
       const fileRestored = await context.restoreSessionStateFromFile();
       if (fileRestored?.phase1SessionData) {
         args.session_data = fileRestored.phase1SessionData as SessionData;
-      } else {
-        throw new Error(
-          `❌ Phase 2 Error: ${recoveryReason}\n\n` +
-            'The two-phase workflow requires calling close_session twice:\n' +
-            '1. First call (Phase 1): Run via /close command with _invoked_by_slash_command: true\n' +
-            '   Returns: commit analysis + session_data\n' +
-            '2. Second call (Phase 2): Claude calls directly with finalize: true\n' +
-            '   Does NOT need _invoked_by_slash_command (only Phase 1 does)\n\n' +
-            'Recovery attempted:\n' +
-            '- Memory state: not available\n' +
-            '- File-based (recovery file): not available or Phase 1 incomplete\n\n' +
-            'Try running restore_session_data first, or re-run /close to start fresh.\n\n' +
-            'Example Phase 2 call:\n' +
-            'close_session({\n' +
-            '  summary: "...",\n' +
-            '  finalize: true,\n' +
-            '  session_data: { ...data from Phase 1... }\n' +
-            '})'
-        );
       }
+    }
+
+    // After recovery, validate required fields are present.
+    const sd = args.session_data;
+    const missingRequiredFields = !sd || !sd.sessionContent || !sd.sessionId || !sd.sessionFile;
+    if (missingRequiredFields) {
+      throw new Error(
+        '❌ Phase 2 Error: session_data is missing or incomplete.\n\n' +
+          'The two-phase workflow requires Phase 1 to run first. Recovery attempted:\n' +
+          '- Memory state: not available\n' +
+          '- File-based (recovery file): not available or Phase 1 incomplete\n' +
+          '- Caller-supplied session_data: missing or incomplete\n\n' +
+          'Try running restore_session_data first, or re-run /close to start fresh.'
+      );
+    }
+
+    // Structural validation: sessionContent must carry the section headers Phase 1
+    // always emits. A stub (e.g. only frontmatter) would silently write a
+    // session file with no Summary/Handoff body.
+    if (!isStructurallyValidSessionContent(sd.sessionContent)) {
+      throw new Error(
+        '❌ Phase 2 Error: session_data.sessionContent is malformed.\n\n' +
+          `Expected section headers (${REQUIRED_SESSION_HEADERS.join(', ')}) were not all present.\n\n` +
+          'Phase 1 always emits a template with these sections. Their absence indicates\n' +
+          'the sessionContent was fabricated after context was lost between phases.\n\n' +
+          'Run restore_session_data to recover authentic Phase 1 state, or re-run /close.'
+      );
     }
   }
 
@@ -2588,10 +2657,12 @@ export async function closeSession(
         errorMessage.includes('Topics Not Reviewed') ||
         errorMessage.includes('Decision 041') ||
         errorMessage.includes('Decision 042');
+      const isIntegrityFailure = errorMessage.includes(POST_WRITE_INTEGRITY_FAILURE);
 
-      if (isEnforcementError) {
-        // ENFORCEMENT FAILURE: Do NOT clear state - allow topic reads to accumulate
-        // The user will read the required topics and retry, and those reads need to persist
+      if (isEnforcementError || isIntegrityFailure) {
+        // Preserve state so the session can be retried:
+        //  - ENFORCEMENT: topic reads accumulate for the next attempt
+        //  - INTEGRITY: the recovery JSON must survive so Phase 1 data is not lost
         throw error;
       }
 
