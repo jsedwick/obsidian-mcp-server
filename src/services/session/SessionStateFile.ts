@@ -63,6 +63,9 @@ export class SessionStateFile {
   private filePath: string | null = null;
   private debounceTimer: ReturnType<typeof globalThis.setTimeout> | null = null;
   private pendingFileAccesses: FileAccess[] = [];
+  // Serializes read-modify-write on the recovery file so concurrent paths
+  // (storePhase1Data + debounced flushFileAccesses) cannot clobber each other.
+  private writeQueue: Promise<unknown> = Promise.resolve();
 
   constructor(vaultPath: string) {
     this.vaultPath = vaultPath;
@@ -149,22 +152,24 @@ export class SessionStateFile {
     const toFlush = [...this.pendingFileAccesses];
     this.pendingFileAccesses = [];
 
-    try {
-      const state = await this.readState();
-      if (!state) {
-        logger.warn('Failed to read recovery file for update');
-        return;
+    await this.withWriteLock(async () => {
+      try {
+        const state = await this.readState();
+        if (!state) {
+          logger.warn('Failed to read recovery file for update');
+          return;
+        }
+
+        state.filesAccessed.push(...toFlush);
+        state.lastUpdated = formatLocalDateTime(new Date());
+
+        await this.writeState(state);
+        logger.debug('Flushed file accesses to recovery file', { count: toFlush.length });
+      } catch (error) {
+        // Log but don't fail
+        logger.warn('Failed to flush file accesses', { error, count: toFlush.length });
       }
-
-      state.filesAccessed.push(...toFlush);
-      state.lastUpdated = formatLocalDateTime(new Date());
-
-      await this.writeState(state);
-      logger.debug('Flushed file accesses to recovery file', { count: toFlush.length });
-    } catch (error) {
-      // Log but don't fail
-      logger.warn('Failed to flush file accesses', { error, count: toFlush.length });
-    }
+    });
   }
 
   /**
@@ -186,21 +191,33 @@ export class SessionStateFile {
       }
       await this.flushFileAccesses();
 
-      const state = await this.readState();
-      if (!state) {
-        logger.warn('Failed to read recovery file for Phase 1 update');
-        return;
-      }
+      await this.withWriteLock(async () => {
+        const state = await this.readState();
+        if (!state) {
+          logger.warn('Failed to read recovery file for Phase 1 update');
+          return;
+        }
 
-      state.phase1Completed = true;
-      state.phase1SessionData = data;
-      state.lastUpdated = formatLocalDateTime(new Date());
+        state.phase1Completed = true;
+        state.phase1SessionData = data;
+        state.lastUpdated = formatLocalDateTime(new Date());
 
-      await this.writeState(state);
-      logger.info('Phase 1 session data stored to recovery file');
+        await this.writeState(state);
+        logger.info('Phase 1 session data stored to recovery file');
+      });
     } catch (error) {
       logger.warn('Failed to store Phase 1 data', { error });
     }
+  }
+
+  /**
+   * Run fn with exclusive access to the recovery file write path. Operations
+   * are queued in call order; failures don't break the chain.
+   */
+  private withWriteLock<T>(fn: () => Promise<T>): Promise<T> {
+    const next = this.writeQueue.then(fn, fn);
+    this.writeQueue = next.catch(() => undefined);
+    return next;
   }
 
   /**

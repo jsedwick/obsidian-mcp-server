@@ -67,7 +67,7 @@ export interface SessionToolsContext extends BaseContext {
   clearSessionState?: () => void;
   hasPhase1Completed?: () => boolean;
   markPhase1Complete?: () => void;
-  storePhase1SessionData?: (data: any) => void;
+  storePhase1SessionData?: (data: any) => Promise<void>;
   getStoredPhase1SessionData?: () => any | null;
   // Helper for testing filesAccessed accumulation fix
   accumulateFilesAccessedAfterPhase1?: (
@@ -131,7 +131,7 @@ export function createSessionToolsContext(
     markPhase1Complete: vi.fn().mockImplementation(() => {
       phase1Completed = true;
     }),
-    storePhase1SessionData: vi.fn().mockImplementation((data: any) => {
+    storePhase1SessionData: vi.fn().mockImplementation(async (data: any) => {
       // Deep clone filesAccessed to match real implementation (Decision 048 fix)
       storedPhase1Data = {
         ...data,

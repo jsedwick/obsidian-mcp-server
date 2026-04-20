@@ -514,8 +514,9 @@ export async function runPhase1Analysis(
     })),
   };
 
-  // Store session_data in MCP server state for context truncation recovery (Decision 048)
-  context.storePhase1SessionData(sessionData);
+  // Store session_data in MCP server state for context truncation recovery (Decision 048).
+  // Awaited so the recovery file is durable before Phase 1 returns to Claude.
+  await context.storePhase1SessionData(sessionData);
 
   const summary = args.summary.replace(/"/g, '\\"');
   const topic = args.topic ? `topic: "${args.topic.replace(/"/g, '\\"')}",` : '';
@@ -2513,7 +2514,7 @@ interface CloseSessionContext {
   clearSessionState: () => void;
   hasPhase1Completed: () => boolean;
   markPhase1Complete: () => void;
-  storePhase1SessionData: (data: SessionData) => void;
+  storePhase1SessionData: (data: SessionData) => Promise<void>;
   getStoredPhase1SessionData: () => SessionData | null;
   // Decision 054: File-based session state recovery
   restoreSessionStateFromFile: () => Promise<{ phase1SessionData: unknown } | null>;

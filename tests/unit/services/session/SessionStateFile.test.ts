@@ -218,6 +218,39 @@ describe('SessionStateFile', () => {
     });
   });
 
+  describe('write race between storePhase1Data and trackFileAccess', () => {
+    it('should preserve Phase 1 data when file accesses fire concurrently', async () => {
+      const ssf = new SessionStateFile(vaultPath);
+      await ssf.initialize(new Date('2025-01-15T10:00:00Z'));
+
+      const phase1Data = { sessionId: 'race-test', commits: ['abc123'] };
+
+      // Fire storePhase1Data and a burst of trackFileAccess calls concurrently.
+      // The trackFileAccess calls schedule a debounced flushFileAccesses that
+      // races with storePhase1Data's read-modify-write on the recovery file.
+      // Without the write mutex, the debounced flush can read the pre-Phase-1
+      // state, append, and write back, clobbering phase1Completed/phase1SessionData.
+      const phase1Promise = ssf.storePhase1Data(phase1Data);
+      for (let i = 0; i < 20; i++) {
+        ssf.trackFileAccess({
+          path: `/vault/topics/race-${i}.md`,
+          action: 'read',
+          timestamp: '2025-01-15T10:01:00Z',
+        });
+      }
+
+      await phase1Promise;
+      // Wait for the debounced flush (500ms) to fire and serialize through the lock.
+      await new Promise(resolve => setTimeout(resolve, 700));
+
+      const restored = await ssf.restore();
+      expect(restored).not.toBeNull();
+      expect(restored!.phase1Completed).toBe(true);
+      expect(restored!.phase1SessionData).toEqual(phase1Data);
+      expect(restored!.filesAccessed.length).toBeGreaterThan(0);
+    });
+  });
+
   describe('restore picks newest file', () => {
     it('should restore from the most recent recovery file', async () => {
       const dir = path.join(vaultPath, recoveryDir);

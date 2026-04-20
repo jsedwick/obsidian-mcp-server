@@ -3102,7 +3102,7 @@ Check the sessions/ directory for recent conversations.
     this.phase1Completed = true;
   }
 
-  private storePhase1SessionData(data: tools.SessionData): void {
+  private async storePhase1SessionData(data: tools.SessionData): Promise<void> {
     // Deep clone filesAccessed to avoid reference issues (Decision 048 fix)
     // This allows us to accumulate file accesses after Phase 1 completes
     this.phase1SessionData = {
@@ -3110,13 +3110,18 @@ Check the sessions/ directory for recent conversations.
       filesAccessed: [...(data.filesAccessed || [])],
     };
 
-    // Persist to session state file (Decision 054) - fire-and-forget with structured logging
-    this.sessionStateFile.storePhase1Data(this.phase1SessionData).catch(error => {
+    // Persist to session state file (Decision 054). Awaited so Phase 1 does
+    // not return until the recovery file is durable on disk; otherwise the
+    // write races with debounced flushFileAccesses and can be silently
+    // overwritten before Phase 2 runs.
+    try {
+      await this.sessionStateFile.storePhase1Data(this.phase1SessionData);
+    } catch (error) {
       logger.warn('Failed to persist Phase 1 data to session state file', {
         error: error instanceof Error ? error.message : String(error),
         sessionId: this.currentSessionId,
       });
-    });
+    }
   }
 
   /**
