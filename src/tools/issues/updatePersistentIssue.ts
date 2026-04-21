@@ -17,7 +17,10 @@ import fs from 'fs/promises';
 import path from 'path';
 import matter from 'gray-matter';
 import { migrateIfNeeded } from './migration.js';
-import { validatePersistentIssueFrontmatter } from '../../templates.js';
+import {
+  normalizeIssueFrontmatterDates,
+  validatePersistentIssueFrontmatter,
+} from '../../templates.js';
 import { getTodayLocal } from '../../utils/dateFormat.js';
 
 export interface UpdatePersistentIssueArgs {
@@ -69,6 +72,7 @@ export async function updatePersistentIssue(
   }
 
   const { data: frontmatter, content: body } = matter(content);
+  normalizeIssueFrontmatterDates(frontmatter);
 
   if (!validatePersistentIssueFrontmatter(frontmatter)) {
     return {

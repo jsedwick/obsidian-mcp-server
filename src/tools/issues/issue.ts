@@ -22,6 +22,7 @@ import { getPersistentIssues } from './getPersistentIssues.js';
 import { migrateIfNeeded, slugify } from './migration.js';
 import {
   generatePersistentIssueTemplate,
+  normalizeIssueFrontmatterDates,
   validatePersistentIssueFrontmatter,
 } from '../../templates.js';
 import type { PersistentIssueFrontmatter } from '../../templates.js';
@@ -178,6 +179,7 @@ async function handleLoad(slug: string, context: IssueContext): Promise<IssueRes
   // Read and parse issue file
   const content = await fs.readFile(filePath, 'utf-8');
   const { data: frontmatter, content: body } = matter(content);
+  normalizeIssueFrontmatterDates(frontmatter);
 
   if (!validatePersistentIssueFrontmatter(frontmatter)) {
     return {
@@ -383,6 +385,7 @@ async function handleResolve(
   }
 
   const { data: frontmatter, content: body } = matter(content);
+  normalizeIssueFrontmatterDates(frontmatter);
 
   if (!validatePersistentIssueFrontmatter(frontmatter)) {
     return {

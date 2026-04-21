@@ -575,6 +575,23 @@ export function validateCommitFrontmatter(fm: any): fm is CommitFrontmatter {
   );
 }
 
+// gray-matter's YAML parser coerces unquoted `YYYY-MM-DD` values to Date objects,
+// which then fail `typeof === 'string'` validation and serialize via Date.toString()
+// (e.g. "Mon Apr 20 2026 ...") if emitted back into templates. Callers should run this
+// over frontmatter right after `matter(content)` and before validation/use.
+export function normalizeIssueFrontmatterDates(fm: any): void {
+  if (!fm || typeof fm !== 'object') return;
+  for (const key of ['created', 'resolved']) {
+    if (fm[key] instanceof Date) {
+      const d = fm[key];
+      const y = d.getUTCFullYear();
+      const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+      const day = String(d.getUTCDate()).padStart(2, '0');
+      fm[key] = `${y}-${m}-${day}`;
+    }
+  }
+}
+
 export function validatePersistentIssueFrontmatter(fm: any): fm is PersistentIssueFrontmatter {
   return (
     typeof fm.title === 'string' &&

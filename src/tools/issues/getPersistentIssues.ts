@@ -14,7 +14,10 @@ import fs from 'fs/promises';
 import path from 'path';
 import matter from 'gray-matter';
 import { migrateIfNeeded } from './migration.js';
-import { validatePersistentIssueFrontmatter } from '../../templates.js';
+import {
+  normalizeIssueFrontmatterDates,
+  validatePersistentIssueFrontmatter,
+} from '../../templates.js';
 
 export interface PersistentIssue {
   slug: string;
@@ -55,6 +58,7 @@ async function parseIssueFile(filePath: string): Promise<PersistentIssue | null>
   try {
     const content = await fs.readFile(filePath, 'utf-8');
     const { data: frontmatter, content: body } = matter(content);
+    normalizeIssueFrontmatterDates(frontmatter);
 
     if (!validatePersistentIssueFrontmatter(frontmatter)) {
       return null;
