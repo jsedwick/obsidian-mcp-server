@@ -62,16 +62,18 @@ function isStructurallyValidSessionContent(sessionContent: string): boolean {
 }
 
 /**
- * Extract the body of a ## H2 section (the text between the header and the next
- * ## header or EOF). Returns '' if the header is absent. Caller passes the
- * exact header string (e.g. '## Summary').
+ * Extract the body of a ## H2 section. When `nextHeader` is supplied, the body
+ * terminates only at that specific template header — allowing the body itself
+ * to contain nested ## subheadings without being truncated. When omitted,
+ * terminates at the next ## header of any kind, or EOF. Returns '' if `header`
+ * is absent.
  */
-function extractSectionBody(content: string, header: string): string {
+function extractSectionBody(content: string, header: string, nextHeader?: string): string {
   const idx = content.indexOf(header);
   if (idx < 0) return '';
   const afterHeader = content.slice(idx + header.length);
-  const nextHeader = afterHeader.search(/\n## /);
-  const body = nextHeader < 0 ? afterHeader : afterHeader.slice(0, nextHeader);
+  const endIdx = nextHeader ? afterHeader.indexOf('\n' + nextHeader) : afterHeader.search(/\n## /);
+  const body = endIdx < 0 ? afterHeader : afterHeader.slice(0, endIdx);
   return body.replace(/^\s*\n/, '');
 }
 
@@ -2079,8 +2081,8 @@ export async function runPhase2Finalization(
   // JSON) is preserved for retry. See POST_WRITE_INTEGRITY_FAILURE handling
   // in closeSession()'s catch block.
   const writtenContent = await fs.readFile(data.sessionFile, 'utf-8');
-  const summaryBody = extractSectionBody(writtenContent, '## Summary').trim();
-  const handoffBody = extractSectionBody(writtenContent, '## Handoff').trim();
+  const summaryBody = extractSectionBody(writtenContent, '## Summary', '## Handoff').trim();
+  const handoffBody = extractSectionBody(writtenContent, '## Handoff', '## Files Accessed').trim();
   if (!summaryBody || !handoffBody) {
     await fs.unlink(data.sessionFile).catch(() => {
       // Best-effort cleanup; if it fails, the next /close will notice the

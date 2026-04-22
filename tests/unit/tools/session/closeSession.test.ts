@@ -651,6 +651,54 @@ describe('closeSession - Two-Phase Workflow', () => {
         'Commit-Related Topics Not Reviewed'
       );
     });
+
+    it('should accept a handoff containing nested ## subheaders without triggering integrity failure', async () => {
+      const sessionFile = path.join(vaultPath, 'sessions/2025-01/2025-01-15_14-30-00.md');
+      const sessionData: SessionData = {
+        phase: 1,
+        sessionId: '2025-01-15_14-30-00',
+        sessionFile,
+        sessionContent: VALID_SESSION_CONTENT,
+        dateStr: '2025-01-15',
+        monthDir: path.join(vaultPath, 'sessions/2025-01'),
+        detectedRepoInfo: null,
+        topicsCreated: [],
+        decisionsCreated: [],
+        projectsCreated: [],
+        filesAccessed: [],
+        filesToCheck: [],
+        repoDetectionMessage: '',
+      };
+
+      const handoffWithNestedH2 = [
+        '## Validation Outstanding',
+        '',
+        'Requires restart to verify.',
+        '',
+        '## Known Issues',
+        '',
+        'None at this time.',
+      ].join('\n');
+
+      const args: CloseSessionArgs = {
+        summary: 'Test summary',
+        handoff: handoffWithNestedH2,
+        finalize: true,
+        session_data: sessionData,
+        _invoked_by_slash_command: true,
+      };
+
+      await fs.mkdir(sessionData.monthDir, { recursive: true });
+
+      const result = await runPhase2Finalization(args, context, sessionData);
+
+      expect(result.content[0].text).toContain('Session finalized:');
+
+      const writtenContent = await fs.readFile(sessionFile, 'utf-8');
+      expect(writtenContent).toContain('## Validation Outstanding');
+      expect(writtenContent).toContain('Requires restart to verify.');
+      expect(writtenContent).toContain('## Known Issues');
+    });
   });
 
   // Decision 044: runSinglePhaseClose tests removed - two-phase workflow is always required
