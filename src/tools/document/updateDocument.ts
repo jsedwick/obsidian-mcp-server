@@ -348,6 +348,76 @@ function extractDocumentStructure(body: string): string {
 }
 
 /**
+ * Describe a character for diagnostic output — "U+00A0 (NO-BREAK SPACE)" when
+ * the code point has a well-known name, otherwise the bare hex.
+ */
+function describeChar(code: number): string {
+  const hex = code.toString(16).padStart(4, '0').toUpperCase();
+  const names: Record<number, string> = {
+    0x20: 'SPACE',
+    0xa0: 'NO-BREAK SPACE',
+    0x09: 'TAB',
+    0x0a: 'LF',
+    0x0d: 'CR',
+    0x2028: 'LINE SEPARATOR',
+    0x2029: 'PARAGRAPH SEPARATOR',
+    0x200b: 'ZERO WIDTH SPACE',
+  };
+  const name = names[code];
+  if (name) return `U+${hex} (${name})`;
+  if (code >= 0x20 && code < 0x7f) return `'${String.fromCharCode(code)}' (U+${hex})`;
+  return `U+${hex}`;
+}
+
+/**
+ * When edit-strategy's exact old_string search fails, check for a near-match
+ * caused by invisible-whitespace drift (non-breaking spaces, line-separator
+ * variants). Returns a human-readable diagnostic or null if no near-match
+ * exists. Uses a 1:1 normalization so the match index in normalized space is
+ * also the byte offset in the original file.
+ */
+function diagnoseNearMatch(body: string, needle: string): string | null {
+  const normalize = (s: string): string =>
+    s
+      .replace(/\u00a0/g, ' ')
+      .replace(/\u2028/g, '\n')
+      .replace(/\u2029/g, '\n');
+
+  const normBody = normalize(body);
+  const normNeedle = normalize(needle);
+  const matchIdx = normBody.indexOf(normNeedle);
+  if (matchIdx === -1) return null;
+
+  let candidates = 0;
+  let pos = 0;
+  while ((pos = normBody.indexOf(normNeedle, pos)) !== -1) {
+    candidates++;
+    pos += normNeedle.length;
+  }
+
+  const originalSlice = body.slice(matchIdx, matchIdx + needle.length);
+  let firstDiff = -1;
+  for (let i = 0; i < needle.length; i++) {
+    if (needle.charCodeAt(i) !== originalSlice.charCodeAt(i)) {
+      firstDiff = i;
+      break;
+    }
+  }
+  if (firstDiff === -1) return null;
+
+  const qChar = describeChar(needle.charCodeAt(firstDiff));
+  const fChar = describeChar(originalSlice.charCodeAt(firstDiff));
+  const candidateWord = candidates === 1 ? 'candidate' : 'candidates';
+  return (
+    `Near-match found at file offset ${matchIdx} ` +
+    `(${candidates} ${candidateWord} after whitespace normalization). ` +
+    `First byte mismatch at old_string offset ${firstDiff}: query has ${qChar}, file has ${fChar}. ` +
+    `This often indicates non-breaking spaces (U+00A0) or other invisible whitespace in the file ` +
+    `that got normalized to regular spaces when your old_string was serialized.`
+  );
+}
+
+/**
  * Main update_document tool implementation
  */
 export async function updateDocument(
@@ -525,9 +595,9 @@ export async function updateDocument(
     const occurrences = existingWithoutFm.split(args.old_string).length - 1;
 
     if (occurrences === 0) {
-      throw new Error(
-        `old_string not found in ${path.basename(filePath)}. Ensure the text matches exactly (including whitespace and newlines).`
-      );
+      const baseMsg = `old_string not found in ${path.basename(filePath)}. Ensure the text matches exactly (including whitespace and newlines).`;
+      const diagnostic = diagnoseNearMatch(existingWithoutFm, args.old_string);
+      throw new Error(diagnostic ? `${baseMsg}\nDiagnostic: ${diagnostic}` : baseMsg);
     }
     if (occurrences > 1) {
       throw new Error(

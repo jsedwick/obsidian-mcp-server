@@ -655,6 +655,68 @@ Original content in section two.`;
       const updated = await fs.readFile(filePath, 'utf-8');
       expect(updated).toContain('- item 3');
     });
+
+    it('should emit a near-match diagnostic when nbsp blocks an exact match', async () => {
+      const filePath = path.join(vaultPath, 'topics/nbsp-diagnostic.md');
+      await fs.mkdir(path.dirname(filePath), { recursive: true });
+      // File has a non-breaking space (U+00A0) between the label and the name
+      await fs.writeFile(
+        filePath,
+        '---\ncategory: topic\ntitle: NBSP Test\n---\n- **Role:** [[Alice]]\n',
+        'utf-8'
+      );
+
+      await expect(
+        updateDocument(
+          {
+            file_path: filePath,
+            content: '',
+            strategy: 'edit',
+            // Caller uses a regular space (U+0020) — the common serialization drift
+            old_string: '- **Role:** [[Alice]]',
+            reason: 'Testing nbsp diagnostic',
+          },
+          context
+        )
+      ).rejects.toThrow(/Diagnostic:.*NO-BREAK SPACE/);
+    });
+
+    it('should omit diagnostic when old_string has no plausible near-match', async () => {
+      const filePath = path.join(vaultPath, 'topics/no-near-match.md');
+      await fs.mkdir(path.dirname(filePath), { recursive: true });
+      await fs.writeFile(
+        filePath,
+        '---\ncategory: topic\ntitle: No Match Test\n---\nContent body here.\n',
+        'utf-8'
+      );
+
+      await expect(
+        updateDocument(
+          {
+            file_path: filePath,
+            content: '',
+            strategy: 'edit',
+            old_string: 'this string absolutely does not appear anywhere',
+            reason: 'Testing absent-match error',
+          },
+          context
+        )
+      ).rejects.toThrow(/old_string not found/);
+
+      // Verify the bare message was emitted, not the diagnostic form
+      await expect(
+        updateDocument(
+          {
+            file_path: filePath,
+            content: '',
+            strategy: 'edit',
+            old_string: 'this string absolutely does not appear anywhere',
+            reason: 'Testing absent-match error',
+          },
+          context
+        )
+      ).rejects.not.toThrow(/Diagnostic:/);
+    });
   });
 
   describe('File Access Tracking', () => {
