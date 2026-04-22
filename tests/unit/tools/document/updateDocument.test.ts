@@ -717,6 +717,29 @@ Original content in section two.`;
         )
       ).rejects.not.toThrow(/Diagnostic:/);
     });
+
+    it('should surface a specific error when old_string only matches frontmatter', async () => {
+      const filePath = path.join(vaultPath, 'topics/frontmatter-match.md');
+      await fs.mkdir(path.dirname(filePath), { recursive: true });
+      await fs.writeFile(
+        filePath,
+        '---\ncategory: topic\ntitle: Frontmatter Match Test\nstatus: accepted\n---\nBody has no match.\n',
+        'utf-8'
+      );
+
+      await expect(
+        updateDocument(
+          {
+            file_path: filePath,
+            content: 'status: implemented',
+            strategy: 'edit',
+            old_string: 'status: accepted',
+            reason: 'Testing frontmatter-match error path',
+          },
+          context
+        )
+      ).rejects.toThrow(/frontmatter.*only modifies body content.*strategy: 'replace'/);
+    });
   });
 
   describe('File Access Tracking', () => {

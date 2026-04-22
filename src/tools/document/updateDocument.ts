@@ -595,6 +595,14 @@ export async function updateDocument(
     const occurrences = existingWithoutFm.split(args.old_string).length - 1;
 
     if (occurrences === 0) {
+      const existsInFrontmatter =
+        existingContent.includes(args.old_string) && !existingWithoutFm.includes(args.old_string);
+      if (existsInFrontmatter) {
+        throw new Error(
+          `old_string matches text in the frontmatter of ${path.basename(filePath)}, but the 'edit' strategy only modifies body content. ` +
+            `Use strategy: 'replace' with the complete file content to update frontmatter fields.`
+        );
+      }
       const baseMsg = `old_string not found in ${path.basename(filePath)}. Ensure the text matches exactly (including whitespace and newlines).`;
       const diagnostic = diagnoseNearMatch(existingWithoutFm, args.old_string);
       throw new Error(diagnostic ? `${baseMsg}\nDiagnostic: ${diagnostic}` : baseMsg);
