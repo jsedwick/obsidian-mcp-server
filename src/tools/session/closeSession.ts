@@ -415,51 +415,78 @@ export async function runPhase1Analysis(
 `;
 
     const tCommitsAnalyze = Date.now();
-    for (const commitHash of sessionCommits) {
-      try {
-        const analysis = await context.analyzeCommitImpact({
-          repo_path: detectedRepoInfo.path,
-          commit_hash: commitHash,
-          include_diff: false,
-        });
-
-        if (analysis.content && analysis.content[0]) {
-          commitAnalysisReport += `---\n${(analysis.content[0] as { text: string }).text}\n\n`;
+    // Run all commits in parallel; merge results in original commit order below
+    // to preserve first-commit-wins dedup for the topics/decisions maps.
+    type CommitAnalysisResult =
+      | {
+          ok: true;
+          commitHash: string;
+          text: string;
+          relatedTopics?: RelatedTopic[];
+          relatedDecisions?: Array<{ path: string; title: string; relevance: string }>;
         }
+      | { ok: false; commitHash: string };
+    const analyses: CommitAnalysisResult[] = await Promise.all(
+      sessionCommits.map(async (commitHash): Promise<CommitAnalysisResult> => {
+        try {
+          const analysis = await context.analyzeCommitImpact({
+            repo_path: detectedRepoInfo.path,
+            commit_hash: commitHash,
+            include_diff: false,
+          });
+          const text =
+            analysis.content && analysis.content[0]
+              ? (analysis.content[0] as { text: string }).text
+              : '';
+          return {
+            ok: true,
+            commitHash,
+            text,
+            relatedTopics: analysis.relatedTopics,
+            relatedDecisions: analysis.relatedDecisions,
+          };
+        } catch (_error) {
+          return { ok: false, commitHash };
+        }
+      })
+    );
 
-        // Collect related topics from this commit (Decision 041)
-        if (analysis.relatedTopics) {
-          for (const topic of analysis.relatedTopics) {
-            const topicPath: string = topic.path;
-            if (!commitRelatedTopicsMap.has(topicPath)) {
-              const typedTopic: RelatedTopic & { commitHash: string } = {
-                path: topic.path,
-                title: topic.title,
-                relevance: topic.relevance,
-                commitHash: commitHash.substring(0, 12),
-              };
-              commitRelatedTopicsMap.set(topicPath, typedTopic);
-            }
+    for (const result of analyses) {
+      if (!result.ok) {
+        commitAnalysisReport += `⚠️  Failed to analyze commit ${result.commitHash.substring(0, 12)}\n\n`;
+        continue;
+      }
+      if (result.text) {
+        commitAnalysisReport += `---\n${result.text}\n\n`;
+      }
+      // Decision 041: first commit referencing a topic wins
+      if (result.relatedTopics) {
+        for (const topic of result.relatedTopics) {
+          const topicPath: string = topic.path;
+          if (!commitRelatedTopicsMap.has(topicPath)) {
+            commitRelatedTopicsMap.set(topicPath, {
+              path: topic.path,
+              title: topic.title,
+              relevance: topic.relevance,
+              commitHash: result.commitHash.substring(0, 12),
+            });
           }
         }
-
-        // Collect related decisions from this commit (Decision 057)
-        if (analysis.relatedDecisions) {
-          for (const decision of analysis.relatedDecisions) {
-            const decisionPath: string = decision.path;
-            if (!commitRelatedDecisionPaths.has(decisionPath)) {
-              commitRelatedDecisionPaths.add(decisionPath);
-              commitRelatedDecisions.push({
-                path: decisionPath,
-                title: decision.title,
-                relevance: decision.relevance,
-                commitHash: commitHash.substring(0, 12),
-              });
-            }
+      }
+      // Decision 057: first commit referencing a decision wins
+      if (result.relatedDecisions) {
+        for (const decision of result.relatedDecisions) {
+          const decisionPath: string = decision.path;
+          if (!commitRelatedDecisionPaths.has(decisionPath)) {
+            commitRelatedDecisionPaths.add(decisionPath);
+            commitRelatedDecisions.push({
+              path: decisionPath,
+              title: decision.title,
+              relevance: decision.relevance,
+              commitHash: result.commitHash.substring(0, 12),
+            });
           }
         }
-      } catch (_error) {
-        commitAnalysisReport += `⚠️  Failed to analyze commit ${commitHash.substring(0, 12)}\n\n`;
       }
     }
     logger.info('close.timing.phase1.commits_analyze', {
@@ -526,17 +553,46 @@ export async function runPhase1Analysis(
 
   const uniqueFilesToCheck = Array.from(new Set(filesToCheck));
 
-  // Run both semantic discovery searches in parallel (results reused by Phase 2)
+  // Run both semantic discovery searches in parallel (results reused by Phase 2).
+  // Skip on content-light closes — they rarely produce useful matches and the
+  // embedding search is the dominant cost in Phase 1. Set CLOSE_SEMANTIC_FORCE=1
+  // to force discovery regardless of session shape.
   const tSemanticDiscover = Date.now();
-  const [allDiscoveredTopics, allDiscoveredDecisions] = await Promise.all([
-    discoverRelatedTopics(args.summary, context),
-    discoverRelatedDecisions(args.summary, context),
-  ]);
-  logger.info('close.timing.phase1.semantic_discover', {
-    elapsed_ms: Date.now() - tSemanticDiscover,
-    topics: allDiscoveredTopics.length,
-    decisions: allDiscoveredDecisions.length,
-  });
+  const semanticForce = process.env.CLOSE_SEMANTIC_FORCE === '1';
+  const skipShortSummary = args.summary.length < 200;
+  const skipNoSignal =
+    sessionCommits.length === 0 &&
+    context.topicsCreated.length === 0 &&
+    context.decisionsCreated.length === 0 &&
+    editedOrCreatedFiles.length <= 1;
+  const skipSemantic = !semanticForce && (skipShortSummary || skipNoSignal);
+
+  let allDiscoveredTopics: Awaited<ReturnType<typeof discoverRelatedTopics>>;
+  let allDiscoveredDecisions: Awaited<ReturnType<typeof discoverRelatedDecisions>>;
+
+  if (skipSemantic) {
+    allDiscoveredTopics = [];
+    allDiscoveredDecisions = [];
+    logger.info('close.timing.phase1.semantic_discover_skipped', {
+      elapsed_ms: Date.now() - tSemanticDiscover,
+      reason: skipShortSummary ? 'short_summary' : 'no_signal',
+      summary_length: args.summary.length,
+      session_commits: sessionCommits.length,
+      topics_created: context.topicsCreated.length,
+      decisions_created: context.decisionsCreated.length,
+      edited_files: editedOrCreatedFiles.length,
+    });
+  } else {
+    [allDiscoveredTopics, allDiscoveredDecisions] = await Promise.all([
+      discoverRelatedTopics(args.summary, context),
+      discoverRelatedDecisions(args.summary, context),
+    ]);
+    logger.info('close.timing.phase1.semantic_discover', {
+      elapsed_ms: Date.now() - tSemanticDiscover,
+      topics: allDiscoveredTopics.length,
+      decisions: allDiscoveredDecisions.length,
+    });
+  }
 
   // Semantic topic discovery for review (Decision 036) - uses pre-computed topics
   const tSemanticReview = Date.now();
@@ -2398,56 +2454,66 @@ export async function runPhase2Finalization(
  * Runs git add, commit, and push for each vault that has a .git directory.
  * Non-blocking: failures are reported but do not throw.
  */
+async function syncOneVault(
+  vaultPath: string
+): Promise<{ name: string; committed: boolean; pushFailed: boolean } | null> {
+  // Skip non-git vaults
+  if (!fssync.existsSync(path.join(vaultPath, '.git'))) {
+    return null;
+  }
+
+  const vaultName = path.basename(vaultPath);
+  let committed = false;
+  let pushFailed = false;
+
+  try {
+    await execAsync('git add .', { cwd: vaultPath });
+
+    try {
+      await execAsync('git diff-index --quiet HEAD --', { cwd: vaultPath });
+      // No changes - skip commit
+    } catch {
+      const now = new Date();
+      const timestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}-${String(now.getMinutes()).padStart(2, '0')}-${String(now.getSeconds()).padStart(2, '0')}`;
+      await execAsync(`git commit -m "Session close auto-commit: ${timestamp}" --quiet`, {
+        cwd: vaultPath,
+      });
+      committed = true;
+      logger.info(`Committed vault changes: ${vaultName}`);
+    }
+
+    try {
+      await execAsync('git push --quiet', { cwd: vaultPath });
+    } catch (pushErr) {
+      pushFailed = true;
+      logger.info(`Git push failed for ${vaultName}`, {
+        error: pushErr instanceof Error ? pushErr.message : String(pushErr),
+      });
+    }
+  } catch (error) {
+    logger.info(`Git sync error for ${vaultName}`, {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    pushFailed = true;
+  }
+
+  return { name: vaultName, committed, pushFailed };
+}
+
 async function syncVaultsToGit(allVaultPaths: string[]): Promise<string> {
+  // Vaults are independent repos with independent remotes — sync in parallel.
+  // Concurrent pushes to the same remote serialize at the remote, so this is safe.
+  const settled = await Promise.all(allVaultPaths.map(syncOneVault));
   const results: string[] = [];
   let commitCount = 0;
   const pushErrors: string[] = [];
 
-  for (const vaultPath of allVaultPaths) {
-    // Skip if not a git repository
-    if (!fssync.existsSync(path.join(vaultPath, '.git'))) {
-      continue;
-    }
-
-    const vaultName = path.basename(vaultPath);
-
-    try {
-      // Stage all changes
-      await execAsync('git add .', { cwd: vaultPath });
-
-      // Check if there are changes to commit
-      try {
-        await execAsync('git diff-index --quiet HEAD --', { cwd: vaultPath });
-        // No changes - skip commit
-      } catch {
-        // Changes exist - commit them
-        const now = new Date();
-        const timestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}-${String(now.getMinutes()).padStart(2, '0')}-${String(now.getSeconds()).padStart(2, '0')}`;
-        await execAsync(`git commit -m "Session close auto-commit: ${timestamp}" --quiet`, {
-          cwd: vaultPath,
-        });
-        commitCount++;
-        logger.info(`Committed vault changes: ${vaultName}`);
-      }
-
-      // Push to remote
-      try {
-        await execAsync('git push --quiet', { cwd: vaultPath });
-      } catch (pushErr) {
-        pushErrors.push(vaultName);
-        logger.info(`Git push failed for ${vaultName}`, {
-          error: pushErr instanceof Error ? pushErr.message : String(pushErr),
-        });
-      }
-    } catch (error) {
-      logger.info(`Git sync error for ${vaultName}`, {
-        error: error instanceof Error ? error.message : String(error),
-      });
-      pushErrors.push(vaultName);
-    }
+  for (const r of settled) {
+    if (r === null) continue;
+    if (r.committed) commitCount++;
+    if (r.pushFailed) pushErrors.push(r.name);
   }
 
-  // Build report
   if (commitCount > 0) {
     results.push(`📝 Auto-committed changes in ${commitCount} vault(s)`);
   }
