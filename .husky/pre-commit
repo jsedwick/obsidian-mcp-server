@@ -1,1 +1,15 @@
-npx lint-staged
+#!/usr/bin/env sh
+
+# Run lint-staged first (eslint, prettier, related vitest) on staged files.
+npx lint-staged || exit 1
+
+# If any src/*.ts file is staged, rebuild dist before commit so the on-disk
+# dist/.build-id always matches the source about to be committed. Pairs with
+# the runtime assertFreshBuild() guard in src/utils/buildId.ts.
+if git diff --cached --name-only --diff-filter=ACMR | grep -qE '^src/.*\.ts$'; then
+  echo "[pre-commit] src/*.ts staged — running npm run build"
+  npm run build || {
+    echo "[pre-commit] build failed; aborting commit" >&2
+    exit 1
+  }
+fi

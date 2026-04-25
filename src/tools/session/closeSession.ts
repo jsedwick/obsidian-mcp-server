@@ -18,6 +18,7 @@ import type { RelatedTopic } from '../git/analyzeCommitImpact.js';
 import { GitError } from '../../utils/errors.js';
 import { createLogger } from '../../utils/logger.js';
 import { formatLocalDate } from '../../utils/dateFormat.js';
+import { assertFreshBuild } from '../../utils/buildId.js';
 
 const execAsync = promisify(exec);
 const logger = createLogger('closeSession');
@@ -2591,6 +2592,11 @@ export async function closeSession(
   args: CloseSessionArgs,
   context: CloseSessionContext
 ): Promise<CloseSessionResult> {
+  // Refuse to run if the on-disk build no longer matches the build loaded at
+  // server startup. Stale dist silently corrupted session records previously
+  // (empty topics/decisions/files-accessed); fail loud instead.
+  assertFreshBuild();
+
   // Enforce that Phase 1 (workflow initiation) can only be called via the /close slash command
   // Phase 2 (finalization) can be called by Claude directly after Phase 1 completes
   const isPhase1 = !args.finalize;
