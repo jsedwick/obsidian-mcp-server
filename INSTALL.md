@@ -1,3 +1,6 @@
+> [!warning] STALE — pending Phase 2 installer
+> This document predates the claude-chat-bridge + obsidian-claude-plugin refactor and the multi-vault `.obsidian-mcp.json` schema. Install steps here are **no longer accurate**. It will be replaced by output from the `npx create-claude-setup` installer. Do not follow these steps.
+
 # Installation Guide
 
 Complete guide to installing and configuring the Obsidian MCP Server for Claude Code.

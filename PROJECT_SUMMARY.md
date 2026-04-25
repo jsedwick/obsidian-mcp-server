@@ -80,7 +80,6 @@ obsidian-mcp-server/
 ├── README.md             # Complete documentation
 ├── QUICKSTART.md         # 5-minute getting started guide
 ├── INSTALL.md            # Detailed installation guide
-├── config.example.json   # Example configuration
 ├── .gitignore           # Git ignore rules
 └── LICENSE              # MIT License
 
@@ -361,7 +360,6 @@ Text is incredibly compact!
 - **QUICKSTART.md**: Get started in 5 minutes
 - **INSTALL.md**: Detailed installation guide
 - **README.md**: Complete documentation
-- **config.example.json**: Example configuration
 
 ## Support
 

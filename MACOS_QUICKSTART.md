@@ -1,3 +1,6 @@
+> [!warning] STALE — pending Phase 2 installer
+> This document predates the claude-chat-bridge + obsidian-claude-plugin refactor and the multi-vault `.obsidian-mcp.json` schema. Install steps here (clone `claude-code-config`/`claude-code-hooks`, single-vault `OBSIDIAN_VAULT_PATH`, Claude Desktop config path) are **no longer accurate**. It will be replaced by output from the `npx create-claude-setup` installer. Do not follow these steps.
+
 # Quick Start Guide for macOS
 
 Get the Obsidian MCP Server running on your Mac in 15 minutes!
