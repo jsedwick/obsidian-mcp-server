@@ -13,6 +13,8 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import { GitError } from '../../utils/errors.js';
 import { formatLocalDateTime } from '../../utils/dateFormat.js';
+import type { FileAccess } from '../../models/Session.js';
+import { selectBestRepoForCommitAnalysis, type DetectedRepo } from '../../utils/repoDetection.js';
 
 const execAsync = promisify(exec);
 
@@ -48,9 +50,20 @@ export async function findSessionCommits(
   }
 }
 
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export interface AnalyzeSessionCommitsArgs {
-  // No arguments needed - analyzes current session automatically
+  /**
+   * Claude Code's working directories. The MCP server runs as a separate
+   * process with a different cwd, so passing these enables correct
+   * Git repository detection. Decision 037.
+   */
+  working_directories?: string[];
+
+  /**
+   * Absolute path to the Git repository to analyze. When provided, bypasses
+   * auto-detection scoring entirely. Use when the session was linked to a
+   * specific repo via close_session's detected_repo_override.
+   */
+  detected_repo_override?: string;
 }
 
 export interface AnalyzeCommitsResult {
@@ -62,7 +75,8 @@ export interface AnalyzeCommitsResult {
 
 interface AnalyzeCommitsContext {
   vaultPath: string;
-  filesAccessed: Array<{ path: string; action: string; timestamp: string }>;
+  allVaultPaths: string[];
+  filesAccessed: FileAccess[];
   findGitRepos: (startPath: string, maxDepth?: number) => Promise<string[]>;
   getRepoInfo: (
     repoPath: string
@@ -85,9 +99,8 @@ interface AnalyzeCommitsContext {
  *
  * This tool is read-only and does not modify any files.
  */
-// eslint-disable-next-line max-lines-per-function
 export async function analyzeSessionCommits(
-  _args: AnalyzeSessionCommitsArgs,
+  args: AnalyzeSessionCommitsArgs,
   context: AnalyzeCommitsContext
 ): Promise<AnalyzeCommitsResult> {
   const sessionStartTime = context.getSessionStartTime();
@@ -106,73 +119,30 @@ export async function analyzeSessionCommits(
     };
   }
 
-  // Auto-detect Git repository from current working directory or accessed files
-  let detectedRepoInfo: { path: string; name: string; branch?: string; remote?: string } | null =
-    null;
-
+  // Decision 037 priority: override → working_directories → infer → cwd.
+  // Previously this tool only used process.cwd(), which silently returned
+  // the wrong repo when the session was linked via detected_repo_override
+  // or when the user's working dir differed from the MCP server's cwd.
+  let detectedRepoInfo: DetectedRepo | null = null;
   try {
-    const cwd = process.env.PWD || process.cwd();
-    const repoPaths = await context.findGitRepos(cwd);
-
-    if (repoPaths.length > 0) {
-      // Use scoring to find most relevant repo
-      const candidates: Array<{
-        path: string;
-        name: string;
-        score: number;
-        branch?: string;
-        remote?: string;
-      }> = [];
-
-      for (const repoPath of repoPaths) {
-        let score = 0;
-
-        const filesInRepo = context.filesAccessed.filter(f => f.path.startsWith(repoPath));
-        const editedFiles = filesInRepo.filter(f => f.action === 'edit' || f.action === 'create');
-        const readFiles = filesInRepo.filter(f => f.action === 'read');
-
-        if (editedFiles.length > 0) {
-          score += editedFiles.length * 10;
-        }
-
-        if (readFiles.length > 0) {
-          score += readFiles.length * 5;
-        }
-
-        if (repoPath === cwd) {
-          score += 15;
-        } else if (cwd.startsWith(repoPath)) {
-          score += 8;
-        } else if (repoPath.startsWith(cwd)) {
-          score += 5;
-        }
-
-        if (score > 0 || repoPaths.length === 1) {
-          const info = await context.getRepoInfo(repoPath);
-          candidates.push({
-            path: repoPath,
-            name: info.name,
-            score,
-            branch: info.branch,
-            remote: info.remote ?? undefined,
-          });
-        }
-      }
-
-      candidates.sort((a, b) => b.score - a.score);
-
-      if (candidates.length > 0) {
-        const topCandidate = candidates[0];
-        detectedRepoInfo = {
-          path: topCandidate.path,
-          name: topCandidate.name,
-          branch: topCandidate.branch,
-          remote: topCandidate.remote,
-        };
-      }
-    }
-  } catch (_error) {
-    // Silently fail - repo detection is optional
+    detectedRepoInfo = await selectBestRepoForCommitAnalysis({
+      detectedRepoOverride: args.detected_repo_override,
+      workingDirectories: args.working_directories,
+      filesAccessed: context.filesAccessed,
+      fallbackCwd: process.env.PWD || process.cwd(),
+      vaultPaths: context.allVaultPaths,
+      findGitRepos: context.findGitRepos,
+      getRepoInfo: context.getRepoInfo,
+    });
+  } catch (error) {
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `**Repository Detection Error**\n\n${(error as Error).message}`,
+        },
+      ],
+    };
   }
 
   if (!detectedRepoInfo) {
@@ -183,7 +153,9 @@ export async function analyzeSessionCommits(
           text:
             '**No Git Repository Detected**\n\n' +
             'Unable to detect a Git repository for this session. Commit analysis requires a Git repository.\n\n' +
-            'Make sure you are working in a Git repository, or specify the repository path if needed.',
+            'Tips:\n' +
+            "- Pass `working_directories` (Claude Code's `<env>` CWDs) so the tool can search the right place.\n" +
+            '- Pass `detected_repo_override` with an absolute repo path if the session is linked to a specific repo.\n',
         },
       ],
     };
@@ -209,8 +181,12 @@ export async function analyzeSessionCommits(
             '**No Commits Detected**\n\n' +
             `Session started: ${formatLocalDateTime(sessionStartTime)}\n` +
             `Repository: ${detectedRepoInfo.name}\n` +
-            `Path: ${detectedRepoInfo.path}\n\n` +
-            'No commits were made during this session, so there are no code changes to analyze for documentation impact.',
+            `Path: ${detectedRepoInfo.path}\n` +
+            `Detection source: ${detectedRepoInfo.source}\n\n` +
+            'No commits were made during this session, so there are no code changes to analyze for documentation impact.\n\n' +
+            'If you expected commits here:\n' +
+            '- Verify `detected_repo_override` points at the correct repo.\n' +
+            '- Check whether the commits predate `getSessionStartTime()` (e.g., the MCP server was restarted mid-session and reset its session start to "now").\n',
         },
       ],
     };
@@ -223,6 +199,7 @@ export async function analyzeSessionCommits(
 
 Repository: ${detectedRepoInfo.path}
 Branch: ${detectedRepoInfo.branch || 'unknown'}
+Detection source: ${detectedRepoInfo.source}
 Session started: ${formatLocalDateTime(sessionStartTime)}
 Commits detected: ${sessionCommits.length}
 

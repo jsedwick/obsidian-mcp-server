@@ -37,6 +37,7 @@ const PATH_FIELDS: Record<string, string[]> = {
   vault_custodian: ['files_to_check'],
   close_session: ['working_directories', 'detected_repo_override'],
   detect_session_repositories: ['working_directories'],
+  analyze_session_commits: ['working_directories', 'detected_repo_override'],
 };
 
 /**
@@ -55,6 +56,7 @@ const PATH_FIELDS: Record<string, string[]> = {
 const FILTER_FIELDS: Record<string, Set<string>> = {
   close_session: new Set(['working_directories']),
   detect_session_repositories: new Set(['working_directories']),
+  analyze_session_commits: new Set(['working_directories']),
 };
 
 /**
@@ -70,6 +72,7 @@ const EXTERNAL_TOOLS = new Set([
   'create_decision',
   'close_session',
   'detect_session_repositories',
+  'analyze_session_commits',
 ]);
 
 /**

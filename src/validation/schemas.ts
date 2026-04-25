@@ -263,6 +263,24 @@ export const DetectSessionRepositoriesArgsSchema = z.object({
     ),
 });
 
+// analyze_session_commits — Decision 037 parity with close_session.
+export const AnalyzeSessionCommitsArgsSchema = z.object({
+  working_directories: z
+    .array(z.string())
+    .optional()
+    .describe(
+      "Claude Code's working directories. The MCP server's process.cwd() differs from Claude Code's, " +
+        'so passing these enables correct repository detection.'
+    ),
+  detected_repo_override: z
+    .string()
+    .optional()
+    .describe(
+      'Absolute path to the Git repository to analyze. When provided, bypasses auto-detection ' +
+        'scoring entirely. Use when the session is linked to a specific repo via close_session.'
+    ),
+});
+
 // restore_session_data (Decision 054)
 export const RestoreSessionDataArgsSchema = z.object({
   // No arguments needed - reads from known vault location
@@ -757,6 +775,7 @@ export const ValidationSchemas = {
   list_recent_sessions: ListRecentSessionsArgsSchema,
   close_session: CloseSessionArgsSchema,
   detect_session_repositories: DetectSessionRepositoriesArgsSchema,
+  analyze_session_commits: AnalyzeSessionCommitsArgsSchema,
   restore_session_data: RestoreSessionDataArgsSchema,
 
   // Search tools

@@ -116,46 +116,72 @@ export async function recordCommit(
 
   await fs.writeFile(commitFile, content);
 
-  // Update project page with commit link
+  // Update project page with commit link. Idempotent: skip when an entry
+  // already exists for this short hash so re-running record_commit (e.g.,
+  // once between phases and again in Phase 2's auto-record loop) doesn't
+  // accumulate duplicate project-page entries.
   const projectFile = path.join(projectDir, 'project.md');
   const projectContent = await fs.readFile(projectFile, 'utf-8');
   const commitLink = `- [[projects/${slug}/commits/${shortHash}|${shortHash}: ${subject}]] (${today})`;
 
-  const updatedContent = projectContent.replace(
-    /## Recent Activity\n/,
-    `## Recent Activity\n${commitLink}\n`
-  );
+  const alreadyLinked = projectContent.includes(`projects/${slug}/commits/${shortHash}|`);
+  const updatedContent = alreadyLinked
+    ? projectContent
+    : projectContent.replace(/## Recent Activity\n/, `## Recent Activity\n${commitLink}\n`);
 
-  await fs.writeFile(projectFile, updatedContent);
+  if (!alreadyLinked) {
+    await fs.writeFile(projectFile, updatedContent);
+  }
 
-  // Update session file with commit reference
+  // Update session file with commit reference. Between Phase 1 and Phase 2
+  // the session file doesn't exist yet — Phase 2 writes it. In that case
+  // skip the link silently; Phase 2's auto-record loop re-fires recordCommit
+  // for every hash in session_data.sessionCommits and will handle the link
+  // once the file exists. The commit page itself still references the
+  // session via its frontmatter, so the back-link is preserved.
+  let sessionFileExists = false;
   if (context.currentSessionFile) {
+    try {
+      await fs.access(context.currentSessionFile);
+      sessionFileExists = true;
+    } catch {
+      sessionFileExists = false;
+    }
+  }
+  if (context.currentSessionFile && sessionFileExists) {
     let sessionContent = await fs.readFile(context.currentSessionFile, 'utf-8');
     const commitLink = `- [[projects/${slug}/commits/${shortHash}|${shortHash}]]: ${subject}`;
 
-    // Look for "## Related Git Commits" section and add the commit link there
-    const relatedCommitsRegex = /^## Related Git Commits$/m;
+    // Idempotent: skip if this hash is already linked in the session file.
+    const alreadyInSession = sessionContent.includes(`projects/${slug}/commits/${shortHash}|`);
 
-    if (relatedCommitsRegex.test(sessionContent)) {
-      // Section exists, add link after the header
-      sessionContent = sessionContent.replace(
-        relatedCommitsRegex,
-        `## Related Git Commits\n${commitLink}`
-      );
-    } else {
-      // Section doesn't exist, append it at the end
-      if (!sessionContent.endsWith('\n')) sessionContent += '\n';
-      sessionContent += `\n## Related Git Commits\n${commitLink}\n`;
+    if (!alreadyInSession) {
+      const relatedCommitsRegex = /^## Related Git Commits$/m;
+
+      if (relatedCommitsRegex.test(sessionContent)) {
+        // Section exists, add link after the header
+        sessionContent = sessionContent.replace(
+          relatedCommitsRegex,
+          `## Related Git Commits\n${commitLink}`
+        );
+      } else {
+        // Section doesn't exist, append it at the end
+        if (!sessionContent.endsWith('\n')) sessionContent += '\n';
+        sessionContent += `\n## Related Git Commits\n${commitLink}\n`;
+      }
+
+      await fs.writeFile(context.currentSessionFile, sessionContent);
     }
-
-    await fs.writeFile(context.currentSessionFile, sessionContent);
   }
 
+  const linkageNote = sessionFileExists
+    ? 'Linked to session and project.'
+    : 'Linked to project. Session file not yet written; Phase 2 finalization will append the link if this hash is in session_data.sessionCommits.';
   return {
     content: [
       {
         type: 'text',
-        text: `Commit recorded: ${shortHash}\nCommit page: projects/${slug}/commits/${shortHash}.md\nLinked to session and project.`,
+        text: `Commit recorded: ${shortHash}\nCommit page: projects/${slug}/commits/${shortHash}.md\n${linkageNote}`,
       },
     ],
   };

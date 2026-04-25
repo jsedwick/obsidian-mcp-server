@@ -24,7 +24,7 @@ describe('Configuration & Validation', () => {
   describe('ValidationSchemas registry', () => {
     it('should have schemas registered for all expected tools', () => {
       const schemaKeys = Object.keys(ValidationSchemas);
-      expect(schemaKeys.length).toBe(36);
+      expect(schemaKeys.length).toBe(37);
     });
 
     it('should have TOOL_NAMES array matching schema keys', () => {
@@ -39,6 +39,7 @@ describe('Configuration & Validation', () => {
       expect(ValidationSchemas).toHaveProperty('list_recent_sessions');
       expect(ValidationSchemas).toHaveProperty('close_session');
       expect(ValidationSchemas).toHaveProperty('detect_session_repositories');
+      expect(ValidationSchemas).toHaveProperty('analyze_session_commits');
       expect(ValidationSchemas).toHaveProperty('restore_session_data');
     });
 

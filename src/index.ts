@@ -769,6 +769,14 @@ class ObsidianMCPServer {
                 securedArgs as tools.AnalyzeSessionCommitsArgs,
                 {
                   vaultPath: this.config.primaryVault.path,
+                  allVaultPaths: fullConfig
+                    ? [...fullConfig.allPrimaryVaults, ...fullConfig.allSecondaryVaults].map(
+                        v => v.path
+                      )
+                    : [
+                        this.config.primaryVault.path,
+                        ...this.config.secondaryVaults.map(v => v.path),
+                      ],
                   filesAccessed: this.filesAccessed,
                   findGitRepos: this.findGitRepos.bind(this),
                   getRepoInfo: this.getRepoInfo.bind(this),
@@ -893,12 +901,9 @@ class ObsidianMCPServer {
               });
 
             case 'record_commit':
-              return await tools.recordCommit(securedArgs as tools.RecordCommitArgs, {
-                vaultPath: this.config.primaryVault.path,
-                gitService: this.gitService,
-                currentSessionId: this.currentSessionId,
-                currentSessionFile: this.currentSessionFile,
-              });
+              return await this.recordCommitWrapper(
+                securedArgs as { repo_path: string; commit_hash: string }
+              );
 
             case 'toggle_embeddings':
               return await tools.toggleEmbeddings(securedArgs as tools.ToggleEmbeddingsArgs, {
@@ -1884,7 +1889,19 @@ CONTENT STYLE: Be direct and concise. State the context in 2-3 sentences, list a
           'Analyze commits made during the current session to identify documentation that may need updating. This is a read-only analysis tool that helps prevent documentation drift by proactively identifying topics, decisions, and other documentation that should be updated based on code changes.\n\n**When to use:**\n- Before running /close to see what commits were made\n- To get suggestions for which documentation needs updating\n- To understand the impact of code changes on existing documentation\n\n**Workflow:**\n1. Make commits during your session\n2. Call analyze_session_commits to see commit analysis\n3. Update affected topics/decisions using update_document\n4. Call /close to finalize the session\n\n**Note:** This tool does not modify any files. It only analyzes and provides suggestions.',
         inputSchema: {
           type: 'object',
-          properties: {},
+          properties: {
+            working_directories: {
+              type: 'array',
+              items: { type: 'string' },
+              description:
+                "Claude Code's working directories. The MCP server runs as a separate process with a different cwd, so passing these enables correct Git repository detection.",
+            },
+            detected_repo_override: {
+              type: 'string',
+              description:
+                'Absolute path to the Git repository to analyze. When provided, bypasses auto-detection scoring entirely. Use when the session is linked to a specific repo via close_session.',
+            },
+          },
         },
       },
       {
@@ -2984,12 +3001,21 @@ Check the sessions/ directory for recent conversations.
   private async recordCommitWrapper(args: {
     repo_path: string;
     commit_hash: string;
-  }): Promise<any> {
+  }): Promise<tools.RecordCommitResult> {
+    // Decision 048 fallback: between Phase 1 and Phase 2, currentSessionId is
+    // still null (it gets promoted inside Phase 2). Without this fallback,
+    // any explicit record_commit call between phases — including AI-driven
+    // recovery when Phase 1's commit detection missed commits — fails with
+    // "No active session". Read the session id/file from the stored Phase 1
+    // session data when the live state hasn't been promoted yet.
+    const phase1Data = this.phase1SessionData;
+    const sessionId = this.currentSessionId ?? phase1Data?.sessionId ?? null;
+    const sessionFile = this.currentSessionFile ?? phase1Data?.sessionFile ?? null;
     return tools.recordCommit(args as unknown as tools.RecordCommitArgs, {
       vaultPath: this.config.primaryVault.path,
       gitService: this.gitService,
-      currentSessionId: this.currentSessionId,
-      currentSessionFile: this.currentSessionFile,
+      currentSessionId: sessionId,
+      currentSessionFile: sessionFile,
     });
   }
 

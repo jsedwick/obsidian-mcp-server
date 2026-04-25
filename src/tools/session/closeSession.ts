@@ -19,6 +19,8 @@ import { GitError } from '../../utils/errors.js';
 import { createLogger } from '../../utils/logger.js';
 import { formatLocalDate } from '../../utils/dateFormat.js';
 import { assertFreshBuild } from '../../utils/buildId.js';
+import { findUnrecordedRecentCommits } from '../../utils/repoDetection.js';
+import { getOrGenerateProjectSlug } from '../../utils/projectSlug.js';
 
 const execAsync = promisify(exec);
 const logger = createLogger('closeSession');
@@ -332,6 +334,14 @@ export async function runPhase1Analysis(
   let sessionCommits: string[] = [];
   let commitDetectionError = '';
 
+  // Diagnostic: when the strict --since window returns 0, we still surface
+  // unrecorded commits on HEAD from the past 24h so the AI can verify and
+  // attach them via record_commit. The strict window can miss legit commits
+  // when sessionStartTime got bumped late (MCP server restart promoted it
+  // to "now" after commits were already made), or when the first /close
+  // attempt picked the wrong repo and Phase 1 is one-shot.
+  let candidateUnrecordedCommits: string[] = [];
+
   if (detectedRepoInfo && sessionStartTime) {
     // Both repo and session start time available - can detect commits
     const tCommitsDetect = Date.now();
@@ -344,6 +354,32 @@ export async function runPhase1Analysis(
       elapsed_ms: Date.now() - tCommitsDetect,
       count: sessionCommits.length,
     });
+
+    if (sessionCommits.length === 0) {
+      try {
+        const remote = (await context.getRepoInfo(detectedRepoInfo.path)).remote;
+        const projectsDir = path.join(context.vaultPath, 'projects');
+        const repoSlug = await getOrGenerateProjectSlug(
+          detectedRepoInfo.path,
+          remote ?? null,
+          projectsDir
+        );
+        candidateUnrecordedCommits = await findUnrecordedRecentCommits({
+          repoPath: detectedRepoInfo.path,
+          vaultPath: context.vaultPath,
+          repoSlug,
+          hoursBack: 24,
+          execAsync,
+        });
+        logger.info('close.timing.phase1.unrecorded_recent_check', {
+          count: candidateUnrecordedCommits.length,
+        });
+      } catch (err) {
+        logger.debug('Unrecorded-recent-commits diagnostic failed', {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
   } else {
     // Missing repo or session start time - can't detect commits but still run two-phase
     // This ensures semantic topic enforcement (Decision 042) cannot be bypassed
@@ -434,6 +470,33 @@ export async function runPhase1Analysis(
 
   // Convert to array for sessionData
   const commitRelatedTopics = Array.from(commitRelatedTopicsMap.values());
+
+  // Diagnostic: surface unrecorded recent commits when the strict --since
+  // window returned 0. The AI should verify each candidate against the
+  // session's actual work and either record_commit + add to
+  // session_data.sessionCommits, or explicitly ignore them.
+  if (sessionCommits.length === 0 && candidateUnrecordedCommits.length > 0 && detectedRepoInfo) {
+    commitAnalysisReport +=
+      '\n\n---\n\n' +
+      '⚠️ **CANDIDATE UNRECORDED COMMITS** (past 24h on HEAD, not yet in vault)\n\n' +
+      `Phase 1's strict \`--since=sessionStartTime\` window returned 0 commits in ` +
+      `**${detectedRepoInfo.name}** (\`${detectedRepoInfo.path}\`), but ` +
+      `${candidateUnrecordedCommits.length} commit${candidateUnrecordedCommits.length > 1 ? 's' : ''} ` +
+      `on HEAD from the past 24 hours ${candidateUnrecordedCommits.length > 1 ? 'have' : 'has'} ` +
+      `no vault commit page yet:\n\n` +
+      candidateUnrecordedCommits.map(h => `- \`${h.substring(0, 12)}\``).join('\n') +
+      '\n\n' +
+      'This usually means one of:\n' +
+      "- The MCP server's `sessionStartTime` was set later than the commit timestamps " +
+      '(e.g., MCP server restart promoted it to "now"), so `--since` excluded them.\n' +
+      '- A previous `/close` attempt picked the wrong repo and Phase 1 ran with no commits ' +
+      '— and Phase 1 is one-shot per session.\n\n' +
+      '**If these commits belong to this session:**\n' +
+      `1. Call \`record_commit\` for each (\`record_commit\` works between Phase 1 and Phase 2 — Decision 048).\n` +
+      '2. Add the hashes to `session_data.sessionCommits` before calling Phase 2 — the auto-record loop ' +
+      'will then attach them to the session file.\n\n' +
+      '**If these commits do NOT belong to this session:** ignore them and proceed to finalize as normal.\n\n';
+  }
 
   let repoDetectionMessage = '';
   if (detectedRepoInfo) {
@@ -641,6 +704,8 @@ export async function runPhase1Analysis(
           .map(d => ({ path: d.path, title: d.title, relevance: d.relevance })),
       };
     }),
+    candidate_unrecorded_commits:
+      candidateUnrecordedCommits.length > 0 ? candidateUnrecordedCommits : undefined,
     topics_for_review: commitRelatedTopics.map(t => ({
       path: t.path,
       title: t.title,
@@ -2500,6 +2565,13 @@ export interface CloseSessionPhase1Structured {
   } | null;
   commit_count: number;
   commits: CloseSessionStructuredCommit[];
+  /**
+   * Diagnostic: commit hashes on HEAD from the past 24h that have no vault
+   * commit page yet. Surfaced ONLY when commit_count is 0 — they're
+   * candidates the AI should verify and either attach via record_commit
+   * (and add to session_data.sessionCommits) or explicitly skip.
+   */
+  candidate_unrecorded_commits?: string[];
   topics_for_review: CloseSessionStructuredReviewTopic[];
   semantic_topics_for_review: CloseSessionStructuredReviewTopic[];
   session_data: SessionData;
