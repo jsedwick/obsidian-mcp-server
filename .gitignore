@@ -28,3 +28,7 @@ coverage/
 # TypeScript
 *.tsbuildinfo
 certs/
+
+# Local config — copy from .obsidian-mcp.json.example and edit. Never commit real vault paths.
+.obsidian-mcp.json
+
