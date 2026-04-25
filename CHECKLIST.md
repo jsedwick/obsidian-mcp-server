@@ -4,7 +4,7 @@ Use this checklist to track your progress implementing the Obsidian MCP Server.
 
 ## ✅ Pre-Installation
 
-- [ ] Node.js 18+ installed (`node --version`)
+- [ ] Node.js 20+ installed (`node --version`)
 - [ ] Claude Code installed and working
 - [ ] Chosen location for Obsidian vault
 - [ ] (Optional) Obsidian app installed for viewing

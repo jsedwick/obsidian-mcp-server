@@ -150,10 +150,10 @@ check_prerequisites() {
         NODE_VERSION=$(node --version)
         print_success "Node.js found: $NODE_VERSION"
 
-        # Verify version is 18+
+        # Verify version is 20+
         MAJOR_VERSION=$(echo "$NODE_VERSION" | sed 's/v//' | cut -d. -f1)
-        if [ "$MAJOR_VERSION" -lt 18 ]; then
-            print_error "Node.js version 18+ required (found $NODE_VERSION)"
+        if [ "$MAJOR_VERSION" -lt 20 ]; then
+            print_error "Node.js version 20+ required (found $NODE_VERSION)"
             print_info "Install with: brew install node"
             ((ERRORS++))
         fi
