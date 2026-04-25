@@ -172,7 +172,10 @@ async function findCorrectLinkPath(linkPath: string, vaultPath: string): Promise
     const nestedDecisionPath = path.join(decisionsDir, `${linkPath}.md`);
     try {
       await fs.access(nestedDecisionPath);
-      return linkPath; // Return full nested path for wiki-style links
+      // Return with the decisions/ prefix so the rewritten link resolves correctly.
+      // (Prior behavior returned linkPath unchanged, which left links like
+      // [[vault/018-decision-slug]] still broken after a "fix" pass.)
+      return linkPath.startsWith('decisions/') ? linkPath : `decisions/${linkPath}`;
     } catch {
       // Continue checking
     }
@@ -205,7 +208,7 @@ async function findCorrectLinkPath(linkPath: string, vaultPath: string): Promise
         const nestedPath = path.join(decisionsDir, subdir, `${filename}.md`);
         try {
           await fs.access(nestedPath);
-          return `${subdir}/${filename}`;
+          return `decisions/${subdir}/${filename}`;
         } catch {
           // Continue checking other subdirectories
         }
@@ -1547,9 +1550,10 @@ ${content}`;
 
         // Check if link has directory prefix that violates wiki-link standards
         // Per Decision 002, internal links should not include directory prefixes
-        // Note: projects/ prefix is kept because project files are not uniquely named
-        // (all project pages are "project.md", commit files may have overlapping hashes)
-        const directoryPrefixPattern = /^(sessions|topics|decisions)\//;
+        // Note: projects/ and decisions/ prefixes are kept — both have project-scoped
+        // subdirectories (projects/<slug>/project.md, decisions/<slug>/<file>.md) where
+        // the basename is not unique across projects, so the prefix is load-bearing.
+        const directoryPrefixPattern = /^(sessions|topics)\//;
         const prefixMatch = linkPath.match(directoryPrefixPattern);
 
         if (prefixMatch) {
@@ -1615,11 +1619,13 @@ ${content}`;
       // Second pass: fix all broken links
       if (linksToFix.length > 0) {
         for (const link of linksToFix) {
-          // Replace the link in content
-          // Handle both [[link]] and [[link|display]] formats
-          const escapedOriginal = link.original.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-          const linkPattern = new RegExp(`\\[\\[${escapedOriginal}(?:\\|[^\\]]+)?\\]\\]`, 'g');
-          content = content.replace(linkPattern, `[[${link.corrected}]]`);
+          // Replace the link in content, preserving any |Title alias on the original
+          const escapedOriginal = link.original.replace(/[.*+?^${}()|[\]\\]/g, c => `\\${c}`);
+          const linkPattern = new RegExp(`\\[\\[${escapedOriginal}(\\|[^\\]]+)?\\]\\]`, 'g');
+          content = content.replace(
+            linkPattern,
+            (_m, alias) => `[[${link.corrected}${alias ?? ''}]]`
+          );
           fixes.push(
             `Fixed link in ${path.relative(context.vaultPath, file)}: [[${link.original}]] → [[${link.corrected}]]`
           );
