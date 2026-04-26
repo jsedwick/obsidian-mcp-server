@@ -4,8 +4,11 @@
  */
 
 import * as path from 'path';
-import { execSync } from 'child_process';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
 import { GitService } from '../../services/git/GitService.js';
+
+const execFileAsync = promisify(execFile);
 
 export interface AnalyzeCommitImpactArgs {
   repo_path: string;
@@ -78,30 +81,37 @@ export async function analyzeCommitImpact(
     let commitFiles: string;
 
     try {
-      // Get commit message and metadata
-      commitInfo = execSync(
-        `git -C "${args.repo_path}" show --no-patch --format="%H%n%an%n%ae%n%ad%n%s%n%b" ${args.commit_hash}`,
-        { encoding: 'utf-8', maxBuffer: 10 * 1024 * 1024 }
-      );
+      // Async git calls: previously execSync — blocking the event loop made
+      // the Promise.all parallelization in runPhase1Analysis serialize on the
+      // JS thread (commit 4cd268f's perf gain was nullified). execFile avoids
+      // shell interpretation of repo_path and commit_hash.
+      const repo = args.repo_path;
+      const hash = args.commit_hash;
 
-      // Get files changed (stat summary)
-      commitFiles = execSync(`git -C "${args.repo_path}" show --stat ${args.commit_hash}`, {
-        encoding: 'utf-8',
-        maxBuffer: 10 * 1024 * 1024,
-      });
-
-      // Get diff (full or summary based on flag)
-      if (args.include_diff) {
-        commitDiff = execSync(`git -C "${args.repo_path}" show ${args.commit_hash}`, {
-          encoding: 'utf-8',
-          maxBuffer: 50 * 1024 * 1024,
-        });
-      } else {
-        commitDiff = execSync(
-          `git -C "${args.repo_path}" diff ${args.commit_hash}^ ${args.commit_hash} --stat`,
+      const [info, files, diff] = await Promise.all([
+        execFileAsync(
+          'git',
+          ['-C', repo, 'show', '--no-patch', '--format=%H%n%an%n%ae%n%ad%n%s%n%b', hash],
           { encoding: 'utf-8', maxBuffer: 10 * 1024 * 1024 }
-        );
-      }
+        ),
+        execFileAsync('git', ['-C', repo, 'show', '--stat', hash], {
+          encoding: 'utf-8',
+          maxBuffer: 10 * 1024 * 1024,
+        }),
+        args.include_diff
+          ? execFileAsync('git', ['-C', repo, 'show', hash], {
+              encoding: 'utf-8',
+              maxBuffer: 50 * 1024 * 1024,
+            })
+          : execFileAsync('git', ['-C', repo, 'diff', `${hash}^`, hash, '--stat'], {
+              encoding: 'utf-8',
+              maxBuffer: 10 * 1024 * 1024,
+            }),
+      ]);
+
+      commitInfo = info.stdout;
+      commitFiles = files.stdout;
+      commitDiff = diff.stdout;
     } catch (gitError: any) {
       return {
         content: [

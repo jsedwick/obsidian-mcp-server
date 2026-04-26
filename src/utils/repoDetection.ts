@@ -222,7 +222,17 @@ export async function findUnrecordedRecentCommits(opts: {
       // commits dir doesn't exist yet — all hashes are unrecorded
     }
 
-    return hashes.filter(h => !recorded.has(h.substring(0, 7)));
+    // Recorded filenames use git's %h (variable length per core.abbrev);
+    // a full hash is recorded iff some recorded prefix matches it. Skip
+    // sub-4-char entries so a stray `.md` filename can't make every commit
+    // look recorded.
+    return hashes.filter(h => {
+      for (const prefix of recorded) {
+        if (prefix.length < 4) continue;
+        if (h.startsWith(prefix)) return false;
+      }
+      return true;
+    });
   } catch {
     return [];
   }

@@ -6,14 +6,35 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { analyzeCommitImpact } from '../../../../src/tools/git/analyzeCommitImpact.js';
 import type { GitService } from '../../../../src/services/git/GitService.js';
 
-// Mock child_process.execSync since analyzeCommitImpact uses it directly
-const { mockExecSync } = vi.hoisted(() => ({
-  mockExecSync: vi.fn(),
+// analyzeCommitImpact uses promisify(execFile). The mock invokes the
+// node-style callback with `{ stdout, stderr }` as the value so the
+// promisified return resolves to that shape.
+const { mockExecFile } = vi.hoisted(() => ({
+  mockExecFile: vi.fn(),
 }));
 
 vi.mock('child_process', () => ({
-  execSync: mockExecSync,
+  execFile: mockExecFile,
 }));
+
+type ExecFileCallback = (err: Error | null, value?: { stdout: string; stderr: string }) => void;
+
+/**
+ * Wires `mockExecFile` so a per-test resolver decides what stdout to return
+ * for a given args array. Callback shape mirrors what promisify expects.
+ */
+function setExecFileResolver(resolver: (args: string[]) => string | Error) {
+  mockExecFile.mockImplementation(
+    (_file: string, args: string[], _options: unknown, callback: ExecFileCallback) => {
+      const result = resolver(args);
+      if (result instanceof Error) {
+        callback(result);
+      } else {
+        callback(null, { stdout: result, stderr: '' });
+      }
+    }
+  );
+}
 
 describe('analyzeCommitImpact', () => {
   let context: {
@@ -39,14 +60,14 @@ describe('analyzeCommitImpact', () => {
   });
 
   it('should analyze commit and return impact summary', async () => {
-    mockExecSync.mockImplementation((cmd: string) => {
-      if (cmd.includes('--no-patch --format=')) {
+    setExecFileResolver(args => {
+      if (args.includes('--no-patch')) {
         return 'abc123def456\nTest Author\ntest@example.com\n2026-02-16\nFix search algorithm\n\n';
       }
-      if (cmd.includes('--stat') && !cmd.includes('diff')) {
+      if (args.includes('--stat') && !args.includes('diff')) {
         return ' src/search.ts | 10 ++++------\n 1 file changed, 4 insertions(+), 6 deletions(-)\n';
       }
-      if (cmd.includes('diff')) {
+      if (args.includes('diff')) {
         return ' src/search.ts | 10 ++++------\n 1 file changed, 4 insertions(+), 6 deletions(-)\n';
       }
       return '';
@@ -75,9 +96,7 @@ describe('analyzeCommitImpact', () => {
   });
 
   it('should handle git command failure gracefully', async () => {
-    mockExecSync.mockImplementation(() => {
-      throw new Error('bad object abc123');
-    });
+    setExecFileResolver(() => new Error('bad object abc123'));
 
     const result = await analyzeCommitImpact(
       { repo_path: '/tmp/test-repo', commit_hash: 'bad-hash' },
@@ -88,11 +107,11 @@ describe('analyzeCommitImpact', () => {
   });
 
   it('should search vault for related topics and include in result', async () => {
-    mockExecSync.mockImplementation((cmd: string) => {
-      if (cmd.includes('--no-patch --format=')) {
+    setExecFileResolver(args => {
+      if (args.includes('--no-patch')) {
         return 'abc123\nAuthor\nemail\n2026-02-16\nUpdate auth module\n\n';
       }
-      if (cmd.includes('--stat')) {
+      if (args.includes('--stat')) {
         return ' src/auth.ts | 5 ++---\n 1 file changed\n';
       }
       return ' src/auth.ts | 5 ++---\n';
@@ -117,11 +136,11 @@ describe('analyzeCommitImpact', () => {
   });
 
   it('should return structured relatedTopics when topics match', async () => {
-    mockExecSync.mockImplementation((cmd: string) => {
-      if (cmd.includes('--no-patch --format=')) {
+    setExecFileResolver(args => {
+      if (args.includes('--no-patch')) {
         return 'abc123\nAuthor\nemail\n2026-02-16\nUpdate search\n\n';
       }
-      if (cmd.includes('--stat')) {
+      if (args.includes('--stat')) {
         return ' src/search.ts | 3 ++-\n';
       }
       return ' src/search.ts | 3 ++-\n';

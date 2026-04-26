@@ -202,6 +202,20 @@ async function inferWorkingDirectoriesFromFileAccess(
   return Array.from(repoPaths);
 }
 
+/**
+ * True when `fullHash` is recorded under any prefix in `recorded`. Required
+ * because git's %h length is variable (core.abbrev), so the recorded set
+ * may contain 7-, 9-, 12-char prefixes interchangeably. Empty/short prefixes
+ * are ignored so a stray `.md` filename can't make every commit look recorded.
+ */
+function isRecordedHash(fullHash: string, recorded: Set<string>): boolean {
+  for (const prefix of recorded) {
+    if (prefix.length < 4) continue;
+    if (fullHash.startsWith(prefix)) return true;
+  }
+  return false;
+}
+
 export async function findUnrecordedCommits(
   repoPath: string,
   repoSlug: string,
@@ -240,7 +254,11 @@ export async function findUnrecordedCommits(
       return [];
     }
 
-    // Filter out commits that are already recorded in vault
+    // Filter out commits that are already recorded in vault. Filenames use
+    // git's %h short hash, whose length depends on core.abbrev (default 7,
+    // auto-extended in larger repos). A full SHA is "recorded" iff some
+    // recorded short hash is its prefix — comparing fixed substring(0, 7)
+    // against variable-length filenames silently misses non-7 abbrevs.
     const recordedCommits = new Set<string>();
     const commitsDir = path.join(vaultPath, 'projects', repoSlug, 'commits');
 
@@ -248,20 +266,14 @@ export async function findUnrecordedCommits(
       const files = await fs.readdir(commitsDir);
       for (const file of files) {
         if (file.endsWith('.md')) {
-          // Filename is the short hash
-          const shortHash = file.replace('.md', '');
-          recordedCommits.add(shortHash);
+          recordedCommits.add(file.replace('.md', ''));
         }
       }
     } catch {
       // commits directory doesn't exist yet, that's fine
     }
 
-    // Filter to only unrecorded commits
-    const unrecordedCommits = commitHashes.filter(hash => {
-      const shortHash = hash.substring(0, 7);
-      return !recordedCommits.has(shortHash);
-    });
+    const unrecordedCommits = commitHashes.filter(hash => !isRecordedHash(hash, recordedCommits));
 
     return unrecordedCommits;
   } catch (_error) {
@@ -1677,6 +1689,27 @@ function resolveRelevantTopics(
 }
 
 /**
+ * Extract wiki-link targets (the part before `|` or `]]`) from arbitrary
+ * markdown. Used to dedup against an existing Related-X section before
+ * appending newly-discovered links.
+ *
+ * The template seeds `## Related Topics` with `[[topics/slug|...]]` while the
+ * Phase-2 helpers render new links as `[[slug|...]]`. The set therefore
+ * contains both raw targets AND their basenames, so callers can dedup with
+ * whichever form they have on hand.
+ */
+function extractWikiLinkTargets(markdown: string): Set<string> {
+  const targets = new Set<string>();
+  for (const m of markdown.matchAll(/\[\[([^\]|]+)/g)) {
+    const raw = m[1].trim();
+    targets.add(raw);
+    const base = path.basename(raw);
+    if (base !== raw) targets.add(base);
+  }
+  return targets;
+}
+
+/**
  * Add discovered related topics to session file content
  * Finds or creates "## Related Topics" section and adds wiki links
  */
@@ -1688,38 +1721,37 @@ function addRelatedTopicsToSession(
     return sessionContent;
   }
 
-  // Create wiki links for discovered topics
-  // Extract slug from path (basename without .md extension) for proper wiki link format
-  const topicLinks = topics
-    .map(t => {
-      const slug = path.basename(t.path, '.md');
-      return `- [[${slug}|${t.title}]]`;
-    })
-    .join('\n');
-
-  // Check if "## Related Topics" section exists
   const relatedTopicsRegex = /## Related Topics\n+(.+?)(?=\n##|$)/s;
   const match = sessionContent.match(relatedTopicsRegex);
 
+  const renderLink = (t: { path: string; title: string }): string => {
+    const slug = path.basename(t.path, '.md');
+    return `- [[${slug}|${t.title}]]`;
+  };
+
   if (match) {
-    // Section exists - check if it has content
     const existingContent = match[1].trim();
 
     if (existingContent === '_None found_' || existingContent === '') {
-      // Replace empty section with discovered topics
+      const topicLinks = topics.map(renderLink).join('\n');
       return sessionContent.replace(relatedTopicsRegex, `## Related Topics\n${topicLinks}\n`);
-    } else {
-      // Append to existing content (avoid duplicates)
-      const updatedContent = `${existingContent}\n${topicLinks}`;
-      return sessionContent.replace(relatedTopicsRegex, `## Related Topics\n${updatedContent}\n`);
     }
-  } else {
-    // Section doesn't exist - should not happen with template, but handle gracefully
-    return sessionContent.replace(
-      /## Related Projects/,
-      `## Related Topics\n${topicLinks}\n\n## Related Projects`
-    );
+
+    const existingTargets = extractWikiLinkTargets(existingContent);
+    const newLinks = topics
+      .filter(t => !existingTargets.has(path.basename(t.path, '.md')))
+      .map(renderLink);
+    if (newLinks.length === 0) return sessionContent;
+
+    const updatedContent = `${existingContent}\n${newLinks.join('\n')}`;
+    return sessionContent.replace(relatedTopicsRegex, `## Related Topics\n${updatedContent}\n`);
   }
+  // Section doesn't exist - should not happen with template, but handle gracefully
+  const topicLinks = topics.map(renderLink).join('\n');
+  return sessionContent.replace(
+    /## Related Projects/,
+    `## Related Topics\n${topicLinks}\n\n## Related Projects`
+  );
 }
 
 /**
@@ -1734,44 +1766,43 @@ function addRelatedDecisionsToSession(
     return sessionContent;
   }
 
-  // Create wiki links for discovered decisions
-  // Format: [[decisions/project-slug/###-decision-name|Title]]
-  const decisionLinks = decisions
-    .map(d => {
-      const fileName = path.basename(d.path, '.md');
-      return `- [[decisions/${d.projectSlug}/${fileName}|${d.title}]]`;
-    })
-    .join('\n');
-
-  // Check if "## Related Decisions" section exists
   const relatedDecisionsRegex = /## Related Decisions\n+(.+?)(?=\n##|$)/s;
   const match = sessionContent.match(relatedDecisionsRegex);
 
+  const renderLink = (d: { path: string; projectSlug: string; title: string }): string => {
+    const fileName = path.basename(d.path, '.md');
+    return `- [[decisions/${d.projectSlug}/${fileName}|${d.title}]]`;
+  };
+  const targetOf = (d: { path: string; projectSlug: string }): string =>
+    `decisions/${d.projectSlug}/${path.basename(d.path, '.md')}`;
+
   if (match) {
-    // Section exists - check if it has content
     const existingContent = match[1].trim();
 
     if (existingContent === '_None found_' || existingContent === '') {
-      // Replace empty section with discovered decisions
+      const decisionLinks = decisions.map(renderLink).join('\n');
       return sessionContent.replace(
         relatedDecisionsRegex,
         `## Related Decisions\n${decisionLinks}\n`
       );
-    } else {
-      // Append to existing content (avoid duplicates)
-      const updatedContent = `${existingContent}\n${decisionLinks}`;
-      return sessionContent.replace(
-        relatedDecisionsRegex,
-        `## Related Decisions\n${updatedContent}\n`
-      );
     }
-  } else {
-    // Section doesn't exist - should not happen with template, but handle gracefully
+
+    const existingTargets = extractWikiLinkTargets(existingContent);
+    const newLinks = decisions.filter(d => !existingTargets.has(targetOf(d))).map(renderLink);
+    if (newLinks.length === 0) return sessionContent;
+
+    const updatedContent = `${existingContent}\n${newLinks.join('\n')}`;
     return sessionContent.replace(
-      /## Related Git Commits/,
-      `## Related Decisions\n${decisionLinks}\n\n## Related Git Commits`
+      relatedDecisionsRegex,
+      `## Related Decisions\n${updatedContent}\n`
     );
   }
+  // Section doesn't exist - should not happen with template, but handle gracefully
+  const decisionLinks = decisions.map(renderLink).join('\n');
+  return sessionContent.replace(
+    /## Related Git Commits/,
+    `## Related Decisions\n${decisionLinks}\n\n## Related Git Commits`
+  );
 }
 
 /**
@@ -1952,9 +1983,10 @@ function addAccessedFilesLinksToSession(
 
   // Add decision links to "## Related Decisions" section
   if (decisionFiles.length > 0) {
-    const decisionLinks = decisionFiles
-      .map(d => `- [[decisions/${d.projectSlug}/${d.slug}|${d.title}]]`)
-      .join('\n');
+    const renderLink = (d: { projectSlug: string; slug: string; title: string }): string =>
+      `- [[decisions/${d.projectSlug}/${d.slug}|${d.title}]]`;
+    const targetOf = (d: { projectSlug: string; slug: string }): string =>
+      `decisions/${d.projectSlug}/${d.slug}`;
 
     const relatedDecisionsRegex = /## Related Decisions\n+(.+?)(?=\n##|$)/s;
     const match = updatedContent.match(relatedDecisionsRegex);
@@ -1962,15 +1994,22 @@ function addAccessedFilesLinksToSession(
     if (match) {
       const existingContent = match[1].trim();
       if (existingContent === '_None found_' || existingContent === '') {
+        const decisionLinks = decisionFiles.map(renderLink).join('\n');
         updatedContent = updatedContent.replace(
           relatedDecisionsRegex,
           `## Related Decisions\n${decisionLinks}\n`
         );
       } else {
-        updatedContent = updatedContent.replace(
-          relatedDecisionsRegex,
-          `## Related Decisions\n${existingContent}\n${decisionLinks}\n`
-        );
+        const existingTargets = extractWikiLinkTargets(existingContent);
+        const newLinks = decisionFiles
+          .filter(d => !existingTargets.has(targetOf(d)))
+          .map(renderLink);
+        if (newLinks.length > 0) {
+          updatedContent = updatedContent.replace(
+            relatedDecisionsRegex,
+            `## Related Decisions\n${existingContent}\n${newLinks.join('\n')}\n`
+          );
+        }
       }
     }
   }
@@ -2187,14 +2226,20 @@ export async function runPhase2Finalization(
   // Decision 052 FIX: Update handoff section with AI-generated handoff from Phase 2 args
   // Phase 1 builds sessionContent with empty handoff; Phase 2 args contains the AI-generated handoff
   if (_args.handoff && _args.handoff.trim()) {
-    // Replace the ## Handoff section with the new handoff from Phase 2
-    // Matches everything between "## Handoff" and "## Files Accessed" (the known next section)
-    // Non-greedy with specific terminator avoids truncation if handoff contains ## headers
-    const handoffPattern = /## Handoff\n\n[\s\S]*?(?=\n\n## Files Accessed)/;
+    // Match between "## Handoff" and "## Files Accessed". Lookahead tolerates
+    // single-newline separation (any whitespace lost during template/custodian
+    // round-trips) so the replacement isn't silently skipped.
+    const handoffPattern = /## Handoff\n+[\s\S]*?(?=\n+## Files Accessed)/;
     if (handoffPattern.test(updatedContent)) {
       updatedContent = updatedContent.replace(
         handoffPattern,
         `## Handoff\n\n${_args.handoff.trim()}`
+      );
+    } else {
+      logger.warn(
+        'Handoff replacement no-op: ## Handoff/## Files Accessed sections not found ' +
+          'in expected layout. Phase 1 placeholder will remain in session file.',
+        { sessionFile: data.sessionFile }
       );
     }
   }

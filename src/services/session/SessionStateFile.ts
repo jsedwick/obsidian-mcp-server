@@ -74,7 +74,11 @@ export class SessionStateFile {
   }
 
   /**
-   * Initialize a fresh session recovery file (called on /mb)
+   * Initialize a fresh session recovery file (called on /mb).
+   * Routed through withWriteLock so concurrent fire-and-forget calls in
+   * clearSessionState (deleteRecoveryFile then initialize) execute in submit
+   * order — otherwise delete's trailing `this.filePath = null` could clobber
+   * the new path initialize just set.
    *
    * @param sessionStart - Session start time
    */
@@ -82,33 +86,31 @@ export class SessionStateFile {
     const timestamp = formatFilesafeTimestamp(sessionStart);
     const now = formatLocalDateTime(sessionStart);
 
-    try {
-      // Ensure recovery directory exists
-      await fs.mkdir(this.recoveryDir, { recursive: true });
+    await this.withWriteLock(async () => {
+      try {
+        await fs.mkdir(this.recoveryDir, { recursive: true });
+        this.filePath = path.join(this.recoveryDir, `session-${timestamp}.json`);
 
-      // Set file path for this session
-      this.filePath = path.join(this.recoveryDir, `session-${timestamp}.json`);
+        const state: RestoredSessionState = {
+          schemaVersion: SCHEMA_VERSION,
+          sessionStart: now,
+          lastUpdated: now,
+          phase1Completed: false,
+          filesAccessed: [],
+          phase1SessionData: null,
+        };
 
-      const state: RestoredSessionState = {
-        schemaVersion: SCHEMA_VERSION,
-        sessionStart: now,
-        lastUpdated: now,
-        phase1Completed: false,
-        filesAccessed: [],
-        phase1SessionData: null,
-      };
+        await this.writeState(state);
+        logger.info('Session recovery file initialized', {
+          filePath: this.filePath,
+          sessionStart: now,
+        });
+      } catch (error) {
+        logger.warn('Failed to initialize session recovery file', { error });
+      }
+    });
 
-      await this.writeState(state);
-      logger.info('Session recovery file initialized', {
-        filePath: this.filePath,
-        sessionStart: now,
-      });
-    } catch (error) {
-      // Log but don't fail - session state persistence is an optimization
-      logger.warn('Failed to initialize session recovery file', { error });
-    }
-
-    // Fire-and-forget cleanup tasks
+    // Cleanup tasks run outside the lock — they don't touch this.filePath.
     this.cleanupStaleFiles().catch(err => {
       logger.debug('Failed to clean up stale recovery files', { error: err });
     });
@@ -293,23 +295,33 @@ export class SessionStateFile {
   }
 
   /**
-   * Delete this session's recovery file (called on successful session close)
+   * Delete this session's recovery file (called on successful session close).
+   * Routed through withWriteLock so concurrent calls (delete-then-initialize
+   * in clearSessionState) cannot have delete's trailing `this.filePath = null`
+   * race against initialize's `this.filePath = newPath`.
    */
   async deleteRecoveryFile(): Promise<void> {
-    if (!this.filePath) {
-      return;
-    }
+    await this.withWriteLock(async () => {
+      const target = this.filePath;
+      if (!target) return;
 
-    try {
-      await fs.unlink(this.filePath);
-      logger.info('Recovery file deleted', { filePath: this.filePath });
-      this.filePath = null;
-    } catch (error) {
-      const err = error as { code?: string };
-      if (err.code !== 'ENOENT') {
-        logger.warn('Failed to delete recovery file', { error, filePath: this.filePath });
+      try {
+        await fs.unlink(target);
+        logger.info('Recovery file deleted', { filePath: target });
+      } catch (error) {
+        const err = error as { code?: string };
+        if (err.code !== 'ENOENT') {
+          logger.warn('Failed to delete recovery file', { error, filePath: target });
+        }
       }
-    }
+
+      // Only clear filePath if it still points at the file we just deleted —
+      // a queued-after-us initialize() may have already promoted it to a new
+      // path (and we don't want to wipe that out).
+      if (this.filePath === target) {
+        this.filePath = null;
+      }
+    });
   }
 
   /**
