@@ -4273,20 +4273,11 @@ Check the sessions/ directory for recent conversations.
     const portArg = args.find(arg => arg.startsWith('--port='));
     const port = portArg ? parseInt(portArg.split('=')[1], 10) : useHttps ? 3443 : 3000;
 
-    // Pre-compute embeddings if enabled
-    if (this.embeddingConfig.enabled && this.embeddingConfig.precomputeEmbeddings) {
-      logger.info('Pre-computing embeddings on startup...');
-      try {
-        await this.precomputeAllEmbeddings();
-        logger.info('Embedding pre-computation complete');
-      } catch (error) {
-        logger.error(
-          'Embedding pre-computation failed',
-          error instanceof Error ? error : new Error(String(error))
-        );
-        // Continue anyway - searches will still work with on-demand embedding
-      }
-    }
+    // Pre-compute embeddings runs in the background after the transport is ready
+    // (kicked off below). Blocking startup on it caused 5+ minute MCP cold-boot
+    // when the cache was stale, during which Claude Code reported "still
+    // connecting" and ToolSearch returned no tools — breaking fork-down /close.
+    // Searches during hydration use on-demand embedding for any uncached file.
 
     if (useHttp || useHttps) {
       // HTTP/HTTPS mode with Streamable HTTP transport
@@ -4504,6 +4495,20 @@ Check the sessions/ directory for recent conversations.
       const transport = new StdioServerTransport();
       await this.server.connect(transport);
       logger.info('Obsidian MCP Server running on stdio');
+    }
+
+    // Kick off background embeddings hydration after the transport is ready.
+    // Errors are logged; on-demand embedding handles any cache miss meanwhile.
+    if (this.embeddingConfig.enabled && this.embeddingConfig.precomputeEmbeddings) {
+      logger.info('Pre-computing embeddings in background...');
+      this.precomputeAllEmbeddings()
+        .then(() => logger.info('Embedding pre-computation complete'))
+        .catch(error =>
+          logger.error(
+            'Embedding pre-computation failed',
+            error instanceof Error ? error : new Error(String(error))
+          )
+        );
     }
   }
 }
