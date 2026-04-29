@@ -95,6 +95,39 @@ describe('SessionStateFile', () => {
     });
   });
 
+  describe('eager flush durability', () => {
+    it('should persist file accesses without waiting on a debounce timer', async () => {
+      // Regression: prior 500ms-debounce design lost entries on fork-restart
+      // because the timer kept getting reset by continuous activity. Eager
+      // flush guarantees on-disk durability before the next async tool call.
+      const ssf = new SessionStateFile(vaultPath);
+      await ssf.initialize(new Date('2025-01-15T10:00:00Z'));
+
+      ssf.trackFileAccess({
+        path: '/vault/topics/eager-1.md',
+        action: 'read',
+        timestamp: '2025-01-15T10:01:00Z',
+      });
+      ssf.trackFileAccess({
+        path: '/vault/topics/eager-2.md',
+        action: 'edit',
+        timestamp: '2025-01-15T10:01:00Z',
+      });
+
+      // Drain the writeQueue without using a wall-clock wait — relying on
+      // setTimeout would just retest the bug that was fixed.
+      await (ssf as unknown as { writeQueue: Promise<unknown> }).writeQueue;
+
+      const restored = await ssf.restore();
+      expect(restored).not.toBeNull();
+      expect(restored!.filesAccessed).toHaveLength(2);
+      expect(restored!.filesAccessed.map(f => f.path)).toEqual([
+        '/vault/topics/eager-1.md',
+        '/vault/topics/eager-2.md',
+      ]);
+    });
+  });
+
   describe('missing recovery directory', () => {
     it('should return null when recovery directory does not exist', async () => {
       const ssf = new SessionStateFile(vaultPath);
@@ -226,10 +259,9 @@ describe('SessionStateFile', () => {
       const phase1Data = { sessionId: 'race-test', commits: ['abc123'] };
 
       // Fire storePhase1Data and a burst of trackFileAccess calls concurrently.
-      // The trackFileAccess calls schedule a debounced flushFileAccesses that
-      // races with storePhase1Data's read-modify-write on the recovery file.
-      // Without the write mutex, the debounced flush can read the pre-Phase-1
-      // state, append, and write back, clobbering phase1Completed/phase1SessionData.
+      // Each trackFileAccess kicks off flushFileAccesses immediately; without
+      // the write mutex, those flushes can read the pre-Phase-1 state, append,
+      // and write back, clobbering phase1Completed/phase1SessionData.
       const phase1Promise = ssf.storePhase1Data(phase1Data);
       for (let i = 0; i < 20; i++) {
         ssf.trackFileAccess({
@@ -240,8 +272,8 @@ describe('SessionStateFile', () => {
       }
 
       await phase1Promise;
-      // Wait for the debounced flush (500ms) to fire and serialize through the lock.
-      await new Promise(resolve => setTimeout(resolve, 700));
+      // Wait briefly for any in-flight flushes to drain through the writeQueue.
+      await new Promise(resolve => setTimeout(resolve, 100));
 
       const restored = await ssf.restore();
       expect(restored).not.toBeNull();

@@ -350,6 +350,10 @@ class ObsidianMCPServer {
   // Limit file access tracking to prevent unbounded memory growth
   // 5000 entries is sufficient for session tracking while keeping memory bounded
   private static readonly MAX_FILES_ACCESSED = 5000;
+  // A rehydrated recovery file older than this is treated as abandoned —
+  // covers a normal workday with breaks, but excludes "yesterday's session"
+  // which the user almost always wants to start fresh after.
+  private static readonly ACTIVE_SESSION_THRESHOLD_MS = 4 * 60 * 60 * 1000;
   private filesAccessed: Array<{
     path: string;
     action: 'read' | 'edit' | 'create';
@@ -361,6 +365,10 @@ class ObsidianMCPServer {
   private projectsCreated: Array<{ slug: string; name: string; file: string }> = [];
   // Explicit session start time (set when get_memory_base is called)
   private sessionStartTime: Date | null = null;
+  // True when startup rehydrated an in-flight session from disk (Decision 062).
+  // Consumed (one-shot) by the next get_memory_base call so /vault:work post
+  // fork-restart preserves the rehydrated state instead of wiping it.
+  private sessionRestoredAtStartup: boolean = false;
   // Track if Phase 1 analysis has completed to prevent loop bug
   private phase1Completed: boolean = false;
   // Store Phase 1 session data for context truncation recovery (Decision 048)
@@ -941,17 +949,34 @@ class ObsidianMCPServer {
                 searchVault: this.searchVaultWrapper.bind(this),
               });
 
-            case 'get_memory_base':
-              // Clear session state when memory base is loaded (signals new session start)
-              // This ensures filesAccessed array is fresh for Phase 1 commit detection
-              // Set explicit session start time for two-phase /close workflow
-              this.sessionStartTime = new Date();
-              this.clearSessionState(this.sessionStartTime);
+            case 'get_memory_base': {
+              // Normally /mb signals a new session start: clear state and
+              // initialize a fresh recovery file. After a fork-restart that
+              // rehydrated an in-flight session at startup (Decision 062), the
+              // first /mb is a continuation, not a new session — preserve the
+              // restored state so it doesn't get clobbered. Flag is one-shot.
+              let sessionStart: Date;
+              if (this.sessionRestoredAtStartup) {
+                this.sessionRestoredAtStartup = false;
+                sessionStart = this.sessionStartTime ?? new Date();
+                logger.info('Preserved restored session state across get_memory_base', {
+                  sessionStartTime: sessionStart,
+                  filesAccessedCount: this.filesAccessed.length,
+                  phase1Completed: this.phase1Completed,
+                });
+              } else {
+                sessionStart = new Date();
+                // clearSessionState() nulls this.sessionStartTime; re-set it
+                // afterward so getMemoryBase receives the actual session start.
+                this.clearSessionState(sessionStart);
+                this.sessionStartTime = sessionStart;
+              }
               return await tools.getMemoryBase(
                 securedArgs as tools.GetMemoryBaseArgs,
                 this.config.primaryVault.path,
-                { sessionStartTime: this.sessionStartTime }
+                { sessionStartTime: sessionStart }
               );
+            }
 
             case 'append_to_accumulator':
               return await tools.appendToAccumulator(securedArgs as tools.AppendToAccumulatorArgs, {
@@ -4279,8 +4304,30 @@ Check the sessions/ directory for recent conversations.
     // fallback. Without this, Phase-1 freezes a near-empty filesAccessed list
     // into the session record after a mid-session restart. restore() returns
     // null when no recovery file exists (clean session start).
+    //
+    // If the rehydrated file is recent (within ACTIVE_SESSION_THRESHOLD_MS),
+    // mark the session for preservation across the next get_memory_base call —
+    // otherwise /vault:work post-fork-restart would clear the just-rehydrated
+    // state. If the file is older than that threshold, treat it as an
+    // abandoned session and clear it so the next /mb starts fresh.
     try {
-      await this.restoreSessionStateFromFile();
+      const restored = await this.restoreSessionStateFromFile();
+      if (restored) {
+        const ageMs = Date.now() - new Date(restored.lastUpdated).getTime();
+        if (ageMs <= ObsidianMCPServer.ACTIVE_SESSION_THRESHOLD_MS) {
+          this.sessionRestoredAtStartup = true;
+          logger.info('In-flight session detected; preserving across first get_memory_base', {
+            ageMs,
+            filesAccessedCount: restored.filesAccessed.length,
+            phase1Completed: restored.phase1Completed,
+          });
+        } else {
+          logger.info('Stale recovery file rehydrated; clearing for fresh-session start', {
+            ageMs,
+          });
+          this.clearSessionState();
+        }
+      }
     } catch (error) {
       logger.warn('Startup session-state restore failed; continuing with empty state', {
         error: error instanceof Error ? error.message : String(error),

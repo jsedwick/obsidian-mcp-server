@@ -35,9 +35,6 @@ const RECOVERY_DIR = '.obsidian-mcp/recovery';
 /** Legacy filename to clean up */
 const LEGACY_FILENAME = 'session-state.md';
 
-/** Debounce interval for file access writes (ms) */
-const DEBOUNCE_INTERVAL = 500;
-
 /** Stale file threshold (24 hours) */
 const STALE_THRESHOLD_MS = 24 * 60 * 60 * 1000;
 
@@ -61,10 +58,9 @@ export class SessionStateFile {
   private vaultPath: string;
   private recoveryDir: string;
   private filePath: string | null = null;
-  private debounceTimer: ReturnType<typeof globalThis.setTimeout> | null = null;
   private pendingFileAccesses: FileAccess[] = [];
   // Serializes read-modify-write on the recovery file so concurrent paths
-  // (storePhase1Data + debounced flushFileAccesses) cannot clobber each other.
+  // (storePhase1Data + flushFileAccesses) cannot clobber each other.
   private writeQueue: Promise<unknown> = Promise.resolve();
 
   constructor(vaultPath: string) {
@@ -120,7 +116,11 @@ export class SessionStateFile {
   }
 
   /**
-   * Track a file access (debounced write)
+   * Track a file access. Flush is kicked off immediately; the writeQueue
+   * serializes concurrent flushes, and synchronous bursts coalesce because
+   * flushFileAccesses early-returns once pendingFileAccesses is drained.
+   * Eager flush guarantees durability before the next async tool call —
+   * fork-restart can no longer drop entries that lived only in volatile memory.
    *
    * @param entry - File access entry
    */
@@ -131,16 +131,7 @@ export class SessionStateFile {
     }
 
     this.pendingFileAccesses.push(entry);
-
-    // Clear existing timer
-    if (this.debounceTimer) {
-      clearTimeout(this.debounceTimer);
-    }
-
-    // Set new timer
-    this.debounceTimer = setTimeout(() => {
-      void this.flushFileAccesses();
-    }, DEBOUNCE_INTERVAL);
+    void this.flushFileAccesses();
   }
 
   /**
@@ -186,11 +177,7 @@ export class SessionStateFile {
     }
 
     try {
-      // Flush any pending file accesses first
-      if (this.debounceTimer) {
-        clearTimeout(this.debounceTimer);
-        this.debounceTimer = null;
-      }
+      // Drain any pending file accesses before writing Phase 1 data
       await this.flushFileAccesses();
 
       await this.withWriteLock(async () => {
