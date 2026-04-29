@@ -27,7 +27,7 @@ import type { FileAccess } from '../../models/Session.js';
 const logger = createLogger('SessionStateFile');
 
 /** Schema version for migration support */
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
 /** Recovery directory within .obsidian-mcp */
 const RECOVERY_DIR = '.obsidian-mcp/recovery';
@@ -39,6 +39,24 @@ const LEGACY_FILENAME = 'session-state.md';
 const STALE_THRESHOLD_MS = 24 * 60 * 60 * 1000;
 
 /**
+ * Tracked content created during a session (topics + decisions share this shape).
+ */
+export interface TrackedContent {
+  slug: string;
+  title: string;
+  file: string;
+}
+
+/**
+ * Tracked project page (uses `name` instead of `title` to match the project tool's contract).
+ */
+export interface TrackedProject {
+  slug: string;
+  name: string;
+  file: string;
+}
+
+/**
  * State that can be restored from the file
  */
 export interface RestoredSessionState {
@@ -47,6 +65,13 @@ export interface RestoredSessionState {
   lastUpdated: string;
   phase1Completed: boolean;
   filesAccessed: FileAccess[];
+  // Decision 065: tracker arrays persist across fork-restart so Phase 2's
+  // ## Topics Created / ## Decisions Made / ## Projects Created sections
+  // reflect actual mid-session work even when the runtime restarted between
+  // creation and /close.
+  topicsCreated: TrackedContent[];
+  decisionsCreated: TrackedContent[];
+  projectsCreated: TrackedProject[];
   // eslint-disable-next-line @typescript-eslint/no-redundant-type-constituents, @typescript-eslint/no-explicit-any
   phase1SessionData: any | null;
 }
@@ -59,8 +84,11 @@ export class SessionStateFile {
   private recoveryDir: string;
   private filePath: string | null = null;
   private pendingFileAccesses: FileAccess[] = [];
+  private pendingTopicsCreated: TrackedContent[] = [];
+  private pendingDecisionsCreated: TrackedContent[] = [];
+  private pendingProjectsCreated: TrackedProject[] = [];
   // Serializes read-modify-write on the recovery file so concurrent paths
-  // (storePhase1Data + flushFileAccesses) cannot clobber each other.
+  // (storePhase1Data + flush*) cannot clobber each other.
   private writeQueue: Promise<unknown> = Promise.resolve();
 
   constructor(vaultPath: string) {
@@ -93,6 +121,9 @@ export class SessionStateFile {
           lastUpdated: now,
           phase1Completed: false,
           filesAccessed: [],
+          topicsCreated: [],
+          decisionsCreated: [],
+          projectsCreated: [],
           phase1SessionData: null,
         };
 
@@ -166,6 +197,117 @@ export class SessionStateFile {
   }
 
   /**
+   * Track a topic creation. Eager-flush pattern matches trackFileAccess
+   * (Decision 063) — synchronous bursts coalesce via the early-return guard
+   * inside flushTopicsCreated, fork-restart cannot drop entries that lived
+   * only in volatile memory.
+   */
+  trackTopicCreation(item: TrackedContent): void {
+    if (!this.filePath) {
+      logger.debug('Skipping topic creation tracking - no recovery file initialized');
+      return;
+    }
+    this.pendingTopicsCreated.push(item);
+    void this.flushTopicsCreated();
+  }
+
+  /**
+   * Track a decision creation. See trackTopicCreation for the durability contract.
+   */
+  trackDecisionCreation(item: TrackedContent): void {
+    if (!this.filePath) {
+      logger.debug('Skipping decision creation tracking - no recovery file initialized');
+      return;
+    }
+    this.pendingDecisionsCreated.push(item);
+    void this.flushDecisionsCreated();
+  }
+
+  /**
+   * Track a project page creation. See trackTopicCreation for the durability contract.
+   */
+  trackProjectCreation(item: TrackedProject): void {
+    if (!this.filePath) {
+      logger.debug('Skipping project creation tracking - no recovery file initialized');
+      return;
+    }
+    this.pendingProjectsCreated.push(item);
+    void this.flushProjectsCreated();
+  }
+
+  private async flushTopicsCreated(): Promise<void> {
+    if (this.pendingTopicsCreated.length === 0 || !this.filePath) {
+      return;
+    }
+    const toFlush = [...this.pendingTopicsCreated];
+    this.pendingTopicsCreated = [];
+
+    await this.withWriteLock(async () => {
+      try {
+        const state = await this.readState();
+        if (!state) {
+          logger.warn('Failed to read recovery file for topics update');
+          return;
+        }
+        state.topicsCreated.push(...toFlush);
+        state.lastUpdated = formatLocalDateTime(new Date());
+        await this.writeState(state);
+        logger.debug('Flushed topics created to recovery file', { count: toFlush.length });
+      } catch (error) {
+        logger.warn('Failed to flush topics created', { error, count: toFlush.length });
+      }
+    });
+  }
+
+  private async flushDecisionsCreated(): Promise<void> {
+    if (this.pendingDecisionsCreated.length === 0 || !this.filePath) {
+      return;
+    }
+    const toFlush = [...this.pendingDecisionsCreated];
+    this.pendingDecisionsCreated = [];
+
+    await this.withWriteLock(async () => {
+      try {
+        const state = await this.readState();
+        if (!state) {
+          logger.warn('Failed to read recovery file for decisions update');
+          return;
+        }
+        state.decisionsCreated.push(...toFlush);
+        state.lastUpdated = formatLocalDateTime(new Date());
+        await this.writeState(state);
+        logger.debug('Flushed decisions created to recovery file', { count: toFlush.length });
+      } catch (error) {
+        logger.warn('Failed to flush decisions created', { error, count: toFlush.length });
+      }
+    });
+  }
+
+  private async flushProjectsCreated(): Promise<void> {
+    if (this.pendingProjectsCreated.length === 0 || !this.filePath) {
+      return;
+    }
+    const toFlush = [...this.pendingProjectsCreated];
+    this.pendingProjectsCreated = [];
+
+    await this.withWriteLock(async () => {
+      try {
+        const state = await this.readState();
+        if (!state) {
+          logger.warn('Failed to read recovery file for projects update');
+          return;
+        }
+        state.projectsCreated.push(...toFlush);
+        state.lastUpdated = formatLocalDateTime(new Date());
+        await this.writeState(state);
+        logger.debug('Flushed projects created to recovery file', { count: toFlush.length });
+      } catch (error) {
+        logger.warn('Failed to flush projects created', { error, count: toFlush.length });
+      }
+    });
+  }
+
+  /**
    * Store Phase 1 session data
    *
    * @param data - Complete Phase 1 session data
@@ -177,8 +319,13 @@ export class SessionStateFile {
     }
 
     try {
-      // Drain any pending file accesses before writing Phase 1 data
-      await this.flushFileAccesses();
+      // Drain any pending tracker writes before stamping Phase 1 data
+      await Promise.all([
+        this.flushFileAccesses(),
+        this.flushTopicsCreated(),
+        this.flushDecisionsCreated(),
+        this.flushProjectsCreated(),
+      ]);
 
       await this.withWriteLock(async () => {
         const state = await this.readState();
@@ -259,14 +406,18 @@ export class SessionStateFile {
           // Set filePath so subsequent operations use this file
           this.filePath = filePath;
 
+          const normalized = this.normalizeRestoredState(state);
           logger.info('Session state restored from recovery file', {
             file,
-            sessionStart: state.sessionStart,
-            filesAccessedCount: state.filesAccessed.length,
-            phase1Completed: state.phase1Completed,
+            sessionStart: normalized.sessionStart,
+            filesAccessedCount: normalized.filesAccessed.length,
+            topicsCreatedCount: normalized.topicsCreated.length,
+            decisionsCreatedCount: normalized.decisionsCreated.length,
+            projectsCreatedCount: normalized.projectsCreated.length,
+            phase1Completed: normalized.phase1Completed,
           });
 
-          return state;
+          return normalized;
         } catch (error) {
           logger.warn('Failed to parse recovery file, trying next', { file, error });
           continue;
@@ -331,11 +482,28 @@ export class SessionStateFile {
 
     try {
       const content = await fs.readFile(this.filePath, 'utf-8');
-      return JSON.parse(content) as RestoredSessionState;
+      return this.normalizeRestoredState(JSON.parse(content) as RestoredSessionState);
     } catch (error) {
       logger.warn('Failed to read recovery file', { error, filePath: this.filePath });
       return null;
     }
+  }
+
+  /**
+   * Backfill tracker arrays for v2 files (Decision 065 added them in v3).
+   * Older sessions still mid-flight when the runtime upgrades will read with
+   * undefined tracker fields; default them to [] so flush paths can push safely.
+   * Also stamps schemaVersion to current so the next writeState doesn't leave
+   * a v2-tagged file holding v3-shaped data.
+   */
+  private normalizeRestoredState(raw: RestoredSessionState): RestoredSessionState {
+    return {
+      ...raw,
+      schemaVersion: SCHEMA_VERSION,
+      topicsCreated: raw.topicsCreated ?? [],
+      decisionsCreated: raw.decisionsCreated ?? [],
+      projectsCreated: raw.projectsCreated ?? [],
+    };
   }
 
   /**

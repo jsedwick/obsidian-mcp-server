@@ -733,7 +733,10 @@ class ObsidianMCPServer {
                 ensureVaultStructure: this.ensureVaultStructure.bind(this),
                 analyzeTopicContentInternal: this.analyzeTopicContentInternal.bind(this),
                 findRelatedProjects: this.findRelatedProjects.bind(this),
-                trackTopicCreation: topic => this.topicsCreated.push(topic),
+                trackTopicCreation: topic => {
+                  this.topicsCreated.push(topic);
+                  this.sessionStateFile.trackTopicCreation(topic);
+                },
                 trackFileAccess: this.trackFileAccess.bind(this),
                 searchVault: this.searchVaultWrapper.bind(this),
               });
@@ -745,7 +748,10 @@ class ObsidianMCPServer {
                 slugify: this.slugify.bind(this),
                 ensureVaultStructure: this.ensureVaultStructure.bind(this),
                 findRelatedContentInText: this.findRelatedContentInText.bind(this),
-                trackDecisionCreation: decision => this.decisionsCreated.push(decision),
+                trackDecisionCreation: decision => {
+                  this.decisionsCreated.push(decision);
+                  this.sessionStateFile.trackDecisionCreation(decision);
+                },
                 getRemoteUrl: (repoPath: string) => this.gitService.getRemoteUrl(repoPath),
                 trackFileAccess: this.trackFileAccess.bind(this),
               });
@@ -905,7 +911,10 @@ class ObsidianMCPServer {
               return await tools.createProjectPage(securedArgs as tools.CreateProjectPageArgs, {
                 vaultPath: this.config.primaryVault.path,
                 gitService: this.gitService,
-                trackProjectCreation: project => this.projectsCreated.push(project),
+                trackProjectCreation: project => {
+                  this.projectsCreated.push(project);
+                  this.sessionStateFile.trackProjectCreation(project);
+                },
               });
 
             case 'record_commit':
@@ -2986,7 +2995,10 @@ Check the sessions/ directory for recent conversations.
     return tools.createProjectPage(args as unknown as tools.CreateProjectPageArgs, {
       vaultPath: this.config.primaryVault.path,
       gitService: this.gitService,
-      trackProjectCreation: project => this.projectsCreated.push(project),
+      trackProjectCreation: project => {
+        this.projectsCreated.push(project);
+        this.sessionStateFile.trackProjectCreation(project);
+      },
     });
   }
 
@@ -3218,6 +3230,13 @@ Check the sessions/ directory for recent conversations.
         action: f.action as 'read' | 'edit' | 'create',
         timestamp: f.timestamp,
       }));
+      // Decision 065: tracker arrays survive fork-restart so Phase 2 renders
+      // mid-session work in ## Topics Created / ## Decisions Made / ## Projects
+      // Created. Without this, fork-restart wipes them and those sections
+      // render empty even when the on-disk vault has the new files.
+      this.topicsCreated = [...restored.topicsCreated];
+      this.decisionsCreated = [...restored.decisionsCreated];
+      this.projectsCreated = [...restored.projectsCreated];
       this.sessionStartTime = new Date(restored.sessionStart);
       if (restored.phase1Completed && restored.phase1SessionData) {
         this.phase1SessionData = restored.phase1SessionData;
@@ -3225,6 +3244,9 @@ Check the sessions/ directory for recent conversations.
       }
       logger.info('Session state restored from file', {
         filesAccessedCount: restored.filesAccessed.length,
+        topicsCreatedCount: restored.topicsCreated.length,
+        decisionsCreatedCount: restored.decisionsCreated.length,
+        projectsCreatedCount: restored.projectsCreated.length,
         phase1Completed: restored.phase1Completed,
       });
     }
