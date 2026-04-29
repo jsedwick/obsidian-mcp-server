@@ -4273,6 +4273,20 @@ Check the sessions/ directory for recent conversations.
     const portArg = args.find(arg => arg.startsWith('--port='));
     const port = portArg ? parseInt(portArg.split('=')[1], 10) : useHttps ? 3443 : 3000;
 
+    // Rehydrate sessionStartTime + filesAccessed + Phase-1 data from the
+    // recovery file before any tool runs. Fork-restart wipes in-memory state;
+    // Decision 054 persists it to disk but only restored it as a Phase-2
+    // fallback. Without this, Phase-1 freezes a near-empty filesAccessed list
+    // into the session record after a mid-session restart. restore() returns
+    // null when no recovery file exists (clean session start).
+    try {
+      await this.restoreSessionStateFromFile();
+    } catch (error) {
+      logger.warn('Startup session-state restore failed; continuing with empty state', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
     // Pre-compute embeddings runs in the background after the transport is ready
     // (kicked off below). Blocking startup on it caused 5+ minute MCP cold-boot
     // when the cache was stale, during which Claude Code reported "still
