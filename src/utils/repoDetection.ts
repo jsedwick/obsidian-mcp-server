@@ -83,6 +83,19 @@ export interface DetectedRepo {
 export async function selectBestRepoForCommitAnalysis(
   opts: SelectBestRepoOptions
 ): Promise<DetectedRepo | null> {
+  const all = await selectAllRepoCandidates(opts);
+  return all.length > 0 ? all[0] : null;
+}
+
+/**
+ * Return every repository candidate ranked by score (descending). Decision 061:
+ * `close_session` uses this to capture commits from every repo with
+ * session-window activity, not just the top scorer. Override short-circuits
+ * to a single-element list. Source is uniform across all returned candidates.
+ */
+export async function selectAllRepoCandidates(
+  opts: SelectBestRepoOptions
+): Promise<DetectedRepo[]> {
   if (opts.detectedRepoOverride) {
     const overridePath = opts.detectedRepoOverride.trim();
     try {
@@ -91,13 +104,15 @@ export async function selectBestRepoForCommitAnalysis(
       throw new Error(`detected_repo_override path is not a Git repository: ${overridePath}`);
     }
     const info = await opts.getRepoInfo(overridePath);
-    return {
-      path: overridePath,
-      name: info.name,
-      branch: info.branch,
-      remote: info.remote ?? undefined,
-      source: 'override',
-    };
+    return [
+      {
+        path: overridePath,
+        name: info.name,
+        branch: info.branch,
+        remote: info.remote ?? undefined,
+        source: 'override',
+      },
+    ];
   }
 
   let searchDirs: string[];
@@ -132,7 +147,7 @@ export async function selectBestRepoForCommitAnalysis(
     );
   });
 
-  if (repoPaths.length === 0) return null;
+  if (repoPaths.length === 0) return [];
 
   const candidates: Array<{
     path: string;
@@ -175,16 +190,14 @@ export async function selectBestRepoForCommitAnalysis(
     }
   }
 
-  if (candidates.length === 0) return null;
   candidates.sort((a, b) => b.score - a.score);
-  const top = candidates[0];
-  return {
-    path: top.path,
-    name: top.name,
-    branch: top.branch,
-    remote: top.remote,
+  return candidates.map(c => ({
+    path: c.path,
+    name: c.name,
+    branch: c.branch,
+    remote: c.remote,
     source,
-  };
+  }));
 }
 
 /**
