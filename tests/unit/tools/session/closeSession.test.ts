@@ -815,6 +815,122 @@ describe('closeSession - Two-Phase Workflow', () => {
       // Topics Created stays empty (the topic was UPDATED, not created)
       expect(writtenContent).toMatch(/## Topics Created\n+_No topics created_/);
     });
+
+    it('records commits for every qualifying repo (Decision 061 step 4)', async () => {
+      const sessionFile = path.join(vaultPath, 'sessions/2025-01/2025-01-15_14-30-00.md');
+      // qualifyingRepos has both repos; commitsByRepo holds hashes per repo.
+      // Phase 2's recording loop should call recordCommit once per (repo, hash).
+      const sessionData: SessionData = {
+        phase: 1,
+        sessionId: '2025-01-15_14-30-00',
+        sessionFile,
+        sessionContent: VALID_SESSION_CONTENT,
+        dateStr: '2025-01-15',
+        monthDir: path.join(vaultPath, 'sessions/2025-01'),
+        detectedRepoInfo: {
+          path: '/test/repo-primary',
+          name: 'repo-primary',
+          branch: 'main',
+        },
+        qualifyingRepos: [
+          {
+            path: '/test/repo-primary',
+            name: 'repo-primary',
+            branch: 'main',
+            source: 'working_directories',
+            score: 15,
+          },
+          {
+            path: '/test/repo-secondary',
+            name: 'repo-secondary',
+            branch: 'main',
+            source: 'inferred',
+            score: 10,
+          },
+        ],
+        commitsByRepo: {
+          '/test/repo-primary': ['hashA', 'hashB'],
+          '/test/repo-secondary': ['hashC'],
+        },
+        topicsCreated: [],
+        decisionsCreated: [],
+        projectsCreated: [],
+        filesAccessed: [],
+        filesToCheck: [sessionFile],
+        repoDetectionMessage: '',
+        sessionCommits: ['hashA', 'hashB'], // legacy field, primary repo only
+      };
+
+      const args: CloseSessionArgs = {
+        summary: 'Test summary',
+        handoff: 'Test handoff',
+        finalize: true,
+        session_data: sessionData,
+        _invoked_by_slash_command: true,
+      };
+
+      await fs.mkdir(sessionData.monthDir, { recursive: true });
+
+      await runPhase2Finalization(args, context, sessionData);
+
+      // recordCommit fires once per (repo, hash) pair: 2 + 1 = 3 calls.
+      expect(context.recordCommit).toHaveBeenCalledTimes(3);
+      expect(context.recordCommit).toHaveBeenCalledWith({
+        repo_path: '/test/repo-primary',
+        commit_hash: 'hashA',
+      });
+      expect(context.recordCommit).toHaveBeenCalledWith({
+        repo_path: '/test/repo-primary',
+        commit_hash: 'hashB',
+      });
+      expect(context.recordCommit).toHaveBeenCalledWith({
+        repo_path: '/test/repo-secondary',
+        commit_hash: 'hashC',
+      });
+    });
+
+    it('falls back to single-repo path when qualifyingRepos is absent (pre-061 SessionData)', async () => {
+      const sessionFile = path.join(vaultPath, 'sessions/2025-01/2025-01-15_14-30-00.md');
+      const sessionData: SessionData = {
+        phase: 1,
+        sessionId: '2025-01-15_14-30-00',
+        sessionFile,
+        sessionContent: VALID_SESSION_CONTENT,
+        dateStr: '2025-01-15',
+        monthDir: path.join(vaultPath, 'sessions/2025-01'),
+        detectedRepoInfo: {
+          path: '/test/repo-only',
+          name: 'repo-only',
+          branch: 'main',
+        },
+        topicsCreated: [],
+        decisionsCreated: [],
+        projectsCreated: [],
+        filesAccessed: [],
+        filesToCheck: [sessionFile],
+        repoDetectionMessage: '',
+        sessionCommits: ['hashOnly'],
+        // qualifyingRepos + commitsByRepo intentionally omitted
+      };
+
+      const args: CloseSessionArgs = {
+        summary: 'Test summary',
+        handoff: 'Test handoff',
+        finalize: true,
+        session_data: sessionData,
+        _invoked_by_slash_command: true,
+      };
+
+      await fs.mkdir(sessionData.monthDir, { recursive: true });
+
+      await runPhase2Finalization(args, context, sessionData);
+
+      expect(context.recordCommit).toHaveBeenCalledTimes(1);
+      expect(context.recordCommit).toHaveBeenCalledWith({
+        repo_path: '/test/repo-only',
+        commit_hash: 'hashOnly',
+      });
+    });
   });
 
   // Decision 044: runSinglePhaseClose tests removed - two-phase workflow is always required
