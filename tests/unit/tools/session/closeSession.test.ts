@@ -13,11 +13,13 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   closeSession,
   findSessionCommits,
+  groupRelatedGitCommitsByRepo,
   runPhase1Analysis,
   runPhase2Finalization,
   type CloseSessionArgs,
   type SessionData,
 } from '../../../../src/tools/session/closeSession.js';
+import { generateSessionTemplate } from '../../../../src/templates.js';
 import {
   createSessionToolsContext,
   createTestVault,
@@ -1152,9 +1154,11 @@ describe('closeSession - Two-Phase Workflow', () => {
 
       await closeSession(args, context);
 
-      // repoB has the in-window commit → tiebreaker picks it
-      expect(context.createProjectPage).toHaveBeenCalledWith({ repo_path: repoB });
-      expect(context.createProjectPage).not.toHaveBeenCalledWith({ repo_path: repoA });
+      // repoB has the in-window commit → tiebreaker picks it as primary.
+      // Decision 061 step 7: secondary qualifying repos also get project pages,
+      // so we assert primary by call ORDER (1st = primary block) rather than
+      // by exclusion of the secondary.
+      expect(context.createProjectPage).toHaveBeenNthCalledWith(1, { repo_path: repoB });
     });
 
     it('falls back to primary working directory when commit tiebreaker is inconclusive', async () => {
@@ -1229,8 +1233,9 @@ describe('closeSession - Two-Phase Workflow', () => {
       await closeSession(args, context);
 
       // With flat scoring: both tie at 15, primary tiebreaker (commit count) picks repoB.
-      expect(context.createProjectPage).toHaveBeenCalledWith({ repo_path: repoB });
-      expect(context.createProjectPage).not.toHaveBeenCalledWith({ repo_path: repoA });
+      // Decision 061 step 7: secondary qualifying repos also get project pages,
+      // so primary identity is asserted via call ORDER (1st = primary block).
+      expect(context.createProjectPage).toHaveBeenNthCalledWith(1, { repo_path: repoB });
     });
   });
 
@@ -1349,5 +1354,273 @@ describe('closeSession - Two-Phase Workflow', () => {
 
     // Note: skip_analysis test removed per Decision 044
     // Two-phase workflow is now always required, skip_analysis parameter was removed
+  });
+
+  describe('Decision 061 — Multi-repo rendering (steps 5–7)', () => {
+    it('step 5: generateSessionTemplate emits `repositories` frontmatter when provided', () => {
+      const content = generateSessionTemplate({
+        sessionId: '2025-01-15_14-30-00',
+        date: '2025-01-15',
+        topicsList: [],
+        decisionsList: [],
+        summary: 'Test',
+        filesAccessed: [],
+        topicsCreated: [],
+        decisionsCreated: [],
+        projectsCreated: [],
+        relatedTopics: [],
+        relatedDecisions: [],
+        relatedProjects: [],
+        repositories: ['primary-slug', 'secondary-slug'],
+      });
+
+      // Frontmatter contains the array primary-first.
+      expect(content).toMatch(/repositories:\s*\["primary-slug","secondary-slug"\]/);
+    });
+
+    it('step 5: generateSessionTemplate omits `repositories` when empty or absent', () => {
+      const omitted = generateSessionTemplate({
+        sessionId: '2025-01-15_14-30-00',
+        date: '2025-01-15',
+        topicsList: [],
+        decisionsList: [],
+        summary: 'Test',
+        filesAccessed: [],
+        topicsCreated: [],
+        decisionsCreated: [],
+        projectsCreated: [],
+        relatedTopics: [],
+        relatedDecisions: [],
+        relatedProjects: [],
+      });
+      expect(omitted).not.toMatch(/^repositories:/m);
+
+      const empty = generateSessionTemplate({
+        sessionId: '2025-01-15_14-30-00',
+        date: '2025-01-15',
+        topicsList: [],
+        decisionsList: [],
+        summary: 'Test',
+        filesAccessed: [],
+        topicsCreated: [],
+        decisionsCreated: [],
+        projectsCreated: [],
+        relatedTopics: [],
+        relatedDecisions: [],
+        relatedProjects: [],
+        repositories: [],
+      });
+      expect(empty).not.toMatch(/^repositories:/m);
+    });
+
+    it('step 6: groupRelatedGitCommitsByRepo regroups flat entries under `### {slug}` subheadings', () => {
+      const before = [
+        '## Related Git Commits',
+        '- [[projects/primary-slug/commits/aaa|aaa]]: first',
+        '- [[projects/secondary-slug/commits/bbb|bbb]]: second',
+        '- [[projects/primary-slug/commits/ccc|ccc]]: third',
+        '',
+      ].join('\n');
+
+      const after = groupRelatedGitCommitsByRepo(before, ['primary-slug', 'secondary-slug']);
+
+      // Primary slug appears first, then secondary; commits group correctly.
+      const primaryIdx = after.indexOf('### primary-slug');
+      const secondaryIdx = after.indexOf('### secondary-slug');
+      expect(primaryIdx).toBeGreaterThan(-1);
+      expect(secondaryIdx).toBeGreaterThan(primaryIdx);
+
+      // Each slug subheading owns its commits.
+      const primarySection = after.slice(primaryIdx, secondaryIdx);
+      expect(primarySection).toContain('aaa');
+      expect(primarySection).toContain('ccc');
+      expect(primarySection).not.toContain('bbb');
+
+      const secondarySection = after.slice(secondaryIdx);
+      expect(secondarySection).toContain('bbb');
+      expect(secondarySection).not.toContain('aaa');
+    });
+
+    it('step 6: groupRelatedGitCommitsByRepo is a no-op for single-repo content', () => {
+      const before = [
+        '## Related Git Commits',
+        '- [[projects/only-slug/commits/aaa|aaa]]: solo',
+        '',
+      ].join('\n');
+
+      // repositoriesOrder has 1 element → helper short-circuits.
+      const single = groupRelatedGitCommitsByRepo(before, ['only-slug']);
+      expect(single).toBe(before);
+
+      // Even when called with 2 slugs, content with only 1 slug actually present
+      // → groups.size < 2 → returns unchanged (no spurious subheadings).
+      const oneSlugInTwoRepos = groupRelatedGitCommitsByRepo(before, ['only-slug', 'unused-slug']);
+      expect(oneSlugInTwoRepos).toBe(before);
+    });
+
+    it('step 6: groupRelatedGitCommitsByRepo bails when section is already grouped', () => {
+      const alreadyGrouped = [
+        '## Related Git Commits',
+        '',
+        '### primary-slug',
+        '- [[projects/primary-slug/commits/aaa|aaa]]: first',
+        '',
+        '### secondary-slug',
+        '- [[projects/secondary-slug/commits/bbb|bbb]]: second',
+        '',
+      ].join('\n');
+
+      const result = groupRelatedGitCommitsByRepo(alreadyGrouped, [
+        'primary-slug',
+        'secondary-slug',
+      ]);
+      expect(result).toBe(alreadyGrouped);
+    });
+
+    it('step 6: runPhase2Finalization rewrites multi-repo `## Related Git Commits` with subheadings', async () => {
+      const sessionFile = path.join(vaultPath, 'sessions/2025-01/2025-01-15_14-30-00.md');
+      // Pre-populate session file with a flat ## Related Git Commits section
+      // (simulating recordCommit's incremental writes).
+      const flatSessionContent = [
+        '---',
+        'date: "2025-01-15"',
+        'category: session',
+        'session_id: "2025-01-15_14-30-00"',
+        'topics: []',
+        'decisions: []',
+        'status: "completed"',
+        'tags: []',
+        'repositories: ["primary-slug","secondary-slug"]',
+        '---',
+        '',
+        '# Session: test',
+        '',
+        '## Summary',
+        '',
+        'Test summary body.',
+        '',
+        '## Handoff',
+        '',
+        'Test handoff body.',
+        '',
+        '## Files Accessed',
+        '',
+        '_No files tracked_',
+        '',
+        '## Related Git Commits',
+        '- [[projects/primary-slug/commits/aaa|aaa]]: primary first',
+        '- [[projects/secondary-slug/commits/bbb|bbb]]: secondary',
+        '- [[projects/primary-slug/commits/ccc|ccc]]: primary second',
+        '',
+      ].join('\n');
+
+      await fs.mkdir(path.dirname(sessionFile), { recursive: true });
+      await fs.writeFile(sessionFile, flatSessionContent);
+
+      const sessionData: SessionData = {
+        phase: 1,
+        sessionId: '2025-01-15_14-30-00',
+        sessionFile,
+        sessionContent: flatSessionContent,
+        dateStr: '2025-01-15',
+        monthDir: path.join(vaultPath, 'sessions/2025-01'),
+        detectedRepoInfo: {
+          path: '/test/repo-primary',
+          name: 'repo-primary',
+          branch: 'main',
+        },
+        qualifyingRepos: [
+          {
+            path: '/test/repo-primary',
+            name: 'repo-primary',
+            branch: 'main',
+            source: 'working_directories',
+            score: 15,
+          },
+          {
+            path: '/test/repo-secondary',
+            name: 'repo-secondary',
+            branch: 'main',
+            source: 'inferred',
+            score: 10,
+          },
+        ],
+        commitsByRepo: {
+          '/test/repo-primary': ['aaa', 'ccc'],
+          '/test/repo-secondary': ['bbb'],
+        },
+        repositorySlugs: ['primary-slug', 'secondary-slug'],
+        topicsCreated: [],
+        decisionsCreated: [],
+        projectsCreated: [],
+        filesAccessed: [],
+        filesToCheck: [sessionFile],
+        repoDetectionMessage: '',
+      };
+
+      const args: CloseSessionArgs = {
+        summary: 'Test summary',
+        handoff: 'Test handoff',
+        finalize: true,
+        session_data: sessionData,
+        _invoked_by_slash_command: true,
+      };
+
+      await runPhase2Finalization(args, context, sessionData);
+
+      const written = await fs.readFile(sessionFile, 'utf-8');
+      expect(written).toContain('### primary-slug');
+      expect(written).toContain('### secondary-slug');
+      // Primary subheading appears before secondary.
+      expect(written.indexOf('### primary-slug')).toBeLessThan(
+        written.indexOf('### secondary-slug')
+      );
+    });
+
+    it('step 7: closeSession creates project pages for ALL qualifying repos', async () => {
+      const repoA = await createTestGitRepo({ name: 'multi-repo-a', initialCommit: 'init-a' });
+      const repoB = await createTestGitRepo({ name: 'multi-repo-b', initialCommit: 'init-b' });
+      try {
+        const sessionStart = new Date();
+        context.getSessionStartTime = vi.fn().mockReturnValue(sessionStart);
+        await new Promise(resolve => setTimeout(resolve, 1100));
+
+        // Both repos get session-window commits → both qualify.
+        await createTestCommit(repoA, {
+          message: 'commit in repoA',
+          files: { 'a.ts': 'export {};' },
+        });
+        await createTestCommit(repoB, {
+          message: 'commit in repoB',
+          files: { 'b.ts': 'export {};' },
+        });
+
+        context.findGitRepos = vi.fn().mockImplementation(async (dir: string) => {
+          if (dir === repoA) return [repoA];
+          if (dir === repoB) return [repoB];
+          return [];
+        });
+        context.getRepoInfo = vi.fn().mockImplementation(async (p: string) => ({
+          name: path.basename(p),
+          branch: 'main',
+          remote: null,
+        }));
+        context.createProjectPage = vi.fn().mockResolvedValue({ content: [] });
+
+        const args: CloseSessionArgs = {
+          summary: 'Multi-repo session test',
+          working_directories: [repoA, repoB],
+          _invoked_by_slash_command: true,
+        };
+
+        await closeSession(args, context);
+
+        expect(context.createProjectPage).toHaveBeenCalledWith({ repo_path: repoA });
+        expect(context.createProjectPage).toHaveBeenCalledWith({ repo_path: repoB });
+      } finally {
+        await cleanupTestGitRepo(repoA);
+        await cleanupTestGitRepo(repoB);
+      }
+    });
   });
 });

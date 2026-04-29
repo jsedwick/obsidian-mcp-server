@@ -26,6 +26,10 @@ export interface SessionFrontmatter {
   status: 'ongoing' | 'completed';
   tags: string[]; // Auto-extracted tags for categorization
   working_directory?: string; // Primary working directory (CWD) at session time
+  // Decision 061: project slugs of every repo with ≥1 commit during the session
+  // window. Element 0 is the primary (highest-scoring) repo. Omitted for
+  // single-repo or edits-only sessions with no in-window commits.
+  repositories?: string[];
 }
 
 /**
@@ -404,6 +408,7 @@ export interface SessionTemplateArgs {
   tags?: string[]; // Auto-extracted tags for categorization
   linkedIssue?: string; // Persistent issue linked to this session (Decision 048)
   workingDirectory?: string; // Primary CWD for session-to-project matching in handoff retrieval
+  repositories?: string[]; // Decision 061: project slugs of qualifying repos, primary first
 }
 
 export function generateSessionTemplate(args: SessionTemplateArgs): string {
@@ -425,6 +430,10 @@ export function generateSessionTemplate(args: SessionTemplateArgs): string {
   const workingDirField = args.workingDirectory
     ? `\nworking_directory: "${args.workingDirectory}"`
     : '';
+  const repositoriesField =
+    args.repositories && args.repositories.length > 0
+      ? `\nrepositories: ${JSON.stringify(args.repositories)}`
+      : '';
 
   return `---
 date: "${frontmatter.date}"
@@ -433,7 +442,7 @@ session_id: "${frontmatter.session_id}"
 topics: ${JSON.stringify(frontmatter.topics)}
 decisions: ${JSON.stringify(frontmatter.decisions)}
 status: "${frontmatter.status}"
-tags: ${JSON.stringify(frontmatter.tags)}${issueField}${workingDirField}
+tags: ${JSON.stringify(frontmatter.tags)}${issueField}${workingDirField}${repositoriesField}
 ---
 
 # Session: ${args.topic || 'Work session'}
