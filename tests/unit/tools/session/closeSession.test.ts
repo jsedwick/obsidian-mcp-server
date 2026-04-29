@@ -699,6 +699,122 @@ describe('closeSession - Two-Phase Workflow', () => {
       expect(writtenContent).toContain('Requires restart to verify.');
       expect(writtenContent).toContain('## Known Issues');
     });
+
+    it('refreshes Files Accessed / Topics Created / Decisions Made with post-Phase-1 work', async () => {
+      const sessionFile = path.join(vaultPath, 'sessions/2025-01/2025-01-15_14-30-00.md');
+      const phase1Snapshot = [
+        '# Session: test',
+        '',
+        '## Summary',
+        '',
+        'Test summary body.',
+        '',
+        '## Handoff',
+        '',
+        '_No handoff notes_',
+        '',
+        '## Files Accessed',
+        '',
+        '- [`edit`] /tmp/test-vault/user-reference.md',
+        '',
+        '## Topics Created',
+        '',
+        '_No topics created_',
+        '',
+        '## Decisions Made',
+        '',
+        '_No decisions made_',
+        '',
+        '## Related Topics',
+        '',
+        '_None found_',
+        '',
+        '## Related Decisions',
+        '',
+        '_None found_',
+        '',
+        '## Related Projects',
+        '',
+        '_None found_',
+        '',
+      ].join('\n');
+
+      const sessionData: SessionData = {
+        phase: 1,
+        sessionId: '2025-01-15_14-30-00',
+        sessionFile,
+        sessionContent: phase1Snapshot,
+        dateStr: '2025-01-15',
+        monthDir: path.join(vaultPath, 'sessions/2025-01'),
+        detectedRepoInfo: null,
+        topicsCreated: [],
+        decisionsCreated: [],
+        projectsCreated: [],
+        filesAccessed: [
+          {
+            path: '/tmp/test-vault/user-reference.md',
+            action: 'edit',
+            timestamp: '2025-01-15T14:30:00Z',
+          },
+        ],
+        filesToCheck: [sessionFile],
+        repoDetectionMessage: '',
+      };
+
+      // Simulate post-Phase-1 work: AI created a decision, updated a topic, and edited code
+      // between Phase 1 and Phase 2 in response to enforcement prompts.
+      context.filesAccessed.push(
+        {
+          path: '/tmp/test-vault/decisions/vault/022-something.md',
+          action: 'create',
+          timestamp: '2025-01-15T14:32:00Z',
+        },
+        {
+          path: '/tmp/test-vault/topics/some-topic.md',
+          action: 'edit',
+          timestamp: '2025-01-15T14:33:00Z',
+        },
+        {
+          path: '/Users/test/project/src/runner.ts',
+          action: 'edit',
+          timestamp: '2025-01-15T14:34:00Z',
+        }
+      );
+      context.decisionsCreated.push({
+        slug: '022-something',
+        title: 'Something',
+        file: '/tmp/test-vault/decisions/vault/022-something.md',
+      } as any);
+
+      const args: CloseSessionArgs = {
+        summary: 'Test summary',
+        handoff: 'Test handoff',
+        finalize: true,
+        session_data: sessionData,
+        _invoked_by_slash_command: true,
+      };
+
+      await fs.mkdir(sessionData.monthDir, { recursive: true });
+
+      await runPhase2Finalization(args, context, sessionData);
+
+      const writtenContent = await fs.readFile(sessionFile, 'utf-8');
+
+      // Files Accessed must include both the Phase-1-time edit and the post-Phase-1 work
+      expect(writtenContent).toContain('[`edit`] /tmp/test-vault/user-reference.md');
+      expect(writtenContent).toContain(
+        '[`create`] /tmp/test-vault/decisions/vault/022-something.md'
+      );
+      expect(writtenContent).toContain('[`edit`] /tmp/test-vault/topics/some-topic.md');
+      expect(writtenContent).toContain('[`edit`] /Users/test/project/src/runner.ts');
+
+      // Decisions Made must reflect the post-Phase-1 create_decision call
+      expect(writtenContent).toContain('[[decisions/022-something|Something]]');
+      expect(writtenContent).not.toMatch(/## Decisions Made\n+_No decisions made_/);
+
+      // Topics Created stays empty (the topic was UPDATED, not created)
+      expect(writtenContent).toMatch(/## Topics Created\n+_No topics created_/);
+    });
   });
 
   // Decision 044: runSinglePhaseClose tests removed - two-phase workflow is always required
@@ -951,6 +1067,54 @@ describe('closeSession - Two-Phase Workflow', () => {
 
       expect(context.createProjectPage).toHaveBeenCalledWith({ repo_path: repoA });
       expect(context.createProjectPage).not.toHaveBeenCalledWith({ repo_path: repoB });
+    });
+
+    it('does not bypass tiebreaker when one repo is a workdir and another is a workdir-subdir', async () => {
+      // Reproduces the close-session bug where Claude Code's env passes both ~/.claude
+      // (itself a repo) and ~/Projects (parent of the real session repos). With asymmetric
+      // scoring (15 / 5), the .claude-style repo crushed the >2x clear-winner gate and
+      // skipped the tiebreaker. With flat 15-point scoring, both tie and the session-window
+      // commit count wins.
+      const sessionStart = new Date();
+      context.getSessionStartTime = vi.fn().mockReturnValue(sessionStart);
+      await new Promise(resolve => setTimeout(resolve, 1100));
+
+      // repoB is the "session repo" — it gets the only in-window commit.
+      // repoA plays the role of ~/.claude — directly named in working_directories
+      // but with no session activity.
+      await createTestCommit(repoB, {
+        message: 'session-window commit in subdir repo',
+        files: { 'feature.ts': 'export {};' },
+      });
+
+      // parentDir simulates "~/Projects" — a workdir whose subdirectory IS the active repo.
+      const parentDir = path.dirname(repoB);
+
+      context.findGitRepos = vi.fn().mockImplementation(async (dir: string) => {
+        if (dir === repoA) return [repoA];
+        if (dir === parentDir) return [repoB];
+        return [];
+      });
+      context.getRepoInfo = vi.fn().mockImplementation(async (p: string) => ({
+        name: path.basename(p),
+        branch: 'main',
+        remote: null,
+      }));
+      context.createProjectPage = vi.fn().mockResolvedValue({ content: [] });
+
+      const args: CloseSessionArgs = {
+        summary: 'Test asymmetric-workdir tiebreaker',
+        // repoA is itself a workdir (exact match → +15 pre-fix). parentDir contains repoB
+        // as a subdir (was +5 pre-fix → got crushed by clear-winner gate).
+        working_directories: [repoA, parentDir],
+        _invoked_by_slash_command: true,
+      };
+
+      await closeSession(args, context);
+
+      // With flat scoring: both tie at 15, primary tiebreaker (commit count) picks repoB.
+      expect(context.createProjectPage).toHaveBeenCalledWith({ repo_path: repoB });
+      expect(context.createProjectPage).not.toHaveBeenCalledWith({ repo_path: repoA });
     });
   });
 

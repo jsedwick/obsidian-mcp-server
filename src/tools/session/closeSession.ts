@@ -2020,6 +2020,80 @@ function addAccessedFilesLinksToSession(
   return updatedContent;
 }
 
+function dedupeFilesAccessed(files: FileAccess[]): FileAccess[] {
+  const seen = new Set<string>();
+  const result: FileAccess[] = [];
+  for (const f of files) {
+    const key = `${f.path}::${f.action}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      result.push(f);
+    }
+  }
+  return result;
+}
+
+function dedupeBySlug<T extends { slug: string }>(items: T[]): T[] {
+  const seen = new Set<string>();
+  const result: T[] = [];
+  for (const item of items) {
+    if (!seen.has(item.slug)) {
+      seen.add(item.slug);
+      result.push(item);
+    }
+  }
+  return result;
+}
+
+// Phase 1 renders ## Files Accessed / ## Topics Created / ## Decisions Made off
+// whatever context held at Phase-1 time. Most session work — create_decision,
+// update_document, code_file, get_topic_context — happens BETWEEN Phase 1 and
+// Phase 2 in response to Phase-1 enforcement prompts. Replace each section's
+// body with the merged Phase-1 + post-Phase-1 state so the saved session
+// reflects actual work, not just the pre-Phase-1 snapshot.
+function replaceFrozenSection(
+  content: string,
+  header: 'Files Accessed' | 'Topics Created' | 'Decisions Made',
+  body: string
+): string {
+  // All three section headers are plain words — no regex metacharacters need escaping.
+  // Match the section's body lazily up to the next "## " header or end of doc.
+  // Tolerant of missing or reordered subsequent sections (custodian round-trips
+  // can strip empty Related-* sections).
+  const re = new RegExp(`## ${header}\\n+[\\s\\S]*?(?=\\n+## |\\n*$)`);
+  if (re.test(content)) {
+    return content.replace(re, `## ${header}\n\n${body}`);
+  }
+  logger.warn(`Section refresh skipped: ## ${header} not found in session content`);
+  return content;
+}
+
+function refreshFrozenSections(
+  content: string,
+  mergedFiles: FileAccess[],
+  mergedTopics: Array<{ slug: string; title: string }>,
+  mergedDecisions: Array<{ slug: string; title: string }>
+): string {
+  const filesBody =
+    mergedFiles.length > 0
+      ? mergedFiles.map(f => `- [\`${f.action}\`] ${f.path}`).join('\n')
+      : '_No files tracked_';
+  const topicsBody =
+    mergedTopics.length > 0
+      ? mergedTopics.map(t => `- [[topics/${t.slug}|${t.title}]]`).join('\n')
+      : '_No topics created_';
+  const decisionsBody =
+    mergedDecisions.length > 0
+      ? mergedDecisions.map(d => `- [[decisions/${d.slug}|${d.title}]]`).join('\n')
+      : '_No decisions made_';
+
+  let updated = content;
+  updated = replaceFrozenSection(updated, 'Files Accessed', filesBody);
+  updated = replaceFrozenSection(updated, 'Topics Created', topicsBody);
+  updated = replaceFrozenSection(updated, 'Decisions Made', decisionsBody);
+  return updated;
+}
+
 export async function runPhase2Finalization(
   _args: CloseSessionArgs,
   context: CloseSessionContext,
@@ -2244,6 +2318,30 @@ export async function runPhase2Finalization(
     }
   }
 
+  // Refresh ## Files Accessed / ## Topics Created / ## Decisions Made with merged
+  // Phase-1 + post-Phase-1 state. Phase 1 froze these sections at its own snapshot;
+  // most actual work happens between phases (create_decision, update_document,
+  // code_file, get_topic_context) and would otherwise be invisible in the saved file.
+  const storedPhase1Data = context.getStoredPhase1SessionData();
+  const mergedFilesAccessed = dedupeFilesAccessed([
+    ...(storedPhase1Data?.filesAccessed ?? data.filesAccessed ?? []),
+    ...context.filesAccessed,
+  ]);
+  const mergedTopicsCreated = dedupeBySlug([
+    ...(data.topicsCreated ?? []),
+    ...context.topicsCreated,
+  ]);
+  const mergedDecisionsCreated = dedupeBySlug([
+    ...(data.decisionsCreated ?? []),
+    ...context.decisionsCreated,
+  ]);
+  updatedContent = refreshFrozenSections(
+    updatedContent,
+    mergedFilesAccessed,
+    mergedTopicsCreated,
+    mergedDecisionsCreated
+  );
+
   // Add topics: use AI-curated list if provided, otherwise fall back to all discovered (backward compat)
   if (_args.relevant_topics !== undefined) {
     logger.info('Using AI-curated relevant_topics:', {
@@ -2270,10 +2368,11 @@ export async function runPhase2Finalization(
     updatedContent = addRelatedDecisionsToSession(updatedContent, discoveredDecisions);
   }
 
-  // Add links for accessed files (topics/decisions modified via update_document)
+  // Add links for accessed files (topics/decisions modified via update_document).
+  // Use the merged set so post-Phase-1 vault edits surface as Related Topics/Decisions.
   updatedContent = addAccessedFilesLinksToSession(
     updatedContent,
-    context.filesAccessed,
+    mergedFilesAccessed,
     context.vaultPath
   );
 
@@ -3080,18 +3179,26 @@ export async function closeSession(
             }
           }
 
-          // Score based on relationship to Claude Code's working directories
+          // Score based on relationship to Claude Code's working directories.
+          // All three relationships are equally strong evidence the repo is in scope:
+          // an exact match, a workdir nested inside a repo, or a repo nested inside a
+          // broader workdir (e.g. ~/Projects/<repo>). Earlier asymmetric scoring
+          // (15 / 8 / 5) caused the >2x clear-winner gate to fire trivially when one
+          // candidate was itself a workdir (~/.claude) while the actual session repos
+          // were subdirs of a broader workdir (~/Projects) — bypassing the tiebreaker
+          // entirely. Flat 15-point evidence keeps the tie-path active so session-window
+          // commit counts decide.
           for (const workDir of searchDirs) {
             if (repoPath === workDir) {
               score += 15;
               reasons.push('Repo is a working directory');
               break;
             } else if (workDir.startsWith(repoPath)) {
-              score += 8;
+              score += 15;
               reasons.push('Working directory is within this repo');
               break;
             } else if (repoPath.startsWith(workDir)) {
-              score += 5;
+              score += 15;
               reasons.push('Repo is subdirectory of working directory');
               break;
             }
