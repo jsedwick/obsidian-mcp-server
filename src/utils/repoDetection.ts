@@ -65,6 +65,13 @@ export interface SelectBestRepoOptions {
   getRepoInfo: (
     repoPath: string
   ) => Promise<{ name: string; branch?: string; remote?: string | null }>;
+  /**
+   * Adds +20 to a candidate's score when its directory basename appears in
+   * this hint string (case-insensitive). `close_session` passes the session
+   * ID so a topic-named session promotes the matching repo. Optional;
+   * `analyze_session_commits` does not pass it.
+   */
+  sessionIdHint?: string;
 }
 
 export interface DetectedRepo {
@@ -73,6 +80,13 @@ export interface DetectedRepo {
   branch?: string;
   remote?: string;
   source: 'override' | 'working_directories' | 'inferred' | 'cwd';
+  /**
+   * Heuristic score from `selectAllRepoCandidates`. Higher = stronger evidence
+   * the repo is in scope for this session. Override candidates skip scoring
+   * and report 0. Used by callers (close_session) to detect tied-top
+   * candidates so they can apply secondary tiebreakers (e.g., commit count).
+   */
+  score: number;
 }
 
 /**
@@ -111,6 +125,7 @@ export async function selectAllRepoCandidates(
         branch: info.branch,
         remote: info.remote ?? undefined,
         source: 'override',
+        score: 0,
       },
     ];
   }
@@ -165,16 +180,24 @@ export async function selectAllRepoCandidates(
     if (editedFiles.length > 0) score += editedFiles.length * 10;
     if (readFiles.length > 0) score += readFiles.length * 5;
 
+    // Workdir relationship: flat 15-point evidence for any of three matches
+    // (exact, workdir-inside-repo, repo-inside-workdir). The earlier asymmetric
+    // 15/8/5 scoring caused the >2x clear-winner gate to fire trivially when
+    // one candidate was a workdir (e.g. ~/.claude) while the actual session repo
+    // was a subdir of a broader workdir (~/Projects/<repo>). c4ee373 flattened
+    // closeSession's inline copy of this scorer; this preserves parity now that
+    // close_session calls back into this helper.
     for (const workDir of searchDirs) {
-      if (repoPath === workDir) {
+      if (repoPath === workDir || workDir.startsWith(repoPath) || repoPath.startsWith(workDir)) {
         score += 15;
         break;
-      } else if (workDir.startsWith(repoPath)) {
-        score += 8;
-        break;
-      } else if (repoPath.startsWith(workDir)) {
-        score += 5;
-        break;
+      }
+    }
+
+    if (opts.sessionIdHint) {
+      const repoBasename = path.basename(repoPath).toLowerCase();
+      if (opts.sessionIdHint.toLowerCase().includes(repoBasename)) {
+        score += 20;
       }
     }
 
@@ -197,6 +220,7 @@ export async function selectAllRepoCandidates(
     branch: c.branch,
     remote: c.remote,
     source,
+    score: c.score,
   }));
 }
 

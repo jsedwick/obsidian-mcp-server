@@ -1174,8 +1174,13 @@ describe('closeSession - Two-Phase Workflow', () => {
       );
       expect(phase1Result.content[0].text).toContain('finalize: true');
 
-      // Extract session_data from Phase 1 result
-      const sessionDataMatch = phase1Result.content[0].text.match(/session_data: ({[\s\S]*?})\n/);
+      // Extract session_data from Phase 1 result. Anchor on the template's
+      // closing `\n})` (the close_session call wrapper) rather than `}\n`,
+      // because pretty-printed JSON containing arrays of objects has nested
+      // `}\n` boundaries that break a naive lazy match.
+      const sessionDataMatch = phase1Result.content[0].text.match(
+        /session_data: ({[\s\S]+?})\n}\)/
+      );
       expect(sessionDataMatch).toBeTruthy();
       const sessionData = JSON.parse(sessionDataMatch![1]);
 
