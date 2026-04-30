@@ -29,6 +29,11 @@ import {
 import { createTestGitRepo, createTestCommit, cleanupTestGitRepo } from '../../../helpers/git.js';
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import * as os from 'os';
+import { exec } from 'child_process';
+import { promisify } from 'util';
+
+const execAsync = promisify(exec);
 
 // Mock logger to prevent console output during tests
 vi.mock('../../../../src/utils/logger.js', () => ({
@@ -1102,7 +1107,9 @@ describe('closeSession - Two-Phase Workflow', () => {
 
       // Decision 044: Always runs Phase 1 (two-phase workflow required)
       expect(result.content[0].text).toContain('Session Analysis Complete');
-      expect(context.createProjectPage).toHaveBeenCalledWith({ repo_path: mockRepoPath });
+      expect(context.createProjectPage).toHaveBeenCalledWith(
+        expect.objectContaining({ repo_path: mockRepoPath })
+      );
     });
   });
 
@@ -1158,7 +1165,10 @@ describe('closeSession - Two-Phase Workflow', () => {
       // Decision 061 step 7: secondary qualifying repos also get project pages,
       // so we assert primary by call ORDER (1st = primary block) rather than
       // by exclusion of the secondary.
-      expect(context.createProjectPage).toHaveBeenNthCalledWith(1, { repo_path: repoB });
+      expect(context.createProjectPage).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({ repo_path: repoB })
+      );
     });
 
     it('falls back to primary working directory when commit tiebreaker is inconclusive', async () => {
@@ -1185,8 +1195,12 @@ describe('closeSession - Two-Phase Workflow', () => {
 
       await closeSession(args, context);
 
-      expect(context.createProjectPage).toHaveBeenCalledWith({ repo_path: repoA });
-      expect(context.createProjectPage).not.toHaveBeenCalledWith({ repo_path: repoB });
+      expect(context.createProjectPage).toHaveBeenCalledWith(
+        expect.objectContaining({ repo_path: repoA })
+      );
+      expect(context.createProjectPage).not.toHaveBeenCalledWith(
+        expect.objectContaining({ repo_path: repoB })
+      );
     });
 
     it('does not bypass tiebreaker when one repo is a workdir and another is a workdir-subdir', async () => {
@@ -1235,7 +1249,135 @@ describe('closeSession - Two-Phase Workflow', () => {
       // With flat scoring: both tie at 15, primary tiebreaker (commit count) picks repoB.
       // Decision 061 step 7: secondary qualifying repos also get project pages,
       // so primary identity is asserted via call ORDER (1st = primary block).
-      expect(context.createProjectPage).toHaveBeenNthCalledWith(1, { repo_path: repoB });
+      expect(context.createProjectPage).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({ repo_path: repoB })
+      );
+    });
+
+    it('B1 evidence filter: drops a qualifying repo with no file-access evidence when another has it', async () => {
+      // Reproduces the cross-session attribution pollution scenario: when a
+      // stale sessionStartTime causes both repos to have in-window commits but
+      // only one repo was actually touched by the session, the untouched repo
+      // would otherwise get attributed via `repositories:` frontmatter and
+      // `createProjectPage`. B1 requires file-access evidence when ≥2 repos
+      // qualify and at least one has it.
+      const sessionStart = new Date();
+      context.getSessionStartTime = vi.fn().mockReturnValue(sessionStart);
+      await new Promise(resolve => setTimeout(resolve, 1100));
+
+      // Both repos get an in-window commit — without B1, both would qualify.
+      await createTestCommit(repoA, {
+        message: 'in-window commit in repoA',
+        files: { 'a.ts': 'export {};' },
+      });
+      await createTestCommit(repoB, {
+        message: 'in-window commit in repoB',
+        files: { 'b.ts': 'export {};' },
+      });
+
+      // Only repoA has a tracked file access — repoB qualifies on time alone.
+      context.filesAccessed.push({
+        path: path.join(repoA, 'a.ts'),
+        action: 'edit',
+        timestamp: new Date().toISOString(),
+      });
+
+      context.findGitRepos = vi.fn().mockImplementation(async (dir: string) => {
+        if (dir === repoA) return [repoA];
+        if (dir === repoB) return [repoB];
+        return [];
+      });
+      context.getRepoInfo = vi.fn().mockImplementation(async (p: string) => ({
+        name: path.basename(p),
+        branch: 'main',
+        remote: null,
+      }));
+      context.createProjectPage = vi.fn().mockResolvedValue({ content: [] });
+
+      const args: CloseSessionArgs = {
+        summary: 'Test B1 evidence filter',
+        working_directories: [repoA, repoB],
+        _invoked_by_slash_command: true,
+      };
+
+      await closeSession(args, context);
+
+      // B1 drops repoB. Decision 061 step 7 calls createProjectPage for every
+      // qualifying repo, so asserting the negative (repoB never appears) is
+      // the cleanest signal that B1 fired.
+      const calls = (context.createProjectPage as ReturnType<typeof vi.fn>).mock.calls;
+      const calledPaths = calls.map(c => c[0].repo_path);
+      expect(calledPaths).toContain(repoA);
+      expect(calledPaths).not.toContain(repoB);
+    });
+
+    it('B1 evidence filter: name-prefix sibling repos do not share evidence', async () => {
+      // Regression: file accesses inside `/x/repo-server` were previously
+      // attributed to a sibling `/x/repo` because `f.path.startsWith(repoPath)`
+      // matches without a path separator. The file-access evidence then made
+      // /x/repo "qualify" even though no file lives in it. Fix pins a
+      // path.sep on the prefix bound. See selectAllRepoCandidates +
+      // closeSession's B1 filter.
+      const baseDir = path.join(
+        os.tmpdir(),
+        `prefix-collision-${Math.random().toString(36).slice(2, 8)}`
+      );
+      const shortRepo = path.join(baseDir, 'repo'); // prefix of the long repo
+      const longRepo = path.join(baseDir, 'repo-server'); // file lives here
+      await fs.mkdir(shortRepo, { recursive: true });
+      await fs.mkdir(longRepo, { recursive: true });
+      await execAsync('git init', { cwd: shortRepo });
+      await execAsync('git config user.name "T"', { cwd: shortRepo });
+      await execAsync('git config user.email "t@t.t"', { cwd: shortRepo });
+      await fs.writeFile(path.join(shortRepo, 'a.txt'), 'a');
+      await execAsync('git add . && git commit -m initShort', { cwd: shortRepo });
+      await execAsync('git init', { cwd: longRepo });
+      await execAsync('git config user.name "T"', { cwd: longRepo });
+      await execAsync('git config user.email "t@t.t"', { cwd: longRepo });
+      await fs.writeFile(path.join(longRepo, 'b.txt'), 'b');
+      await execAsync('git add . && git commit -m initLong', { cwd: longRepo });
+
+      try {
+        const sessionStart = new Date();
+        context.getSessionStartTime = vi.fn().mockReturnValue(sessionStart);
+        await new Promise(resolve => setTimeout(resolve, 1100));
+
+        // In-window commits in BOTH repos so the time filter passes both.
+        await execAsync('git commit --allow-empty -m "in-window short"', { cwd: shortRepo });
+        await execAsync('git commit --allow-empty -m "in-window long"', { cwd: longRepo });
+
+        // File access ONLY inside longRepo (the name-prefix sibling).
+        // Pre-fix: this was attributed to BOTH repos because
+        // `${longRepo}/file.ts`.startsWith(shortRepo) === true.
+        context.filesAccessed.push({
+          path: path.join(longRepo, 'edited.ts'),
+          action: 'edit',
+          timestamp: new Date().toISOString(),
+        });
+
+        context.findGitRepos = vi.fn().mockResolvedValue([shortRepo, longRepo]);
+        context.getRepoInfo = vi.fn().mockImplementation(async (p: string) => ({
+          name: path.basename(p),
+          branch: 'main',
+          remote: null,
+        }));
+        context.createProjectPage = vi.fn().mockResolvedValue({ content: [] });
+
+        const args: CloseSessionArgs = {
+          summary: 'Prefix-collision regression',
+          working_directories: [baseDir],
+          _invoked_by_slash_command: true,
+        };
+        await closeSession(args, context);
+
+        const calls = (context.createProjectPage as ReturnType<typeof vi.fn>).mock.calls;
+        const calledPaths = calls.map(c => c[0].repo_path);
+        expect(calledPaths).toContain(longRepo);
+        expect(calledPaths).not.toContain(shortRepo);
+      } finally {
+        await fs.rm(baseDir, { recursive: true, force: true });
+      }
     });
   });
 
@@ -1615,8 +1757,22 @@ describe('closeSession - Two-Phase Workflow', () => {
 
         await closeSession(args, context);
 
-        expect(context.createProjectPage).toHaveBeenCalledWith({ repo_path: repoA });
-        expect(context.createProjectPage).toHaveBeenCalledWith({ repo_path: repoB });
+        expect(context.createProjectPage).toHaveBeenCalledWith(
+          expect.objectContaining({ repo_path: repoA })
+        );
+        expect(context.createProjectPage).toHaveBeenCalledWith(
+          expect.objectContaining({ repo_path: repoB })
+        );
+
+        // Every createProjectPage call must carry the new session id so the
+        // project page's `## Related Sessions` is backlinked to this close.
+        // Pre-fix, the wrapper inherited `this.currentSessionId` (null/stale),
+        // and Phase 2's setCurrentSession runs too late to influence Phase 1's
+        // project-page writes.
+        const calls = (context.createProjectPage as ReturnType<typeof vi.fn>).mock.calls;
+        for (const [arg] of calls) {
+          expect(arg.session_id).toMatch(/^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}/);
+        }
       } finally {
         await cleanupTestGitRepo(repoA);
         await cleanupTestGitRepo(repoB);

@@ -19,6 +19,16 @@ export interface VaultCustodianResult {
 }
 
 /**
+ * True when `line` starts with H1 or H2. Used as the section boundary for
+ * H2-Related-section scans — H3+ subsections (e.g. per-repo `### {slug}`
+ * blocks under `## Related Git Commits`) are children of their parent H2 and
+ * must not terminate the parent section's bounds.
+ */
+function isH1OrH2Header(line: string): boolean {
+  return /^##?\s/.test(line.trim());
+}
+
+/**
  * Recursively find all markdown files in a directory
  */
 async function findMarkdownFiles(dir: string): Promise<string[]> {
@@ -586,9 +596,11 @@ async function moveRelatedSectionsToBottom(file: string): Promise<string[]> {
       const startIndex = i;
       const sectionContent: string[] = [lines[i]]; // Include the header
 
-      // Collect content until next header or end
+      // Collect content until next H1/H2 header or end. H3+ subsections
+      // (e.g. per-repo `### {slug}` under `## Related Git Commits`) are part
+      // of this section and must not terminate the bounds.
       let j = i + 1;
-      while (j < lines.length && !lines[j].trim().startsWith('#')) {
+      while (j < lines.length && !isH1OrH2Header(lines[j])) {
         sectionContent.push(lines[j]);
         j++;
       }
@@ -840,9 +852,11 @@ async function migrateGitCommitSections(file: string): Promise<string[]> {
       // Section exists, add links after it
       const existingLinks = new Set<string>();
 
-      // Collect existing links to avoid duplicates
+      // Collect existing links to avoid duplicates. Use H1/H2 boundary so
+      // multi-repo H3 subsections under `## Related Git Commits` don't cut
+      // the scan short.
       let j = relatedCommitsIndex + 1;
-      while (j < newLines.length && !newLines[j].trim().startsWith('#')) {
+      while (j < newLines.length && !isH1OrH2Header(newLines[j])) {
         const linkLine = newLines[j].trim();
         if (linkLine.startsWith('- [[')) {
           existingLinks.add(linkLine);
@@ -906,10 +920,11 @@ async function deduplicateHeaders(file: string): Promise<string[]> {
       }
       headerSections.get(line)!.indices.push(i);
 
-      // Collect content under this header until next header or end
+      // Collect content under this header until next H1/H2 header or end.
+      // H3+ subsections belong to this section.
       const sectionContent: string[] = [];
       let j = i + 1;
-      while (j < lines.length && !lines[j].trim().startsWith('#')) {
+      while (j < lines.length && !isH1OrH2Header(lines[j])) {
         if (lines[j].trim()) {
           // Only collect non-empty lines
           sectionContent.push(lines[j].trim());
@@ -945,9 +960,11 @@ async function deduplicateHeaders(file: string): Promise<string[]> {
         const dupIndex = data.indices[i];
         linesToRemove.add(dupIndex);
 
-        // Also remove content lines after duplicate header (until next header)
+        // Also remove content lines after duplicate header (until next H1/H2).
+        // H3+ subsections belong to this duplicate section and must be removed
+        // with it.
         let j = dupIndex + 1;
-        while (j < lines.length && !lines[j].trim().startsWith('#')) {
+        while (j < lines.length && !isH1OrH2Header(lines[j])) {
           if (lines[j].trim()) {
             linesToRemove.add(j);
           }
@@ -1048,8 +1065,9 @@ async function deduplicateSectionLinks(file: string): Promise<string[]> {
       continue;
     }
 
-    // Check if we're leaving a Related section (hit another header or end)
-    if (trimmedLine.startsWith('#') && inRelatedSection) {
+    // Check if we're leaving a Related section (hit another H1/H2 header).
+    // H3+ subsections are part of the current Related section.
+    if (isH1OrH2Header(trimmedLine) && inRelatedSection) {
       inRelatedSection = false;
       currentSectionLinks = new Map();
       newLines.push(line);
@@ -1165,9 +1183,10 @@ async function validateRelatedSectionContent(file: string): Promise<string[]> {
       continue;
     }
 
-    // Check if we've left the Related section (hit another non-indented header)
+    // Check if we've left the Related section (hit another non-indented H1/H2
+    // header). H3+ subsections belong to the current Related section.
     if (
-      trimmed.startsWith('#') &&
+      isH1OrH2Header(trimmed) &&
       !line.startsWith(' ') &&
       !line.startsWith('\t') &&
       currentSection
@@ -1193,9 +1212,16 @@ async function validateRelatedSectionContent(file: string): Promise<string[]> {
       } else {
         // Invalid content in Related section
         // Check for common malformations
-        if (trimmed.startsWith('##')) {
+        if (isH1OrH2Header(trimmed)) {
+          // Only H1/H2 are malformed inside a Related section. H3+ (e.g.,
+          // per-repo `### {slug}` subsections under `## Related Git Commits`)
+          // are valid structural children and must be preserved.
           fixes.push(`Removed malformed header inside ${currentSection}: ${trimmed}`);
           modified = true;
+          continue;
+        } else if (trimmed.startsWith('#')) {
+          // H3+ subsection header — keep it as-is.
+          newLines.push(line);
           continue;
         } else if (
           trimmed.startsWith('-') &&
@@ -1261,8 +1287,12 @@ async function removeEmptyRelatedSections(file: string): Promise<string[]> {
       let j = i + 1;
       let hasLinks = false;
 
-      // Scan until we hit another header or end of file
-      while (j < lines.length && !lines[j].trim().startsWith('#')) {
+      // Scan until we hit another H1/H2 header or end of file. H3+ subsections
+      // (e.g. multi-repo `### {slug}` blocks under `## Related Git Commits`)
+      // belong to this section, so the scan must reach into them — otherwise
+      // a section that has H3 children but no direct bullets is mis-classified
+      // as empty and the parent H2 gets dropped.
+      while (j < lines.length && !isH1OrH2Header(lines[j])) {
         const contentLine = lines[j].trim();
         if (contentLine.startsWith('- [[') || contentLine.startsWith('- [')) {
           hasLinks = true;

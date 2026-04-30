@@ -24,7 +24,10 @@ export async function linkSessionToRepository(
     currentSessionFile: string | null;
     filesAccessed: FileAccess[];
     gitService: GitService;
-    createProjectPage: (args: { repo_path: string }) => Promise<LinkSessionToRepositoryResult>;
+    createProjectPage: (args: {
+      repo_path: string;
+      session_id?: string;
+    }) => Promise<LinkSessionToRepositoryResult>;
   }
 ): Promise<LinkSessionToRepositoryResult> {
   if (!context.currentSessionFile) {
@@ -63,9 +66,9 @@ export async function linkSessionToRepository(
 
   // Add files accessed
   if (context.filesAccessed.length > 0) {
-    const filesYaml = context.filesAccessed.map(f =>
-      `  - path: ${f.path}\n    action: ${f.action}\n    timestamp: ${f.timestamp}`
-    ).join('\n');
+    const filesYaml = context.filesAccessed
+      .map(f => `  - path: ${f.path}\n    action: ${f.action}\n    timestamp: ${f.timestamp}`)
+      .join('\n');
     frontmatter += `\nfiles_accessed:\n${filesYaml}`;
   }
 

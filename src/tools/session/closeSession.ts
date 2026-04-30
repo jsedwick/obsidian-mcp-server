@@ -2944,7 +2944,7 @@ interface CloseSessionContext {
   getRepoInfo: (
     repoPath: string
   ) => Promise<{ name: string; branch?: string; remote?: string | null }>;
-  createProjectPage: (args: { repo_path: string }) => Promise<any>;
+  createProjectPage: (args: { repo_path: string; session_id?: string }) => Promise<any>;
   findRelatedContentInText: (text: string) => Promise<{
     topics: Array<{ link: string; title: string }>;
     decisions: Array<{ link: string; title: string }>;
@@ -3227,6 +3227,35 @@ export async function closeSession(
       })
     );
     qualifyingRepos = repoCandidates.filter(c => (commitsByRepo.get(c.path)?.length ?? 0) > 0);
+
+    // Defensive evidence filter (cross-session attribution pollution guard).
+    // When ≥2 repos qualify purely on the session-window time filter and at
+    // least one has tracked file accesses, drop the ones without. Prevents
+    // a stale `sessionStartTime` (e.g., carried over from a prior session
+    // via the recovery file) from attributing commits to repos that happened
+    // to be discovered under a parent `working_directories` entry but that
+    // the session never actually touched.
+    //
+    // Single-repo qualifying lists pass through untouched. Multi-repo lists
+    // where NO repo has tracked file accesses also pass through (the filter
+    // doesn't know which is real, so it keeps them all — preserves the
+    // legitimate "Claude commits via Bash without per-file tracking" case).
+    let droppedByEvidence = 0;
+    if (qualifyingRepos.length >= 2) {
+      // Pin a path.sep on the prefix so sibling repos with name overlap
+      // (e.g. "obsidian-mcp" vs "obsidian-mcp-server") cannot inherit each
+      // other's evidence and silently survive the filter.
+      const hasFileAccessEvidence = (c: DetectedRepo): boolean => {
+        const repoPrefix = c.path + path.sep;
+        return context.filesAccessed.some(f => f.path.startsWith(repoPrefix));
+      };
+      const reposWithEvidence = qualifyingRepos.filter(hasFileAccessEvidence);
+      if (reposWithEvidence.length > 0 && reposWithEvidence.length < qualifyingRepos.length) {
+        droppedByEvidence = qualifyingRepos.length - reposWithEvidence.length;
+        qualifyingRepos = reposWithEvidence;
+      }
+    }
+
     logger.debug('qualifyingRepos:', {
       qualifying: qualifyingRepos.map(c => ({
         name: c.name,
@@ -3234,6 +3263,7 @@ export async function closeSession(
         commits: commitsByRepo.get(c.path)?.length ?? 0,
       })),
       total_candidates: repoCandidates.length,
+      dropped_by_evidence_filter: droppedByEvidence,
     });
   }
 
@@ -3262,7 +3292,12 @@ export async function closeSession(
       remote: primary.remote,
     };
     try {
-      await context.createProjectPage({ repo_path: primary.path });
+      // Pass the just-computed sessionId so the project page's
+      // `## Related Sessions` gets the new session's link. Without it the
+      // wrapper inherits `this.currentSessionId`, which is null on a fresh
+      // server or stale from the previous /close — Phase 2's setCurrentSession
+      // doesn't run until after this point.
+      await context.createProjectPage({ repo_path: primary.path, session_id: sessionId });
       try {
         const userRefPath = path.join(context.vaultPath, 'user-reference.md');
         const description = args.topic ? `\n- **Description:** ${args.topic}` : '';
@@ -3291,7 +3326,9 @@ export async function closeSession(
   for (const repo of qualifyingRepos) {
     if (primary && repo.path === primary.path) continue;
     try {
-      await context.createProjectPage({ repo_path: repo.path });
+      // Pass sessionId so secondary repos' project pages also get backlinked
+      // to this session — see the matching comment on the primary call above.
+      await context.createProjectPage({ repo_path: repo.path, session_id: sessionId });
     } catch (_error) {
       // Non-fatal — recordCommit will still attempt the commit page write.
     }

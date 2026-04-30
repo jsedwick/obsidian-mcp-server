@@ -24,7 +24,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { generateDecisionTemplate } from '../../templates.js';
-import { generateProjectSlug } from '../../utils/projectSlug.js';
+import { getOrGenerateProjectSlug } from '../../utils/projectSlug.js';
 import { getTodayLocal } from '../../utils/dateFormat.js';
 
 export interface CreateDecisionArgs {
@@ -149,9 +149,13 @@ To proceed anyway, call create_decision again with force: true.`,
   // Priority: repo_path (auto-generate) > project (manual) > vault (default)
   let scope: string;
   if (args.repo_path) {
-    // Auto-generate project slug from repo path (same strategy as projects)
+    // Reuse the canonical project slug if a project page already exists for
+    // this repo path. Falls back to remote-URL-derived slug only when no
+    // project page is found. Prevents drift when a repo's remote URL changes
+    // and a fresh slug would otherwise split decisions across two directories.
     const remoteUrl = await context.getRemoteUrl(args.repo_path);
-    scope = generateProjectSlug(args.repo_path, remoteUrl);
+    const projectsDir = path.join(context.vaultPath, 'projects');
+    scope = await getOrGenerateProjectSlug(args.repo_path, remoteUrl, projectsDir);
   } else {
     scope = args.project || 'vault';
   }

@@ -152,6 +152,46 @@ describe('createDecision', () => {
     expect(result.content[0].text).toContain('alternatives');
   });
 
+  it('should reuse existing canonical project slug when repo_path matches a project page', async () => {
+    // Simulate slug drift: a project page was created under the canonical slug
+    // when the repo's remote was at uoregon. The repo's remote later changed to
+    // github, which would naively generate "github-jsedwick-mcp-server".
+    // create_decision must route to the canonical slug to avoid splitting
+    // decisions across two directories.
+    const repoPath = '/tmp/fake-mcp-repo';
+    const canonicalSlug = 'uoregon-jsdev-mcp-server';
+    const projectsDir = path.join(vaultPath, 'projects', canonicalSlug);
+    await fs.mkdir(projectsDir, { recursive: true });
+    await fs.writeFile(
+      path.join(projectsDir, 'project.md'),
+      `---\ncreated: "2025-01-01"\nrepository:\n  path: ${repoPath}\n---\n# Project\n`
+    );
+
+    context.getRemoteUrl = vi.fn().mockResolvedValue('https://github.com/jsedwick/mcp-server.git');
+
+    await createDecision(
+      {
+        title: 'Approach A vs Approach B',
+        content: 'Chose A over the B alternative.',
+        repo_path: repoPath,
+        force: true,
+      },
+      context
+    );
+
+    // Decision lands under the canonical (existing) slug, not the slug derived
+    // from the new remote URL.
+    const canonicalDecisionsDir = path.join(vaultPath, 'decisions', canonicalSlug);
+    const files = await fs.readdir(canonicalDecisionsDir);
+    expect(files.length).toBe(1);
+    expect(files[0]).toMatch(/^001-/);
+
+    // No drifted directory was created.
+    await expect(
+      fs.access(path.join(vaultPath, 'decisions', 'github-jsedwick-mcp-server'))
+    ).rejects.toThrow();
+  });
+
   it('should track decision creation', async () => {
     await createDecision(
       {

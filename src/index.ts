@@ -733,7 +733,10 @@ class ObsidianMCPServer {
                 ensureVaultStructure: this.ensureVaultStructure.bind(this),
                 analyzeTopicContentInternal: this.analyzeTopicContentInternal.bind(this),
                 findRelatedProjects: this.findRelatedProjects.bind(this),
-                trackTopicCreation: topic => this.topicsCreated.push(topic),
+                trackTopicCreation: topic => {
+                  this.topicsCreated.push(topic);
+                  this.sessionStateFile.trackTopicCreation(topic);
+                },
                 trackFileAccess: this.trackFileAccess.bind(this),
                 searchVault: this.searchVaultWrapper.bind(this),
               });
@@ -745,7 +748,10 @@ class ObsidianMCPServer {
                 slugify: this.slugify.bind(this),
                 ensureVaultStructure: this.ensureVaultStructure.bind(this),
                 findRelatedContentInText: this.findRelatedContentInText.bind(this),
-                trackDecisionCreation: decision => this.decisionsCreated.push(decision),
+                trackDecisionCreation: decision => {
+                  this.decisionsCreated.push(decision);
+                  this.sessionStateFile.trackDecisionCreation(decision);
+                },
                 getRemoteUrl: (repoPath: string) => this.gitService.getRemoteUrl(repoPath),
                 trackFileAccess: this.trackFileAccess.bind(this),
               });
@@ -905,7 +911,10 @@ class ObsidianMCPServer {
               return await tools.createProjectPage(securedArgs as tools.CreateProjectPageArgs, {
                 vaultPath: this.config.primaryVault.path,
                 gitService: this.gitService,
-                trackProjectCreation: project => this.projectsCreated.push(project),
+                trackProjectCreation: project => {
+                  this.projectsCreated.push(project);
+                  this.sessionStateFile.trackProjectCreation(project);
+                },
               });
 
             case 'record_commit':
@@ -2982,11 +2991,28 @@ Check the sessions/ directory for recent conversations.
   // ==================== Tool Wrapper Methods ====================
   // These wrappers allow modular tools to call other tools without circular dependencies
 
-  private async createProjectPageWrapper(args: { repo_path: string }): Promise<any> {
-    return tools.createProjectPage(args as unknown as tools.CreateProjectPageArgs, {
+  private async createProjectPageWrapper(args: {
+    repo_path: string;
+    /**
+     * Optional override for the session id stamped into the project page's
+     * `## Related Sessions`. closeSession Phase 1 passes its just-computed
+     * sessionId here, before `setCurrentSession` promotes it (which only
+     * happens in Phase 2). Without this override, Phase-1 project-page writes
+     * carry the previous session's id (or none at all when the server just
+     * started), and the new session never appears in the project's backlinks.
+     * Other callers omit it and inherit `this.currentSessionId`.
+     */
+    session_id?: string;
+  }): Promise<any> {
+    const sessionId = args.session_id ?? this.currentSessionId ?? undefined;
+    return tools.createProjectPage({ repo_path: args.repo_path } as tools.CreateProjectPageArgs, {
       vaultPath: this.config.primaryVault.path,
       gitService: this.gitService,
-      trackProjectCreation: project => this.projectsCreated.push(project),
+      currentSessionId: sessionId,
+      trackProjectCreation: project => {
+        this.projectsCreated.push(project);
+        this.sessionStateFile.trackProjectCreation(project);
+      },
     });
   }
 
@@ -3218,6 +3244,13 @@ Check the sessions/ directory for recent conversations.
         action: f.action as 'read' | 'edit' | 'create',
         timestamp: f.timestamp,
       }));
+      // Decision 065: tracker arrays survive fork-restart so Phase 2 renders
+      // mid-session work in ## Topics Created / ## Decisions Made / ## Projects
+      // Created. Without this, fork-restart wipes them and those sections
+      // render empty even when the on-disk vault has the new files.
+      this.topicsCreated = [...restored.topicsCreated];
+      this.decisionsCreated = [...restored.decisionsCreated];
+      this.projectsCreated = [...restored.projectsCreated];
       this.sessionStartTime = new Date(restored.sessionStart);
       if (restored.phase1Completed && restored.phase1SessionData) {
         this.phase1SessionData = restored.phase1SessionData;
@@ -3225,6 +3258,9 @@ Check the sessions/ directory for recent conversations.
       }
       logger.info('Session state restored from file', {
         filesAccessedCount: restored.filesAccessed.length,
+        topicsCreatedCount: restored.topicsCreated.length,
+        decisionsCreatedCount: restored.decisionsCreated.length,
+        projectsCreatedCount: restored.projectsCreated.length,
         phase1Completed: restored.phase1Completed,
       });
     }
