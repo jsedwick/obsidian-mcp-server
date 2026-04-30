@@ -174,7 +174,11 @@ export async function selectAllRepoCandidates(
 
   for (const repoPath of repoPaths) {
     let score = 0;
-    const filesInRepo = opts.filesAccessed.filter(f => f.path.startsWith(repoPath));
+    // Prefix bound includes a trailing path.sep so sibling repos with name
+    // overlap (e.g. "obsidian-mcp" vs "obsidian-mcp-server") cannot cross-claim
+    // each other's files.
+    const repoPrefix = repoPath + path.sep;
+    const filesInRepo = opts.filesAccessed.filter(f => f.path.startsWith(repoPrefix));
     const editedFiles = filesInRepo.filter(f => f.action === 'edit' || f.action === 'create');
     const readFiles = filesInRepo.filter(f => f.action === 'read');
     if (editedFiles.length > 0) score += editedFiles.length * 10;
@@ -187,8 +191,16 @@ export async function selectAllRepoCandidates(
     // was a subdir of a broader workdir (~/Projects/<repo>). c4ee373 flattened
     // closeSession's inline copy of this scorer; this preserves parity now that
     // close_session calls back into this helper.
+    //
+    // The inside-of checks pin a path.sep so a repo named "/a/b" doesn't claim
+    // a workdir at "/a/b-c" (or vice versa) as a containment relationship.
     for (const workDir of searchDirs) {
-      if (repoPath === workDir || workDir.startsWith(repoPath) || repoPath.startsWith(workDir)) {
+      const workDirPrefix = workDir + path.sep;
+      if (
+        repoPath === workDir ||
+        workDir.startsWith(repoPrefix) ||
+        repoPath.startsWith(workDirPrefix)
+      ) {
         score += 15;
         break;
       }

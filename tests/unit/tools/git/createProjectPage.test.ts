@@ -79,6 +79,21 @@ describe('createProjectPage', () => {
     );
   });
 
+  it('does not track project creation when only updating an existing page', async () => {
+    // First call creates the page → track fires.
+    await createProjectPage({ repo_path: '/tmp/test-repo' }, context);
+    expect(context.trackProjectCreation).toHaveBeenCalledTimes(1);
+
+    // Second call finds the page already on disk and only appends a session
+    // link → must NOT fire trackProjectCreation again. Otherwise the session's
+    // `## Projects Created` section gets pre-existing projects misreported as
+    // newly created (especially under Decision 061 step 7, which now creates
+    // /updates project pages for every qualifying repo on every close).
+    context.currentSessionId = 'second-session';
+    await createProjectPage({ repo_path: '/tmp/test-repo' }, context);
+    expect(context.trackProjectCreation).toHaveBeenCalledTimes(1);
+  });
+
   it('should create commits subdirectory', async () => {
     await createProjectPage({ repo_path: '/tmp/test-repo' }, context);
 

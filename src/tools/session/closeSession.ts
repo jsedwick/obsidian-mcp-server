@@ -2944,7 +2944,7 @@ interface CloseSessionContext {
   getRepoInfo: (
     repoPath: string
   ) => Promise<{ name: string; branch?: string; remote?: string | null }>;
-  createProjectPage: (args: { repo_path: string }) => Promise<any>;
+  createProjectPage: (args: { repo_path: string; session_id?: string }) => Promise<any>;
   findRelatedContentInText: (text: string) => Promise<{
     topics: Array<{ link: string; title: string }>;
     decisions: Array<{ link: string; title: string }>;
@@ -3242,8 +3242,13 @@ export async function closeSession(
     // legitimate "Claude commits via Bash without per-file tracking" case).
     let droppedByEvidence = 0;
     if (qualifyingRepos.length >= 2) {
-      const hasFileAccessEvidence = (c: DetectedRepo): boolean =>
-        context.filesAccessed.some(f => f.path.startsWith(c.path));
+      // Pin a path.sep on the prefix so sibling repos with name overlap
+      // (e.g. "obsidian-mcp" vs "obsidian-mcp-server") cannot inherit each
+      // other's evidence and silently survive the filter.
+      const hasFileAccessEvidence = (c: DetectedRepo): boolean => {
+        const repoPrefix = c.path + path.sep;
+        return context.filesAccessed.some(f => f.path.startsWith(repoPrefix));
+      };
       const reposWithEvidence = qualifyingRepos.filter(hasFileAccessEvidence);
       if (reposWithEvidence.length > 0 && reposWithEvidence.length < qualifyingRepos.length) {
         droppedByEvidence = qualifyingRepos.length - reposWithEvidence.length;
@@ -3287,7 +3292,12 @@ export async function closeSession(
       remote: primary.remote,
     };
     try {
-      await context.createProjectPage({ repo_path: primary.path });
+      // Pass the just-computed sessionId so the project page's
+      // `## Related Sessions` gets the new session's link. Without it the
+      // wrapper inherits `this.currentSessionId`, which is null on a fresh
+      // server or stale from the previous /close — Phase 2's setCurrentSession
+      // doesn't run until after this point.
+      await context.createProjectPage({ repo_path: primary.path, session_id: sessionId });
       try {
         const userRefPath = path.join(context.vaultPath, 'user-reference.md');
         const description = args.topic ? `\n- **Description:** ${args.topic}` : '';
@@ -3316,7 +3326,9 @@ export async function closeSession(
   for (const repo of qualifyingRepos) {
     if (primary && repo.path === primary.path) continue;
     try {
-      await context.createProjectPage({ repo_path: repo.path });
+      // Pass sessionId so secondary repos' project pages also get backlinked
+      // to this session — see the matching comment on the primary call above.
+      await context.createProjectPage({ repo_path: repo.path, session_id: sessionId });
     } catch (_error) {
       // Non-fatal — recordCommit will still attempt the commit page write.
     }

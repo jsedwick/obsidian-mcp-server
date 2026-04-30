@@ -192,13 +192,9 @@ export async function createProjectPage(
 
   const today = getTodayLocal();
 
-  // Track project creation for lazy session creation
-  if (context.trackProjectCreation) {
-    context.trackProjectCreation({ slug, name, file: projectFile });
-  }
-
   // Check if project page already exists
   let content: string;
+  let pageCreated = false;
   try {
     content = await fs.readFile(projectFile, 'utf-8');
 
@@ -221,6 +217,16 @@ export async function createProjectPage(
       currentSessionId: context.currentSessionId || undefined,
     });
     await fs.writeFile(projectFile, content);
+    pageCreated = true;
+  }
+
+  // Track project creation only when the page was newly written. Updates to a
+  // pre-existing page should not surface in the session's `## Projects Created`
+  // section — that header promises new artifacts, and listing pre-existing
+  // projects was misleading (especially after Decision 061 step 7 began
+  // creating/updating project pages for every qualifying repo).
+  if (pageCreated && context.trackProjectCreation) {
+    context.trackProjectCreation({ slug, name, file: projectFile });
   }
 
   // Proactively search for related topics

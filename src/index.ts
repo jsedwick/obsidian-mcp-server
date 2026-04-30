@@ -2991,10 +2991,24 @@ Check the sessions/ directory for recent conversations.
   // ==================== Tool Wrapper Methods ====================
   // These wrappers allow modular tools to call other tools without circular dependencies
 
-  private async createProjectPageWrapper(args: { repo_path: string }): Promise<any> {
-    return tools.createProjectPage(args as unknown as tools.CreateProjectPageArgs, {
+  private async createProjectPageWrapper(args: {
+    repo_path: string;
+    /**
+     * Optional override for the session id stamped into the project page's
+     * `## Related Sessions`. closeSession Phase 1 passes its just-computed
+     * sessionId here, before `setCurrentSession` promotes it (which only
+     * happens in Phase 2). Without this override, Phase-1 project-page writes
+     * carry the previous session's id (or none at all when the server just
+     * started), and the new session never appears in the project's backlinks.
+     * Other callers omit it and inherit `this.currentSessionId`.
+     */
+    session_id?: string;
+  }): Promise<any> {
+    const sessionId = args.session_id ?? this.currentSessionId ?? undefined;
+    return tools.createProjectPage({ repo_path: args.repo_path } as tools.CreateProjectPageArgs, {
       vaultPath: this.config.primaryVault.path,
       gitService: this.gitService,
+      currentSessionId: sessionId,
       trackProjectCreation: project => {
         this.projectsCreated.push(project);
         this.sessionStateFile.trackProjectCreation(project);
