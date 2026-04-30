@@ -149,12 +149,10 @@ const TYPE_RULES: Record<DocumentType, TypeRules> = {
   },
 
   session: {
-    readonly: true,
+    readonly: false,
     appendOnly: false,
-    frontmatterUpdates: (fm): Record<string, unknown> => fm, // No updates
-    validate: () => {
-      throw new Error('Session files are read-only. They cannot be edited after creation.');
-    },
+    frontmatterUpdates: (fm): Record<string, unknown> => fm,
+    validate: () => {},
   },
 
   commit: {

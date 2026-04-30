@@ -236,7 +236,7 @@ This content has no frontmatter at all.`;
   });
 
   describe('Type Validation', () => {
-    it('should prevent editing read-only session files', async () => {
+    it('should allow editing session files', async () => {
       const sessionPath = path.join(vaultPath, 'sessions/2025-01/test-session.md');
       await fs.mkdir(path.dirname(sessionPath), { recursive: true });
       const content = `---
@@ -246,16 +246,19 @@ session_id: test-session
 Session content`;
       await fs.writeFile(sessionPath, content, 'utf-8');
 
-      await expect(
-        updateDocument(
-          {
-            file_path: sessionPath,
-            content: 'Updated',
-            strategy: 'replace',
-          },
-          context
-        )
-      ).rejects.toThrow('Session files are read-only');
+      const result = await updateDocument(
+        {
+          file_path: sessionPath,
+          content: 'Updated',
+          strategy: 'replace',
+        },
+        context
+      );
+
+      expect(result.content[0].text).toContain('updated');
+      const written = await fs.readFile(sessionPath, 'utf-8');
+      expect(written).toContain('Updated');
+      expect(written).toContain('session_id: test-session');
     });
 
     it('should prevent editing read-only commit files', async () => {
