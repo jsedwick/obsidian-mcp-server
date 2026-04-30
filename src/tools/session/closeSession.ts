@@ -3227,6 +3227,30 @@ export async function closeSession(
       })
     );
     qualifyingRepos = repoCandidates.filter(c => (commitsByRepo.get(c.path)?.length ?? 0) > 0);
+
+    // Defensive evidence filter (cross-session attribution pollution guard).
+    // When ≥2 repos qualify purely on the session-window time filter and at
+    // least one has tracked file accesses, drop the ones without. Prevents
+    // a stale `sessionStartTime` (e.g., carried over from a prior session
+    // via the recovery file) from attributing commits to repos that happened
+    // to be discovered under a parent `working_directories` entry but that
+    // the session never actually touched.
+    //
+    // Single-repo qualifying lists pass through untouched. Multi-repo lists
+    // where NO repo has tracked file accesses also pass through (the filter
+    // doesn't know which is real, so it keeps them all — preserves the
+    // legitimate "Claude commits via Bash without per-file tracking" case).
+    let droppedByEvidence = 0;
+    if (qualifyingRepos.length >= 2) {
+      const hasFileAccessEvidence = (c: DetectedRepo): boolean =>
+        context.filesAccessed.some(f => f.path.startsWith(c.path));
+      const reposWithEvidence = qualifyingRepos.filter(hasFileAccessEvidence);
+      if (reposWithEvidence.length > 0 && reposWithEvidence.length < qualifyingRepos.length) {
+        droppedByEvidence = qualifyingRepos.length - reposWithEvidence.length;
+        qualifyingRepos = reposWithEvidence;
+      }
+    }
+
     logger.debug('qualifyingRepos:', {
       qualifying: qualifyingRepos.map(c => ({
         name: c.name,
@@ -3234,6 +3258,7 @@ export async function closeSession(
         commits: commitsByRepo.get(c.path)?.length ?? 0,
       })),
       total_candidates: repoCandidates.length,
+      dropped_by_evidence_filter: droppedByEvidence,
     });
   }
 

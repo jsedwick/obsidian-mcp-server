@@ -478,6 +478,9 @@ ${args.relatedDecisions.length > 0 ? args.relatedDecisions.map(d => `- [[${d.lin
 ## Related Projects
 
 ${args.relatedProjects.length > 0 ? args.relatedProjects.map(p => `- [[${p.link}|${p.name}]]`).join('\n') : '_None found_'}
+
+## Related Git Commits
+
 `;
 }
 

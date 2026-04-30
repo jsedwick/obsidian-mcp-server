@@ -445,4 +445,101 @@ The above is just an example - the link should not create a reciprocal link.
 
     await fs.rm(tmpDir, { recursive: true });
   });
+
+  it('preserves ## Related Git Commits with H3 subsection children (multi-repo render)', async () => {
+    // Regression: pre-fix, moveRelatedSectionsToBottom and removeEmptyRelatedSections
+    // both terminated their section-bounds scan on any line starting with `#`,
+    // including H3. So `## Related Git Commits` followed by per-repo `### {slug}`
+    // subsections (the multi-repo render shape from Decision 061) was treated as
+    // an empty section: the H2 got moved with no body, then deleted as "empty",
+    // while the H3 children were stranded above other Related sections.
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'vault-h3-children-test-'));
+
+    const sessionsDir = path.join(tmpDir, 'sessions', '2026-04');
+    await fs.mkdir(sessionsDir, { recursive: true });
+    const projectsDir = path.join(tmpDir, 'projects');
+    await fs.mkdir(path.join(projectsDir, 'repo-a', 'commits'), { recursive: true });
+    await fs.mkdir(path.join(projectsDir, 'repo-b', 'commits'), { recursive: true });
+    // Create commit pages so the wiki links aren't aspirational (would be stripped).
+    await fs.writeFile(
+      path.join(projectsDir, 'repo-a', 'commits', 'aaaaaaa.md'),
+      `---\ncategory: commit\n---\n\n# Commit aaaaaaa`
+    );
+    await fs.writeFile(
+      path.join(projectsDir, 'repo-b', 'commits', 'bbbbbbb.md'),
+      `---\ncategory: commit\n---\n\n# Commit bbbbbbb`
+    );
+
+    const sessionPath = path.join(sessionsDir, '2026-04-29_test-multi-repo.md');
+    const sessionContent = `---
+date: "2026-04-29"
+category: session
+session_id: "2026-04-29_test-multi-repo"
+topics: []
+decisions: []
+status: "completed"
+tags: []
+---
+
+# Session: test-multi-repo
+
+## Summary
+
+Multi-repo session.
+
+## Handoff
+
+Done.
+
+## Files Accessed
+
+_No files tracked_
+
+## Related Topics
+
+_None found_
+
+## Related Git Commits
+
+### repo-a
+- [[projects/repo-a/commits/aaaaaaa|aaaaaaa]]: feat: A change
+
+### repo-b
+- [[projects/repo-b/commits/bbbbbbb|bbbbbbb]]: feat: B change
+`;
+    await fs.writeFile(sessionPath, sessionContent);
+
+    const { vaultCustodian } = await import('../../../../src/tools/maintenance/vaultCustodian.js');
+
+    await vaultCustodian(
+      { files_to_check: [sessionPath] },
+      {
+        vaultPath: tmpDir,
+        ensureVaultStructure: async () => {},
+        findSessionFile: async () => null,
+      }
+    );
+
+    const fixed = await fs.readFile(sessionPath, 'utf-8');
+
+    // The parent H2 must survive. Pre-fix: it was deleted by removeEmptyRelatedSections.
+    expect(fixed).toContain('## Related Git Commits');
+
+    // Both H3 subsections must remain under the H2 — no orphaned H3 stranded
+    // above other Related sections.
+    expect(fixed).toContain('### repo-a');
+    expect(fixed).toContain('### repo-b');
+    expect(fixed).toContain('aaaaaaa');
+    expect(fixed).toContain('bbbbbbb');
+
+    // Structural check: the H2 must precede both H3s.
+    const h2Idx = fixed.indexOf('## Related Git Commits');
+    const repoAIdx = fixed.indexOf('### repo-a');
+    const repoBIdx = fixed.indexOf('### repo-b');
+    expect(h2Idx).toBeGreaterThanOrEqual(0);
+    expect(repoAIdx).toBeGreaterThan(h2Idx);
+    expect(repoBIdx).toBeGreaterThan(h2Idx);
+
+    await fs.rm(tmpDir, { recursive: true });
+  });
 });

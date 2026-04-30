@@ -1237,6 +1237,63 @@ describe('closeSession - Two-Phase Workflow', () => {
       // so primary identity is asserted via call ORDER (1st = primary block).
       expect(context.createProjectPage).toHaveBeenNthCalledWith(1, { repo_path: repoB });
     });
+
+    it('B1 evidence filter: drops a qualifying repo with no file-access evidence when another has it', async () => {
+      // Reproduces the cross-session attribution pollution scenario: when a
+      // stale sessionStartTime causes both repos to have in-window commits but
+      // only one repo was actually touched by the session, the untouched repo
+      // would otherwise get attributed via `repositories:` frontmatter and
+      // `createProjectPage`. B1 requires file-access evidence when ≥2 repos
+      // qualify and at least one has it.
+      const sessionStart = new Date();
+      context.getSessionStartTime = vi.fn().mockReturnValue(sessionStart);
+      await new Promise(resolve => setTimeout(resolve, 1100));
+
+      // Both repos get an in-window commit — without B1, both would qualify.
+      await createTestCommit(repoA, {
+        message: 'in-window commit in repoA',
+        files: { 'a.ts': 'export {};' },
+      });
+      await createTestCommit(repoB, {
+        message: 'in-window commit in repoB',
+        files: { 'b.ts': 'export {};' },
+      });
+
+      // Only repoA has a tracked file access — repoB qualifies on time alone.
+      context.filesAccessed.push({
+        path: path.join(repoA, 'a.ts'),
+        action: 'edit',
+        timestamp: new Date().toISOString(),
+      });
+
+      context.findGitRepos = vi.fn().mockImplementation(async (dir: string) => {
+        if (dir === repoA) return [repoA];
+        if (dir === repoB) return [repoB];
+        return [];
+      });
+      context.getRepoInfo = vi.fn().mockImplementation(async (p: string) => ({
+        name: path.basename(p),
+        branch: 'main',
+        remote: null,
+      }));
+      context.createProjectPage = vi.fn().mockResolvedValue({ content: [] });
+
+      const args: CloseSessionArgs = {
+        summary: 'Test B1 evidence filter',
+        working_directories: [repoA, repoB],
+        _invoked_by_slash_command: true,
+      };
+
+      await closeSession(args, context);
+
+      // B1 drops repoB. Decision 061 step 7 calls createProjectPage for every
+      // qualifying repo, so asserting the negative (repoB never appears) is
+      // the cleanest signal that B1 fired.
+      const calls = (context.createProjectPage as ReturnType<typeof vi.fn>).mock.calls;
+      const calledPaths = calls.map(c => c[0].repo_path);
+      expect(calledPaths).toContain(repoA);
+      expect(calledPaths).not.toContain(repoB);
+    });
   });
 
   describe('Two-Phase Workflow Integration', () => {
